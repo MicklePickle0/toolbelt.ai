@@ -10,7 +10,10 @@ requires-python = ">=3.11,<3.13"
 dependencies = [
     "numpy>=1.26",
     "scipy>=1.11",
-    "opencv-python>=4.9",
+    # contrib = full build with GUI (manual-click calibration) + extra trackers.
+    # Some deps pull opencv-python(-headless) too; they clash on `cv2`, so
+    # scripts/check_env.py warns if more than one variant is installed.
+    "opencv-contrib-python>=4.9",
     "pyyaml>=6.0",
     "pandas>=2.1",
     "duckdb>=1.0",

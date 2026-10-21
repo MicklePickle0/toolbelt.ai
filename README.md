@@ -20,6 +20,18 @@ uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu
 uv pip install -e ".[vision-gpu,ocr,app,dev]"
 ```
 
+No NVIDIA GPU (e.g. Intel Arc laptops): use the CPU torch build so `rfdetr` doesn't pull a
+different one. Inference runs on CPU; training goes to a rented GPU anyway.
+
+```bash
+uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+uv pip install -e ".[vision,ocr,app,dev]" --index-strategy unsafe-best-match \
+    --extra-index-url https://download.pytorch.org/whl/cpu
+# deps pull extra OpenCV builds that clash on cv2; keep only contrib
+uv pip uninstall opencv-python opencv-python-headless
+uv pip install --reinstall-package opencv-contrib-python opencv-contrib-python
+```
+
 Check the environment and run tests:
 
 ```bash

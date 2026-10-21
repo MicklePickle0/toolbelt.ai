@@ -6,6 +6,7 @@ Usage: python scripts/check_env.py
 from __future__ import annotations
 
 import importlib
+import importlib.metadata
 import shutil
 import sys
 
@@ -20,6 +21,14 @@ def check_module(name: str) -> str:
     except ImportError:
         return "MISSING"
     return getattr(mod, "__version__", "ok")
+
+
+def has_dist(name: str) -> bool:
+    try:
+        importlib.metadata.distribution(name)
+    except importlib.metadata.PackageNotFoundError:
+        return False
+    return True
 
 
 def main() -> int:
@@ -43,6 +52,13 @@ def main() -> int:
     print("\noptional (vision / ocr / app / dev):")
     for name in OPTIONAL:
         print(f"  {name}: {check_module(name)}")
+
+    opencv_dists = [d for d in ("opencv-python", "opencv-python-headless", "opencv-contrib-python",
+                                "opencv-contrib-python-headless") if has_dist(d)]
+    if len(opencv_dists) > 1:
+        ok = False
+        print(f"\nWARNING: multiple OpenCV builds installed ({', '.join(opencv_dists)}); they "
+              "overwrite each other's cv2. Keep only opencv-contrib-python (see README).")
 
     try:
         import torch
