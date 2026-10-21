@@ -1,0 +1,44 @@
+# Court geometry (FIVB indoor), metres.
+#
+# Court coordinate frame (near side only is analyzed):
+#   origin: floor point under the net, on the LEFT sideline as seen by the
+#           near team facing the net (i.e. as seen from the camera).
+#   x: lateral, 0 at left sideline -> 9 at right sideline
+#   y: depth, 0 at the net -> 9 at the near end line (far side is negative)
+#   z: up, 0 on the floor
+# Lines are measured to the outer edge as per FIVB; line width ignored for now.
+length: 18.0
+width: 9.0
+attack_line_distance: 3.0  # from the net centre line
+line_width: 0.05
+
+net:
+  height:
+    men: 2.43
+    women: 2.24
+  antenna_height_above_tape: 0.80
+  tape_width: 0.07
+
+# Named keypoints used by auto line fitting and the manual-click fallback.
+# Coordinates are (x, y, z) in the frame above.
+keypoints:
+  near_left_corner:        [0.0, 9.0, 0.0]
+  near_right_corner:       [9.0, 9.0, 0.0]
+  near_left_attack:        [0.0, 3.0, 0.0]
+  near_right_attack:       [9.0, 3.0, 0.0]
+  centre_left:             [0.0, 0.0, 0.0]
+  centre_right:            [9.0, 0.0, 0.0]
+  far_left_attack:         [0.0, -3.0, 0.0]
+  far_right_attack:        [9.0, -3.0, 0.0]
+  # Net tape top at the sidelines; z filled from net.height at runtime.
+  net_tape_left:           [0.0, 0.0, null]
+  net_tape_right:          [9.0, 0.0, null]
+
+calibration:
+  # Below this, auto line fitting defers to the manual-click UI.
+  auto_min_confidence: 0.7
+  manual_min_points: 6
+  # Reprojection error (px) above which a solvePnP result is flagged.
+  max_reprojection_error_px: 4.0
+  # Re-validate pose against drift every N frames.
+  drift_check_every_n_frames: 30

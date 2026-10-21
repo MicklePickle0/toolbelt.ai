@@ -1,0 +1,59 @@
+[project]
+name = "setter-eyes"
+version = "0.1.0"
+description = "Offline volleyball stat tracker from one-end-of-court video (near side only)."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+# Core deps only. Heavy/optional stacks live in extras so the DB, config and
+# stats layers can be developed and tested without a GPU stack installed.
+# NOTE: verify current versions and licenses (esp. RF-DETR sizes) before pinning.
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "opencv-python>=4.9",
+    "pyyaml>=6.0",
+    "pandas>=2.1",
+    "duckdb>=1.0",
+]
+
+[project.optional-dependencies]
+# torch/torchvision: install the CUDA build from the PyTorch index on NVIDIA
+# (see README), MPS works out of the box on Apple Silicon.
+vision = [
+    "torch>=2.2",
+    "torchvision>=0.17",
+    "rfdetr",
+    "supervision>=0.20",
+    "rtmlib",
+    "onnxruntime>=1.17",
+]
+vision-gpu = [
+    "torch>=2.2",
+    "torchvision>=0.17",
+    "rfdetr",
+    "supervision>=0.20",
+    "rtmlib",
+    "onnxruntime-gpu>=1.17",
+]
+ocr = ["easyocr>=1.7"]
+app = ["fastapi>=0.110", "uvicorn>=0.29", "streamlit>=1.33"]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/setter_eyes"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "NPY"]

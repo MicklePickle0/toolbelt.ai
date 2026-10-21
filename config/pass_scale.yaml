@@ -1,0 +1,43 @@
+# Serve-receive pass quality (0-4), first ball after the serve only.
+#
+# DRAFT thresholds. The 2/3/4 boundaries are an interpretation of the owner's
+# wording and MUST be tuned/confirmed against hand-labeled passes.
+#
+# Coordinates use the court frame in court.yaml (x lateral 0-9, y depth from
+# the net). Distances are measured from the pass's best set point (the ball's
+# position at the setter contact, or the apex/drop point if the setter never
+# touches it) to the setter target.
+
+target:
+  x: 5.5   # slightly right of centre (between zones 3 and 2)
+  y: 1.0   # about a metre off the net
+
+# Evaluated top-down; first matching grade wins. A grade matches when the
+# pass is within BOTH limits. null = no limit on that axis.
+grades:
+  - score: 4
+    label: perfect
+    max_depth_error: 1.0
+    max_lateral_error: 1.5
+    min_apex_height: null   # "high"; set once measured on labeled data
+  - score: 3
+    label: decent
+    max_depth_error: 2.0    # ~1 m off the attack line, net side (to confirm)
+    max_lateral_error: 2.5
+    min_apex_height: null
+  - score: 2
+    label: mediocre
+    max_depth_error: 3.5    # around / slightly behind the attack line
+    max_lateral_error: 3.5
+    min_apex_height: null
+  - score: 1
+    label: terrible
+    max_depth_error: null
+    max_lateral_error: null
+    min_apex_height: null
+
+# Score 0 (ace) is not geometric: it comes from the point-outcome logic.
+ace_score: 0
+
+# Below this confidence the pass score goes to the review queue.
+review_below_confidence: 0.6

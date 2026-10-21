@@ -1,0 +1,40 @@
+# Pipeline-wide settings. Paths are relative to the repo root.
+
+paths:
+  data_dir: data
+  cache_dir: data/cache
+  output_dir: data/outputs
+  db_path: data/setter_eyes.db
+
+models:
+  # Weights live in models/ (gitignored). Fill in once trained/downloaded.
+  person_detector: null       # RF-DETR checkpoint, class: person
+  ball_detector: null         # RF-DETR fine-tuned on our footage, class: ball
+  pose: null                  # RTMPose ONNX via rtmlib
+
+detect:
+  person_min_confidence: 0.4
+  ball_min_confidence: 0.25
+  ball_input_resolution: 1280
+
+track:
+  tracker: bytetrack          # bytetrack | botsort
+  camera_motion_compensation: true
+
+ball:
+  gravity: 9.81
+  # Kalman process / measurement noise, image px. Tune on real footage.
+  process_noise: 1.0
+  measurement_noise: 4.0
+
+identity:
+  number_vote_bind_threshold: 0.8
+  min_crop_height_px: 80
+
+contacts:
+  max_contacts_per_side: 3   # plus a block
+
+# Global review policy: any automated output whose confidence is below its
+# stage threshold is queued for review.
+review:
+  default_min_confidence: 0.6
