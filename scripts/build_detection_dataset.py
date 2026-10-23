@@ -15,6 +15,7 @@ from pathlib import Path
 
 from setter_eyes import config
 from setter_eyes.datasets import assign_splits, export_detection_dataset
+from setter_eyes.datasets.tiles import parse_grid
 from setter_eyes.labels import load_manifest, load_video_labels
 
 
@@ -46,7 +47,10 @@ def main() -> int:
 
     summary = export_detection_dataset(
         args.out, videos, splits, args.classes, pipeline["ingest"]["jpeg_quality"],
-        overwrite=args.overwrite, progress=print)
+        overwrite=args.overwrite, progress=print,
+        tiles=parse_grid(ds["tiles"]) if ds.get("tiles") else None,
+        tile_overlap=ds["tile_overlap"], negative_tiles=ds["negative_tiles_per_frame"],
+        frame_cache=config.repo_path(paths["cache_dir"]))
     for split, n in summary.images.items():
         counts = ", ".join(f"{c} {k}" for c, k in summary.boxes[split].items())
         print(f"{split:5}: {n} images ({counts})")

@@ -24,6 +24,13 @@ MODELS = {"nano": "RFDETRNano", "small": "RFDETRSmall", "medium": "RFDETRMedium"
           "base": "RFDETRBase", "large": "RFDETRLarge"}
 
 
+def _multi_scale(value) -> str:
+    """Config value -> rfdetr MultiScale ("off" | "per-batch" | "per-sample")."""
+    if isinstance(value, bool):       # unquoted YAML off/on
+        return "per-batch" if value else "off"
+    return str(value).lower()
+
+
 def main() -> int:
     # rfdetr prints rich tables; Windows' default cp1252 console/log encoding can't, and the
     # crash would end training after the first validation.
@@ -74,6 +81,7 @@ def main() -> int:
                 batch_size=batch, grad_accum_steps=args.grad_accum_steps, lr=args.lr,
                 resolution=args.resolution, early_stopping=tr["early_stopping"],
                 num_workers=tr["num_workers"], device="cuda",
+                multi_scale=_multi_scale(tr.get("multi_scale", "off")),
                 notes=json.loads(provenance.read_text()) if provenance.exists() else None)
     best = sorted(out.glob("checkpoint_best*.pth"))
     print("done. checkpoints:", *(str(p) for p in best or sorted(out.glob("*.pth"))), sep="\n  ")

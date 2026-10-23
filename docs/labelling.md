@@ -56,7 +56,8 @@ python scripts/ingest_labels.py --check
   its old version. Each `make` skips frames already labelled or handed out in a batch.
 - The manifest finds `labels/<id>/boxes.coco.json` and `labels/<id>/events.csv`
   automatically; `labels:` in an entry is only needed for other paths.
-- Classes: exactly `ball` and `person`. Leave ball-less frames with no box (negatives).
+- Classes: `ball` (the match ball), `other_ball` (any ball not in play) and, later, `person`.
+  Leave frames with no ball unboxed (negatives).
 - In X-AnyLabeling: open the batch folder, draw rectangles, then export as COCO
   (rectangle) JSON. Keep the original file names.
 
@@ -148,7 +149,8 @@ Use standard COCO detection JSON, from any tool (CVAT, Roboflow, Label Studio).
   - Don't use Roboflow's own video-to-frames upload: its frame names don't give a reliable index.
 - **Resolution**: label at the video's original resolution. A size mismatch is an error. The ball is small, so don't downscale.
 - **Negatives matter**: keep the frames you labelled where the ball is not visible. They are exported as images with no boxes.
-- **Ball box**: tight around the visible ball, motion blur included. One ball per frame in match footage. More than one gives a warning; warm-up footage is fine.
+- **Ball box**: tight around the visible ball, motion blur included. One `ball` per frame in match footage: the one in play, or between points the one being brought back for the next serve. More than one gives a warning; warm-up footage is fine.
+- **Other balls** (spare balls, ball carts, other courts, warm-up balls): box them as `other_ball`. They are imported but not trained on, and tiles that touch them are left out of the training export, so a real-looking ball is never taught as background. If you can't tell which ball is the match ball, use the burst's neighbouring frames; if still unsure, `other_ball`.
 - **Sampling**: label every Nth frame across many rallies and many videos, rather than dense runs from one rally. Neighbouring frames are near-duplicates.
 
 ## Where things go

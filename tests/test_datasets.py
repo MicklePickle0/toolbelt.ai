@@ -80,3 +80,26 @@ def test_split_by_venue_keeps_venues_together():
     videos.append(v("arc3", "Queens ARC", split="train"))
     with pytest.raises(LabelError, match="pinned to several splits"):
         assign_splits(Manifest(Path("m"), "Us", [], videos), RATIOS, split_by="venue")
+
+
+def test_tiles_cover_frame_and_tiled_export(workspace, tmp_path):
+    from setter_eyes.datasets.tiles import tile_boxes
+
+    t = tile_boxes(3840, 2160, (3, 3), 0.15)
+    assert len(t) == 9 and t[0][:2] == (0, 0)
+    assert max(x + w for x, _, w, _ in t) == 3840 and max(y + h for _, y, _, h in t) == 2160
+
+    m = load_manifest(workspace)
+    vl = load_video_labels(m, m.videos[0])
+    out = tmp_path / "tiled"
+    summary = export_detection_dataset(out, [(vl.entry, vl.boxes)], {"clip": "train"},
+                                       ["ball", "person"], tiles=(2, 2), negative_tiles=1)
+    ann = json.loads((out / "train" / "_annotations.coco.json").read_text())
+    # Every ball box lies fully inside its tile, in tile coordinates.
+    sizes = {i["id"]: (i["width"], i["height"]) for i in ann["images"]}
+    for a in ann["annotations"]:
+        x, y, w, h = a["bbox"]
+        tw, th = sizes[a["image_id"]]
+        assert x >= 0 and y >= 0 and x + w <= tw and y + h <= th
+    assert summary.boxes["train"]["ball"] >= 4
+    assert all(i["width"] < 160 for i in ann["images"])
