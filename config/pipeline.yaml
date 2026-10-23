@@ -5,6 +5,25 @@ paths:
   cache_dir: data/cache
   output_dir: data/outputs
   db_path: data/setter_eyes.db
+  # Ground truth from hand-labelled footage. Same schema as db_path but a
+  # separate file, so pipeline output can be evaluated against it.
+  labels_db_path: data/labels.db
+  # Registry of videos + their label files (see config/manifest.example.yaml).
+  manifest_path: data/manifest.yaml
+
+ingest:
+  # Frames are cached as JPEG. The ball is small: keep quality high.
+  jpeg_quality: 95
+
+datasets:
+  # Split BY VIDEO, never by frame. Videos without an explicit split in the
+  # manifest are assigned by a stable hash of their key with these ratios.
+  split_ratios:
+    train: 0.7
+    valid: 0.15
+    test: 0.15
+  detection_classes: [ball, person]
+  detection_export_dir: data/datasets/detection
 
 models:
   # Weights live in models/ (gitignored). Fill in once trained/downloaded.

@@ -1,0 +1,41 @@
+# Vocabulary for hand-labelled footage (see docs/labelling.md).
+# Labels are validated against these lists; extend them here, not in code.
+
+# Contact actions. Opponent contacts are labelled too (team: them) so the
+# contact chain is complete, but only "us" contacts get a jersey number.
+actions:
+  - serve
+  - receive      # first ball after the opponent's serve; the only action with pass_score
+  - set
+  - attack
+  - block
+  - dig
+  - dump
+  - free_ball
+  - overpass
+  - coverage
+
+# How the rally ended (the HOW of the point), from the perspective of the
+# team whose action ended it; point_winner says who got the point.
+outcomes:
+  - kill
+  - attack_error
+  - reception_error
+  - ace
+  - service_error
+  - block_point
+  - ball_handling_error   # double, lift, net touch, block error ...
+  - other
+
+# Bounding-box classes. Keys are our canonical names, values are the names a
+# labelling tool might export (matched case-insensitively).
+box_classes:
+  ball: [ball, volleyball, sports ball]
+  person: [person, player]
+
+# How a COCO image's file_name maps to a frame index of the source video.
+# Tried in order against the file stem (Roboflow ".rf.<hash>" suffixes are
+# stripped first). The first capture group must be the frame index.
+frame_name_patterns:
+  - '_f(\d+)$'           # our extract_frames.py naming: <video>_f000123
+  - 'frame_?(\d+)$'      # CVAT video export: frame_000123

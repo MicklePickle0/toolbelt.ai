@@ -22,3 +22,17 @@ def test_pass_scale_grades_are_ordered_and_complete():
 def test_pipeline_config_has_paths():
     pipeline = config.load("pipeline")
     assert pipeline["paths"]["db_path"].startswith("data/")
+
+
+def test_example_manifest_is_valid():
+    from setter_eyes.labels import load_manifest
+
+    m = load_manifest(config.CONFIG_DIR / "manifest.example.yaml")
+    assert m.videos[0].lineups[1] == [1, 7, 3, 4, 5, 6]
+
+
+def test_label_vocab():
+    labels = config.load("labels")
+    assert {"serve", "receive", "set", "attack", "block", "dig"} <= set(labels["actions"])
+    assert {"kill", "attack_error", "reception_error", "ace", "service_error"} <= \
+        set(labels["outcomes"])

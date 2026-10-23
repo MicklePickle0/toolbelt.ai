@@ -40,12 +40,28 @@ pytest
 ruff check .
 ```
 
+## Labelled footage
+
+Register videos in `data/manifest.yaml`, label events (CSV) and boxes (COCO), then validate,
+import, preview and export. Formats and the step-by-step workflow are in
+[docs/labelling.md](docs/labelling.md). Smoke test on synthetic data:
+
+```bash
+python scripts/make_demo_data.py
+python scripts/ingest_labels.py --manifest data/demo/manifest.yaml --db data/demo/labels.db
+python scripts/preview_labels.py --manifest data/demo/manifest.yaml --video demo_a --contacts
+python scripts/build_detection_dataset.py --manifest data/demo/manifest.yaml --out data/demo/detection
+```
+
 ## Layout
 
 ```
-config/              court.yaml, pass_scale.yaml, pipeline.yaml (all thresholds live here)
+config/              court.yaml, pass_scale.yaml, pipeline.yaml, labels.yaml (all thresholds and
+                     vocabularies live here), manifest.example.yaml
 src/setter_eyes/     ingest, calibration, detect, track, ball, pose, contacts,
-                     rally, identity, classify, db, stats, api, ui
+                     rally, identity, classify, db, stats, api, ui,
+                     labels (manifest, events CSV, COCO boxes, DB import), datasets (splits, export)
+docs/                labelling.md
 data/  models/       gitignored (videos, caches, event DB, weights)
 tests/  scripts/
 ```

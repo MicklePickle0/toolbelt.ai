@@ -1,0 +1,27 @@
+# Copy to data/manifest.yaml (gitignored) and fill in. Paths are relative to
+# the manifest's own directory. Format reference: docs/labelling.md.
+
+team: Our Team
+
+# Optional. Jersey numbers in event labels and lineups are checked against it.
+roster:
+  - {number: 1, name: Setter One}
+  - {number: 7, name: Outside Seven}
+  - {number: 3, name: Middle Three}
+  - {number: 4, name: Opposite Four}
+  - {number: 5, name: Outside Five}
+  - {number: 6, name: Middle Six}
+  - {number: 12, name: Libero Twelve, libero: true}
+
+videos:
+  - id: 2026-10-01_vs_rivals       # stable key: letters, digits, _ and - only
+    path: videos/2026-10-01_vs_rivals.mp4
+    division: men                  # men | women (net height for 3D)
+    opponent: Rivals
+    played_on: 2026-10-01
+    split: train                   # optional: train | valid | test; else hash-assigned
+    labels:
+      events: labels/2026-10-01_vs_rivals/events.csv     # optional
+      boxes: labels/2026-10-01_vs_rivals/boxes.coco.json  # optional
+    lineups:                       # optional: set number -> six jerseys in rotation order
+      1: [1, 7, 3, 4, 5, 6]

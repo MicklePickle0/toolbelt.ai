@@ -16,7 +16,7 @@ An automated alternative to Hudl / DataVolley / VolleyStation. Input: a match or
 2. **Court calibration**: automatic line fitting first (net tape, sidelines, end line, attack line). Output a confidence score. If confidence is low, or the user asks, fall back to a manual-click UI (6-8 known points). Solve camera pose with `cv2.solvePnP` (not just a floor homography). If the camera drifts, track from the initialization with feature tracking / optical flow. Expect better lateral than depth accuracy.
 3. **Person detection + tracking**: RF-DETR (class: person), tracker with camera-motion compensation (BoT-SORT/ByteTrack via `supervision` as a starting point). Filter to near-side players by court position and jersey color. Floor position from the feet.
 4. **Ball detection + tracking**: RF-DETR fine-tuned on our own footage at high input resolution (1280+) with class `ball`. Hand-written Kalman filter with gravity. Fit ballistic arcs per flight segment between contacts.
-5. **3D ball estimate**: camera rays from calibration + gravity-constrained arc fit for metric scale. Ball apparent size and net height (2.43 m men's, 2.24 m women's) are cross-checks only, not the primary signal. Anchor with player feet on the floor. Needs only to be good enough for the 0-4 serve-receive scale. Optional overlay: vertical drop line from ball to its floor point plus a ground trail.
+5. **3D ball estimate**: camera rays from calibration + gravity-constrained arc fit for metric scale. Ball apparent size and net height are cross-checks only, not the primary signal. Net height is a per-game setting (`games.net_height_m`, chosen at setup): presets 2.43 m (17-18U boys), 2.35 m (15-16U boys), 2.24 m (13-14U boys and women's), plus a custom value. Everything that uses tape height (calibration scale, block check, ball-height checks) reads this one setting; confirm it by drawing the net tape at that height over the video. Anchor with player feet on the floor. Needs only to be good enough for the 0-4 serve-receive scale. Optional overlay: vertical drop line from ball to its floor point plus a ground trail.
 6. **Pose**: RTMPose (via `rtmlib`/ONNX) on player crops. Used for wrist/forearm proximity, platform arm cues, arm-swing velocity.
 7. **Contact detection** (no audio): fuse soft evidence, never a single detector: trajectory break (direction/speed change), ball-to-wrist/forearm proximity, pose cues, rally-state priors (max 3 contacts per side plus a block). Each contact gets a confidence.
 8. **Rally segmentation**: start from serve detection, end from ball landing / out / dead ball. Scoreboard OCR (macOS Vision, or EasyOCR/PaddleOCR on other OSes) is a sanity check only.
@@ -81,6 +81,29 @@ data/ (gitignored)  models/ (gitignored)  tests/  scripts/
 - Dev: `pytest`, `ruff`.
 - Training (RF-DETR fine-tune at 1280): use a rented GPU; do not train on a laptop CPU.
 - Verify current versions and licenses (especially RF-DETR model sizes) before committing.
+
+## Data labeling and venue variety
+Detector labels (`ball`, `person`): about 700-900 frames in total, NOT every frame. Neighboring frames are near-duplicates.
+- Sample frames at random or evenly spaced times within each video (stratified so the whole set is covered), then drop near-duplicates (perceptual hash or embedding clustering).
+- Add targeted frames: serve tosses, ball near the net, ball partly hidden, bright backgrounds, spare balls and wall-colored objects (hard negatives).
+- Workflow: label ~200 frames, train a rough detector, use it to pre-label the rest, correct by hand, then prioritize frames the model is least sure about.
+- Sample by venue, not by video, so one gym with many games does not dominate. Record the venue for every video in the `games` table.
+- Contact/action labels are per touch (not per frame) and come from correcting pipeline proposals in the review UI.
+- Videos are ~20 min per set. Run detection/tracking over the full video, store rally start/end times in the DB, and cut short clips with ffmpeg on demand. Do not physically split videos up front.
+
+Labeling tools (check current features and pricing before committing):
+- Roboflow: dataset management, auto-labeling, click-assisted labeling (used by the original project).
+- CVAT: free/open source, SAM-assisted labeling, interpolation between frames (label the ball every few frames and fill in).
+- X-AnyLabeling: free desktop app, SAM click-to-segment, can pre-label with our own detector.
+- Label Studio: open source, can connect our own model for pre-labels.
+- FiftyOne: not a labeler; use it to curate, de-duplicate and find frames the model gets wrong.
+- Click-to-label (SAM) suits players. The ball is ~20 px, so pre-label with the detector and fix by hand.
+
+Background and venue variety:
+- Detectors memorize venues. Variety in what is behind the ball and players (wall colors, lighting, camera height/angle, ball type, jersey colors, other balls and people in the background) matters more than raw frame count. Several venues with fewer frames each generalize better than one venue with many (roughly 4+ venues is a starting estimate, not a verified requirement).
+- A new gym adds much more variety than the same gym on another day. Tournament footage is valuable (spare balls and other games behind the court are the hard cases).
+- Hold out an entire venue, not only a game, to test generalization. Expect to label a small batch of frames (about 50-100, a rough guess) for a brand-new gym.
+- With only 1-2 venues, use augmentation (brightness, color shift, blur, crop, scale), but it does not replace real venue variety.
 
 ## Milestones
 1. Ingest + calibration (auto + manual fallback) + court overlay. Verify visually.

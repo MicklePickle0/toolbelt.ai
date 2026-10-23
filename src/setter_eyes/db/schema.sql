@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS players (
 CREATE TABLE IF NOT EXISTS games (
     id            INTEGER PRIMARY KEY,
     team_id       INTEGER NOT NULL REFERENCES teams(id),
+    video_key     TEXT NOT NULL UNIQUE,        -- stable id from the manifest; splits are by this
     opponent      TEXT,
     played_on     TEXT,                       -- ISO date
     division      TEXT NOT NULL DEFAULT 'men' CHECK (division IN ('men', 'women')),
@@ -35,7 +36,7 @@ CREATE TABLE IF NOT EXISTS sets (
     id               INTEGER PRIMARY KEY,
     game_id          INTEGER NOT NULL REFERENCES games(id),
     set_number       INTEGER NOT NULL,
-    starting_lineup  TEXT NOT NULL,           -- JSON: six jersey numbers in rotation order
+    starting_lineup  TEXT,                    -- JSON: six jersey numbers in rotation order
     start_frame      INTEGER,
     end_frame        INTEGER,
     UNIQUE (game_id, set_number)
@@ -82,6 +83,7 @@ CREATE TABLE IF NOT EXISTS contacts (
     t                   REAL NOT NULL,
     frame               INTEGER NOT NULL,
     contact_confidence  REAL,
+    team                TEXT CHECK (team IN ('us', 'them')),
     player_id           INTEGER REFERENCES players(id),
     track_id            INTEGER REFERENCES tracks(id),
     action              TEXT,                 -- serve, receive, set, attack, block, dig, dump, free_ball, coverage, ...
@@ -107,7 +109,7 @@ CREATE TABLE IF NOT EXISTS ball_samples (
     y           REAL,
     z           REAL,
     confidence  REAL,
-    source      TEXT NOT NULL CHECK (source IN ('detection', 'kalman', 'arc_fit'))
+    source      TEXT NOT NULL CHECK (source IN ('detection', 'kalman', 'arc_fit', 'label'))
 );
 
 -- Every human correction is kept: it is both an audit log and training data.
