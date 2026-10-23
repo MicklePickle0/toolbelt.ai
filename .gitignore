@@ -1,6 +1,9 @@
 # Large / private artifacts
-data/*
-!data/.gitkeep
+# data/: keep the folder skeleton (README + .gitkeep files), ignore the contents
+data/**
+!data/**/
+!data/**/.gitkeep
+!data/README.md
 models/*
 !models/.gitkeep
 *.mp4
@@ -14,6 +17,8 @@ models/*
 *.duckdb
 *.sqlite
 outputs/
+!data/outputs/
+!data/outputs/.gitkeep
 
 # Python
 __pycache__/

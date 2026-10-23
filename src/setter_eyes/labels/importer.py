@@ -66,10 +66,12 @@ def import_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry
         }
         delete_game(conn, entry.key)
         game_id = conn.execute(
-            "INSERT INTO games (team_id, video_key, opponent, played_on, division, video_path, "
-            "fps, frame_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (team_id, entry.key, entry.opponent, entry.played_on, entry.division,
-             str(entry.path), info.fps, info.frame_count),
+            "INSERT INTO games (team_id, video_key, opponent, played_on, venue, net_height_m, "
+            "net_height_preset, video_path, fps, frame_count) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (team_id, entry.key, entry.opponent, entry.played_on, entry.venue,
+             entry.net_height_m, entry.net_height_preset, str(entry.path), info.fps,
+             info.frame_count),
         ).lastrowid
 
         set_ids: dict[int, int] = {}

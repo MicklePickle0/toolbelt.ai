@@ -21,7 +21,7 @@ uv pip install -e ".[vision-gpu,ocr,app,dev]"
 ```
 
 No NVIDIA GPU (e.g. Intel Arc laptops): use the CPU torch build so `rfdetr` doesn't pull a
-different one. Inference runs on CPU; training goes to a rented GPU anyway.
+different one. Inference runs on CPU; train on a GPU machine.
 
 ```bash
 uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
@@ -66,5 +66,38 @@ data/  models/       gitignored (videos, caches, event DB, weights)
 tests/  scripts/
 ```
 
-Train/val/test splits are made **by video**, never by frame. Model training (RF-DETR at 1280)
-runs on a rented GPU.
+Train/val/test splits are made **by venue** (or by video while there are too few venues;
+`datasets.split_by`), never by frame. RF-DETR training at 1280 runs on the local GPU
+(`scripts/train_detector.py`) or a rented one.
+
+Video decoding uses the GPU when available (`ingest.hw_decode`): the AV1 4K footage decodes
+at ~20 fps on the CPU and 400+ fps on the RTX 4070 SUPER. Whole-video passes that don't need
+full resolution use `iter_frames_scaled` (ffmpeg, GPU decode + scale).
+
+## Court calibration and camera tracking (Milestone 1)
+
+The Humber footage pans with play, so a video is calibrated once on one exact frame and
+the pan is then tracked through every frame.
+
+```bash
+python scripts/calibrate.py --video mac-chrome_set1           # auto, else click ~8 points
+python scripts/calibrate.py --video mac-chrome_set1 --manual  # straight to clicking
+python scripts/track_camera.py --video mac-chrome_set1        # pose per frame + overlay preview
+```
+
+- Calibration: `data/calibration/<id>.json`; overlay and line mask in
+  `data/outputs/calibration/`. Automatic fitting uses painted white lines and is honest
+  about confidence; on courts bounded by floor-colour changes it falls back to clicking.
+  Click UI: click the prompted point, `s` skip, `u` undo, `ijkl` nudge 1 px, Enter done.
+- Tracking: `data/calibration/<id>_track.npz` (rotation + confidence per frame), checked
+  by eye with `data/outputs/calibration/<id>_track.mp4` and `<id>_stills/`.
+- Settings: `calibration:` in `config/court.yaml`.
+
+## Detector training (local GPU)
+
+```bash
+python scripts/build_detection_dataset.py --overwrite
+python scripts/train_detector.py                      # settings: train: in pipeline.yaml
+python scripts/prelabel.py --checkpoint models/rfdetr/<run>/checkpoint_best_total.pth \
+    --video mac-chrome_set2                            # boxes to correct + least-sure-first queue
+```

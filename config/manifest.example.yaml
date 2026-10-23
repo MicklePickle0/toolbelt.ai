@@ -16,10 +16,12 @@ roster:
 videos:
   - id: 2026-10-01_vs_rivals       # stable key: letters, digits, _ and - only
     path: videos/2026-10-01_vs_rivals.mp4
-    division: men                  # men | women (net height for 3D)
+    venue: Queen's ARC             # required; splits keep each venue together
+    net_height: boys_17_18u        # boys_17_18u (2.43) | boys_15_16u (2.35) | boys_13_14u (2.24)
+                                   # | women (2.24) | a custom height in metres, e.g. 2.30
     opponent: Rivals
     played_on: 2026-10-01
-    split: train                   # optional: train | valid | test; else hash-assigned
+    split: train                   # optional: train | valid | test (pins the whole venue)
     labels:
       events: labels/2026-10-01_vs_rivals/events.csv     # optional
       boxes: labels/2026-10-01_vs_rivals/boxes.coco.json  # optional

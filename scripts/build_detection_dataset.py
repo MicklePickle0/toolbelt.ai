@@ -1,9 +1,11 @@
-"""Build the RF-DETR training dataset (Roboflow COCO layout) from box labels, split by video.
+"""Build the RF-DETR training dataset (Roboflow COCO layout) from box labels.
+
+Split by venue (or by video; see datasets.split_by in config/pipeline.yaml).
 
 Usage:
   python scripts/build_detection_dataset.py [--out DIR] [--classes ball person] [--overwrite]
 
-Then train on a rented GPU, e.g. RFDETRMedium().train(dataset_dir=OUT, resolution=1280, ...).
+Then train: python scripts/train_detector.py
 """
 
 from __future__ import annotations
@@ -49,7 +51,8 @@ def main() -> int:
         counts = ", ".join(f"{c} {k}" for c, k in summary.boxes[split].items())
         print(f"{split:5}: {n} images ({counts})")
         if n == 0:
-            print(f"  WARNING: {split} is empty; pin a video to it with 'split:' in the manifest")
+            print(f"  WARNING: {split} is empty; pin a video (and so its venue) to it with "
+                  "'split:' in the manifest")
     print(f"wrote {args.out}")
     return 0
 

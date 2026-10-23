@@ -9,6 +9,7 @@ hit exact frames decode sequentially and skip with grab().
 from __future__ import annotations
 
 import json
+import random
 import shutil
 import subprocess
 from collections.abc import Iterable, Iterator
@@ -18,6 +19,8 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+
+from setter_eyes import config
 
 # r_frame_rate vs avg_frame_rate may differ by rounding on CFR files.
 _VFR_TOLERANCE = 0.01
@@ -137,7 +140,14 @@ def _probe_opencv(path: Path) -> VideoInfo:
 
 
 def _open(path: str | Path) -> cv2.VideoCapture:
-    cap = cv2.VideoCapture(str(path))
+    """Open with GPU decoding when ingest.hw_decode is set (AV1 4K: ~20 fps on CPU, 400+ on
+    an RTX GPU). Falls back to CPU decoding silently if the GPU path is unavailable."""
+    cap = None
+    if config.load("pipeline")["ingest"].get("hw_decode", False):
+        cap = cv2.VideoCapture(str(path), cv2.CAP_FFMPEG,
+                               [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
+    if cap is None or not cap.isOpened():
+        cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
         raise OSError(f"could not open video {path}")
     return cap
@@ -172,6 +182,46 @@ def iter_frames(path: str | Path, start: int = 0, end: int | None = None,
         cap.release()
 
 
+def iter_frames_scaled(path: str | Path, width: int, gray: bool = False) -> Iterator[Frame]:
+    """Every frame in order, resized to `width` (aspect kept); indices match iter_frames.
+
+    For whole-video passes that don't need full resolution (camera tracking, previews).
+    Uses ffmpeg with GPU decode + scale when available: copying 4K frames off the GPU
+    is the bottleneck (~40 ms/frame), a 960-wide frame is not. Falls back to ffmpeg on
+    the CPU, then OpenCV. `t` is index / fps (CFR files).
+    """
+    info = probe(path)
+    height = round(info.height * width / info.width / 2) * 2
+    pix, channels = ("gray", 1) if gray else ("bgr24", 3)
+    size = width * height * channels
+    shape = (height, width) if gray else (height, width, 3)
+    if shutil.which("ffmpeg"):
+        tail = ["-fps_mode", "passthrough", "-an", "-f", "rawvideo", "-pix_fmt", pix, "-"]
+        attempts = [["ffmpeg", "-v", "error", "-i", str(path), "-vf",
+                     f"scale={width}:{height}:flags=area", *tail]]
+        if config.load("pipeline")["ingest"].get("hw_decode", False):
+            attempts.insert(0, ["ffmpeg", "-v", "error", "-hwaccel", "cuda",
+                                "-hwaccel_output_format", "cuda", "-i", str(path), "-vf",
+                                f"scale_cuda={width}:{height},hwdownload,format=nv12", *tail])
+        for cmd in attempts:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            index = 0
+            try:
+                while len(buf := proc.stdout.read(size)) == size:
+                    image = np.frombuffer(buf, np.uint8).reshape(shape)
+                    yield Frame(index, index / info.fps, image)
+                    index += 1
+            finally:
+                proc.kill()
+                proc.wait()
+            if index:
+                return
+    for frame in iter_frames(path):
+        image = cv2.resize(frame.image, (width, height), interpolation=cv2.INTER_AREA)
+        yield Frame(frame.index, frame.t,
+                    cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if gray else image)
+
+
 def read_frames(path: str | Path, indices: Iterable[int]) -> Iterator[Frame]:
     """Yield exactly the requested frames (sorted, deduplicated), decoding sequentially.
 
@@ -198,6 +248,28 @@ def read_frames(path: str | Path, indices: Iterable[int]) -> Iterator[Frame]:
             index += 1
     finally:
         cap.release()
+
+
+def burst_indices(start: int, end: int, bursts: int, length: int, seed: str) -> list[int]:
+    """Frame indices for `bursts` runs of `length` consecutive frames in [start, end).
+
+    The range is cut into equal strata and one run is placed at a random offset
+    in each, so the whole video is covered and every run has motion context.
+    Seeded (e.g. by video key) so re-running picks the same frames.
+    """
+    if bursts < 1 or length < 1:
+        raise ValueError("bursts and length must be >= 1")
+    stratum = (end - start) / bursts
+    if stratum < length:
+        raise ValueError(f"{bursts} bursts of {length} frames don't fit in {end - start} frames")
+    rng = random.Random(seed)
+    out = []
+    for i in range(bursts):
+        lo = start + round(i * stratum)
+        hi = start + round((i + 1) * stratum) - length
+        first = rng.randint(lo, hi)
+        out.extend(range(first, first + length))
+    return out
 
 
 def frame_filename(video_key: str, index: int, ext: str = ".jpg") -> str:

@@ -17,8 +17,8 @@ python scripts/make_demo_data.py
 
 # 1. Check the recording. Phone footage is often variable frame rate (VFR) or has rotation
 #    metadata. If it is flagged, normalise it and label the NORMALISED file.
-python scripts/probe_video.py raw/match.mov
-python scripts/normalize_video.py raw/match.mov data/videos/2026-10-01_vs_rivals.mp4
+python scripts/probe_video.py data/raw/match.mov
+python scripts/normalize_video.py data/raw/match.mov data/videos/2026-10-01_vs_rivals.mp4
 
 # 2. Register it: copy config/manifest.example.yaml to data/manifest.yaml and add an entry.
 
@@ -40,18 +40,46 @@ python scripts/build_detection_dataset.py --overwrite
 
 `ingest_labels.py` reports every problem in every file. Errors block the import of that video; warnings don't. Running it again replaces that video's previous import.
 
+## Box labelling in batches (X-AnyLabeling or any image tool)
+
+Frames come from `extract_frames.py --bursts` (runs of consecutive frames). Label a batch
+spread over every video, then split the tool's single export back per video:
+
+```bash
+python scripts/label_batch.py make --name batch1 --per-video 2   # -> data/labels/batches/batch1/
+# label in the tool, export COCO JSON, then:
+python scripts/label_batch.py import data/labels/batches/batch1/<export>.json
+python scripts/ingest_labels.py --check
+```
+
+- `import` merges into `data/labels/<id>/boxes.coco.json`; a frame labelled again replaces
+  its old version. Each `make` skips frames already labelled or handed out in a batch.
+- The manifest finds `labels/<id>/boxes.coco.json` and `labels/<id>/events.csv`
+  automatically; `labels:` in an entry is only needed for other paths.
+- Classes: exactly `ball` and `person`. Leave ball-less frames with no box (negatives).
+- In X-AnyLabeling: open the batch folder, draw rectangles, then export as COCO
+  (rectangle) JSON. Keep the original file names.
+
 ## Manifest (`data/manifest.yaml`)
 
 See [config/manifest.example.yaml](../config/manifest.example.yaml). Each video has:
 
-- `id`: a stable key. Splits, cache folders and DB rows hang off it.
+- `id`: a stable key. Cache folders and DB rows hang off it.
 - `path`: the video file.
-- `division`: sets the net height.
-- `split` (optional): pins the video to `train`, `valid` or `test`.
-- `labels.events` and `labels.boxes` (both optional).
+- `venue` (required): the gym or tournament site. Names are compared ignoring case, spaces and punctuation, so `Queen's ARC` and `queens arc` are the same venue. Stored in `games.venue`.
+- `net_height` (required): a preset from `net.height_presets` in [config/court.yaml](../config/court.yaml) (`boys_17_18u` 2.43 m, `boys_15_16u` 2.35 m, `boys_13_14u` 2.24 m, `women` 2.24 m) or a custom height in metres (e.g. `2.30`). Stored in `games.net_height_m`; calibration scale, block check and ball height all read it.
+- `split` (optional): pins the video to `train`, `valid` or `test`. With venue splits this pins the whole venue; pinning two videos of one venue to different splits is an error.
+- `labels.events` and `labels.boxes` (both optional; default `labels/<id>/events.csv` and `labels/<id>/boxes.coco.json` when those files exist).
 - `lineups` (optional): six jerseys per set, in rotation order.
 
-Videos with no `split` are assigned one from a hash of their `id`, using `datasets.split_ratios` in `config/pipeline.yaml`. Adding videos never moves an existing video to a different split. Splits are always by video, never by frame.
+Splits are never by frame. `datasets.split_by` in `config/pipeline.yaml` chooses the grouping:
+
+- `venue` (default): every video from one venue goes to the same split, so valid/test score the model on gyms it has never seen.
+- `video`: each video on its own. Use it while you have fewer than about three venues, otherwise one split gets everything. Switching between the two reshuffles the splits, so retrain afterwards.
+
+Unpinned venues (or videos) are assigned from a hash of their name, using `datasets.split_ratios`. Adding videos or venues never moves an existing one to a different split.
+
+The labels DB records its schema version. If `ingest_labels.py` says the DB is from an older schema, delete `data/labels.db` and run it again: it is rebuilt from the label files.
 
 ## Event labels (`events.csv`)
 
@@ -127,9 +155,13 @@ Use standard COCO detection JSON, from any tool (CVAT, Roboflow, Label Studio).
 
 | what | where |
 |---|---|
+| video registry | `data/manifest.yaml` |
+| original recordings | `data/raw/` |
+| normalised videos (label these) | `data/videos/` |
+| label files | `data/labels/<id>/events.csv`, `data/labels/<id>/boxes.coco.json` |
 | ground-truth events, ball centres | `data/labels.db` (same schema as the pipeline DB; rows `reviewed = 1`, confidence 1.0) |
 | detection dataset | `data/datasets/detection/{train,valid,test}/_annotations.coco.json` + images, plus `provenance.json` |
 | preview videos and stills | `data/outputs/` |
 | sampled frames | `data/cache/<id>/frames/` |
 
-Train on a rented GPU after `pip install -e ".[vision-gpu,train]"`. For example, `RFDETRMedium().train(dataset_dir="data/datasets/detection", resolution=1280, ...)`. Check the current RF-DETR model sizes and licences first.
+Train on the local GPU with `python scripts/train_detector.py` (settings under `train:` in `config/pipeline.yaml`; RF-DETR 1.11 is Apache-2.0, resolution must be a multiple of 32, or 56 for `base`). Then pre-label the next frames with `python scripts/prelabel.py --checkpoint ... --video KEY`: it writes `prelabels.coco.json` to import into the labelling tool and `prelabel_queue.csv`, frames ordered least-certain first.

@@ -9,7 +9,7 @@ import pytest
 from conftest import decoded_index
 from setter_eyes.config import REPO_ROOT
 from setter_eyes.datasets import assign_splits, export_detection_dataset, split_for
-from setter_eyes.labels import load_manifest, load_video_labels
+from setter_eyes.labels import LabelError, load_manifest, load_video_labels
 from setter_eyes.labels.manifest import Manifest, VideoEntry
 
 RATIOS = {"train": 0.7, "valid": 0.15, "test": 0.15}
@@ -19,8 +19,8 @@ def test_split_is_stable_and_respects_pins():
     videos = [VideoEntry(key=f"v{i}", path=Path("x")) for i in range(200)]
     videos.append(VideoEntry(key="pinned", path=Path("x"), split="test"))
     m = Manifest(Path("m"), "Us", [], videos)
-    a = assign_splits(m, RATIOS)
-    assert a == assign_splits(m, RATIOS)
+    a = assign_splits(m, RATIOS, split_by="video")
+    assert a == assign_splits(m, RATIOS, split_by="video")
     assert a["pinned"] == "test"
     counts = {s: list(a.values()).count(s) for s in RATIOS}
     assert 110 < counts["train"] < 170 and counts["valid"] > 10 and counts["test"] > 10
@@ -62,3 +62,21 @@ def test_ingest_labels_script(workspace, tmp_path):
     assert run.returncode == 0, run.stdout + run.stderr
     assert "imported: game 1, 1 sets, 2 rallies, 5 contacts, 4 ball samples" in run.stdout
     assert db_path.exists()
+
+
+def test_split_by_venue_keeps_venues_together():
+    def v(key, venue, split=None):
+        return VideoEntry(key=key, path=Path("x"), venue=venue, split=split)
+
+    videos = [v(f"g{i}_{j}", f"Gym {i}") for i in range(60) for j in range(3)]
+    videos += [v("arc1", "Queen's ARC"), v("arc2", "queens arc", split="test")]
+    a = assign_splits(Manifest(Path("m"), "Us", [], videos), RATIOS, split_by="venue")
+    for i in range(60):
+        assert len({a[f"g{i}_{j}"] for j in range(3)}) == 1
+    assert len(set(a.values())) == 3
+    # Pinning one video pins its whole venue (names are normalised).
+    assert a["arc1"] == a["arc2"] == "test"
+
+    videos.append(v("arc3", "Queens ARC", split="train"))
+    with pytest.raises(LabelError, match="pinned to several splits"):
+        assign_splits(Manifest(Path("m"), "Us", [], videos), RATIOS, split_by="venue")

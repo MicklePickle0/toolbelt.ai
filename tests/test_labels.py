@@ -133,11 +133,23 @@ def test_manifest_validation(tmp_path):
     path = tmp_path / "m.yaml"
     path.write_text("team: Us\nroster: [{number: 1, name: A}]\nvideos:\n"
                     "  - {id: 'bad key', path: x.mp4}\n"
-                    "  - {id: ok, path: x.mp4, split: training, lineups: {1: [1, 2, 3]}}\n")
+                    "  - {id: ok, path: x.mp4, split: training, lineups: {1: [1, 2, 3]}}\n"
+                    "  - {id: tall, path: x.mp4, venue: Gym, net_height: 3.5}\n")
     with pytest.raises(LabelError) as e:
         load_manifest(path)
     text = str(e.value)
     assert "'id' must be" in text and "split must be" in text and "six distinct" in text
+    assert "ok: missing 'venue'" in text and "tall: net_height must be" in text
+
+
+def test_manifest_net_height(tmp_path):
+    path = tmp_path / "m.yaml"
+    path.write_text("team: Us\nvideos:\n"
+                    "  - {id: a, path: a.mp4, venue: Gym, net_height: boys_15_16u}\n"
+                    "  - {id: b, path: b.mp4, venue: Gym, net_height: 2.3}\n")
+    a, b = load_manifest(path).videos
+    assert (a.net_height_m, a.net_height_preset) == (2.35, "boys_15_16u")
+    assert (b.net_height_m, b.net_height_preset) == (2.3, None)
 
 
 def test_import_round_trip(workspace, tmp_path):
@@ -171,3 +183,28 @@ def test_missing_label_file_is_an_error(workspace):
     vl = load_video_labels(m, m.videos[0])
     assert not vl.ok
     assert any("label file not found" in i.message for i in vl.issues)
+
+
+def test_label_batch_helpers_and_default_label_paths(tmp_path):
+    import importlib.util
+
+    from setter_eyes.config import REPO_ROOT
+
+    spec = importlib.util.spec_from_file_location("label_batch",
+                                                  REPO_ROOT / "scripts" / "label_batch.py")
+    lb = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lb)
+    assert lb.bursts([5, 1, 2, 3, 9, 10]) == [[1, 2, 3], [5], [9, 10]]
+    assert lb.spread(list(range(20)), 2) == [5, 15]
+    assert lb._video_of("mac-iron_set1_f000123_jpg.rf.abc123.jpg", ["mac-iron_set1"]) == \
+        "mac-iron_set1"
+
+    (tmp_path / "labels" / "a").mkdir(parents=True)
+    (tmp_path / "labels" / "a" / "boxes.coco.json").write_text("{}")
+    path = tmp_path / "m.yaml"
+    path.write_text("team: Us\nvideos:\n"
+                    "  - {id: a, path: a.mp4, venue: Gym, net_height: women}\n"
+                    "  - {id: b, path: b.mp4, venue: Gym, net_height: women}\n")
+    a, b = load_manifest(path).videos
+    assert a.boxes == tmp_path / "labels" / "a" / "boxes.coco.json" and a.events is None
+    assert b.boxes is None
