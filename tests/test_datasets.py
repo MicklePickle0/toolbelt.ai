@@ -103,3 +103,21 @@ def test_tiles_cover_frame_and_tiled_export(workspace, tmp_path):
         assert x >= 0 and y >= 0 and x + w <= tw and y + h <= th
     assert summary.boxes["train"]["ball"] >= 4
     assert all(i["width"] < 160 for i in ann["images"])
+
+
+def test_recolored_copies_only_for_train_ball_tiles(workspace, tmp_path):
+    m = load_manifest(workspace)
+    vl = load_video_labels(m, m.videos[0])
+    out = tmp_path / "recolor"
+    plain = export_detection_dataset(tmp_path / "plain", [(vl.entry, vl.boxes)],
+                                     {"clip": "train"}, ["ball", "person"], tiles=(2, 2))
+    summary = export_detection_dataset(out, [(vl.entry, vl.boxes)], {"clip": "train"},
+                                       ["ball", "person"], tiles=(2, 2),
+                                       recolor_hues=[60, -40], recolor_copies=1)
+    ann = json.loads((out / "train" / "_annotations.coco.json").read_text())
+    shifted = [i for i in ann["images"] if i["hue_shift"]]
+    with_ball = {a["image_id"] for a in ann["annotations"]}
+    assert shifted and all(i["id"] in with_ball for i in shifted)
+    assert summary.boxes["train"]["ball"] == 2 * plain.boxes["train"]["ball"]
+    balls = json.loads((out / "provenance.json").read_text())["balls"]
+    assert balls == {"clip": "mikasa_v200w_yellow"}

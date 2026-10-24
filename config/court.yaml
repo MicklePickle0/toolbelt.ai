@@ -16,6 +16,16 @@ width: 9.0
 attack_line_distance: 3.0  # from the net centre line
 line_width: 0.05
 
+# Match balls. Each video names one (manifest `ball`, stored in games.ball). Ball type
+# is variety like the venue: training is balanced and scored per ball type, but the
+# detector has a single class `ball` for all of them. All are regulation size.
+balls:
+  mikasa_v200w_yellow:        {maker: Mikasa, model: V200W, colours: [yellow, blue]}
+  mikasa_vq200w_ova_green:    {maker: Mikasa, model: VQ200W-OVA, colours: [green]}
+  mikasa_vq200w_can_red:      {maker: Mikasa, model: VQ200W-CAN, colours: [red]}
+  molten_flistatec_5000_blue_red_white:  {maker: Molten, model: FLISTATEC 5000, colours: [blue, red, white]}
+  molten_flistatec_5000_green_red_white: {maker: Molten, model: FLISTATEC 5000, colours: [green, red, white]}
+
 net:
   # Tape height is a per-game setting (games.net_height_m). A manifest video
   # names one of these presets or gives a custom height in metres.

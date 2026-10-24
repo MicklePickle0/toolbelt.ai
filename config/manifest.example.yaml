@@ -18,6 +18,7 @@ videos:
     path: videos/2026-10-01_vs_rivals.mp4
     venue: Queen's ARC             # required; splits keep each venue together
     net_height: boys_17_18u        # boys_17_18u (2.43) | boys_15_16u (2.35) | boys_13_14u (2.24)
+    ball: mikasa_v200w_yellow      # required: a key of `balls` in config/court.yaml
                                    # | women (2.24) | a custom height in metres, e.g. 2.30
     opponent: Rivals
     played_on: 2026-10-01

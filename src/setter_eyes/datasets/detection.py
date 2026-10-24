@@ -65,6 +65,8 @@ def export_detection_dataset(
     tile_overlap: float = 0.15,
     negative_tiles: int = 1,
     frame_cache: Path | None = None,
+    recolor_hues: list[float] | None = None,
+    recolor_copies: int = 0,
 ) -> ExportSummary:
     out_dir = Path(out_dir)
     if out_dir.exists():
@@ -93,19 +95,27 @@ def export_detection_dataset(
             for name, (x0, y0, tw, th), tile_boxes_ in _crops(entry.key, frame.index, w, h,
                                                               boxes, tiles, tile_overlap,
                                                               negative_tiles, rng, avoid):
-                write_image(split_dir / name, frame.image[y0:y0 + th, x0:x0 + tw], jpeg_quality)
-                image_id = len(b.images) + 1
-                b.images.append({"id": image_id, "file_name": name, "width": tw, "height": th,
-                                 "video": entry.key, "frame": frame.index,
-                                 "tile": [x0, y0, tw, th]})
-                for box in tile_boxes_:
-                    b.annotations.append({
-                        "id": len(b.annotations) + 1, "image_id": image_id,
-                        "category_id": cat_ids[box.cls],
-                        "bbox": [box.x - x0, box.y - y0, box.w, box.h], "area": box.w * box.h,
-                        "iscrowd": 0,
-                    })
-                    boxes_count[split][box.cls] += 1
+                crop = frame.image[y0:y0 + th, x0:x0 + tw]
+                # Train-split ball tiles also get hue-shifted copies, so other ball colours
+                # (green, red/white, ...) look familiar before real footage of them exists.
+                hues = [0.0]
+                if split == "train" and tile_boxes_ and recolor_hues and recolor_copies:
+                    hues += rng.sample(list(recolor_hues), min(recolor_copies, len(recolor_hues)))
+                for hue in hues:
+                    out_name = name if not hue else name.replace(".jpg", f"_h{round(hue)}.jpg")
+                    write_image(split_dir / out_name, _shift_hue(crop, hue), jpeg_quality)
+                    image_id = len(b.images) + 1
+                    b.images.append({"id": image_id, "file_name": out_name, "width": tw,
+                                     "height": th, "video": entry.key, "frame": frame.index,
+                                     "tile": [x0, y0, tw, th], "hue_shift": hue})
+                    for box in tile_boxes_:
+                        b.annotations.append({
+                            "id": len(b.annotations) + 1, "image_id": image_id,
+                            "category_id": cat_ids[box.cls],
+                            "bbox": [box.x - x0, box.y - y0, box.w, box.h],
+                            "area": box.w * box.h, "iscrowd": 0,
+                        })
+                        boxes_count[split][box.cls] += 1
 
     for split, b in builders.items():
         split_dir = out_dir / split
@@ -115,9 +125,20 @@ def export_detection_dataset(
     used = {entry.key: splits[entry.key] for entry, _ in videos}
     (out_dir / "provenance.json").write_text(
         json.dumps({"classes": classes, "videos": used,
-                    "tiles": list(tiles) if tiles else None, "tile_overlap": tile_overlap},
+                    "balls": {entry.key: entry.ball for entry, _ in videos},
+                    "tiles": list(tiles) if tiles else None, "tile_overlap": tile_overlap,
+                    "recolor_hues": recolor_hues, "recolor_copies": recolor_copies},
                    indent=2), encoding="utf-8")
     return ExportSummary({s: len(b.images) for s, b in builders.items()}, boxes_count, used)
+
+
+def _shift_hue(image, degrees: float):
+    """Rotate every pixel's hue (OpenCV hue runs 0-179, 2 degrees per step)."""
+    if not degrees:
+        return image
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    hsv[..., 0] = ((hsv[..., 0].astype(int) + round(degrees / 2)) % 180).astype(hsv.dtype)
+    return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
 
 def _frames(entry: VideoEntry, indices: list[int], cache: Path | None):

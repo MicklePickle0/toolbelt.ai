@@ -50,7 +50,13 @@ def main() -> int:
         overwrite=args.overwrite, progress=print,
         tiles=parse_grid(ds["tiles"]) if ds.get("tiles") else None,
         tile_overlap=ds["tile_overlap"], negative_tiles=ds["negative_tiles_per_frame"],
-        frame_cache=config.repo_path(paths["cache_dir"]))
+        frame_cache=config.repo_path(paths["cache_dir"]),
+        recolor_hues=ds.get("recolor_hues"), recolor_copies=ds.get("recolor_copies", 0))
+    by_ball: dict[str, list[str]] = {}
+    for entry, _ in videos:
+        by_ball.setdefault(entry.ball, []).append(f"{entry.key} [{splits[entry.key]}]")
+    for ball, keys in sorted(by_ball.items()):
+        print(f"ball type {ball}: {len(keys)} videos")
     for split, n in summary.images.items():
         counts = ", ".join(f"{c} {k}" for c, k in summary.boxes[split].items())
         print(f"{split:5}: {n} images ({counts})")

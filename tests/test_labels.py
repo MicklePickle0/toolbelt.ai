@@ -140,16 +140,20 @@ def test_manifest_validation(tmp_path):
     text = str(e.value)
     assert "'id' must be" in text and "split must be" in text and "six distinct" in text
     assert "ok: missing 'venue'" in text and "tall: net_height must be" in text
+    assert "tall: ball must be one of" in text
 
 
 def test_manifest_net_height(tmp_path):
     path = tmp_path / "m.yaml"
     path.write_text("team: Us\nvideos:\n"
-                    "  - {id: a, path: a.mp4, venue: Gym, net_height: boys_15_16u}\n"
-                    "  - {id: b, path: b.mp4, venue: Gym, net_height: 2.3}\n")
+                    "  - {id: a, path: a.mp4, venue: Gym, net_height: boys_15_16u"
+                    ", ball: mikasa_v200w_yellow}\n"
+                    "  - {id: b, path: b.mp4, venue: Gym, net_height: 2.3"
+                    ", ball: mikasa_vq200w_can_red}\n")
     a, b = load_manifest(path).videos
     assert (a.net_height_m, a.net_height_preset) == (2.35, "boys_15_16u")
     assert (b.net_height_m, b.net_height_preset) == (2.3, None)
+    assert (a.ball, b.ball) == ("mikasa_v200w_yellow", "mikasa_vq200w_can_red")
 
 
 def test_import_round_trip(workspace, tmp_path):
@@ -203,8 +207,10 @@ def test_label_batch_helpers_and_default_label_paths(tmp_path):
     (tmp_path / "labels" / "a" / "boxes.coco.json").write_text("{}")
     path = tmp_path / "m.yaml"
     path.write_text("team: Us\nvideos:\n"
-                    "  - {id: a, path: a.mp4, venue: Gym, net_height: women}\n"
-                    "  - {id: b, path: b.mp4, venue: Gym, net_height: women}\n")
+                    "  - {id: a, path: a.mp4, venue: Gym, net_height: women"
+                    ", ball: mikasa_v200w_yellow}\n"
+                    "  - {id: b, path: b.mp4, venue: Gym, net_height: women"
+                    ", ball: mikasa_v200w_yellow}\n")
     a, b = load_manifest(path).videos
     assert a.boxes == tmp_path / "labels" / "a" / "boxes.coco.json" and a.events is None
     assert b.boxes is None

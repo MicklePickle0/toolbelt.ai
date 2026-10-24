@@ -127,7 +127,8 @@ def main() -> int:
     lines.append("videos:")
     for key, (split, _, venue) in clips.items():
         lines += [f"  - id: {key}", f"    path: videos/{key}.mp4", f"    venue: {venue}",
-                  "    net_height: boys_17_18u", f"    split: {split}",
+                  "    net_height: boys_17_18u",
+                  "    ball: mikasa_v200w_yellow", f"    split: {split}",
                   "    labels:", f"      events: labels/{key}/events.csv",
                   f"      boxes: labels/{key}/boxes.coco.json",
                   "    lineups:", "      1: [1, 7, 2, 3, 4, 5]"]

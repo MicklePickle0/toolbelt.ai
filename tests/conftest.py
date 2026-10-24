@@ -101,6 +101,7 @@ def workspace(tmp_path, video) -> Path:
             path: videos/clip.mp4
             venue: Test Gym
             net_height: boys_17_18u
+            ball: mikasa_v200w_yellow
             split: train
             labels:
               events: labels/clip/events.csv

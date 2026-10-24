@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS games (
     -- config/court.yaml; NULL preset means a custom height.
     net_height_m      REAL NOT NULL CHECK (net_height_m > 0),
     net_height_preset TEXT,
+    ball          TEXT NOT NULL,              -- key of `balls` in config/court.yaml
     video_path    TEXT NOT NULL,
     fps           REAL NOT NULL,
     frame_count   INTEGER,

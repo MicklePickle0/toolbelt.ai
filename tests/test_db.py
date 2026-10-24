@@ -30,8 +30,9 @@ def test_schema_is_idempotent(tmp_path):
 def test_contact_round_trip_and_constraints(conn):
     conn.execute("INSERT INTO teams (id, name) VALUES (1, 'Us')")
     conn.execute("INSERT INTO players (id, team_id, jersey_number, name) VALUES (1, 1, 7, 'A')")
-    conn.execute("INSERT INTO games (id, team_id, video_key, venue, net_height_m, video_path, "
-                 "fps) VALUES (1, 1, 'g1', 'Gym', 2.43, 'x.mp4', 59.94)")
+    conn.execute("INSERT INTO games (id, team_id, video_key, venue, net_height_m, ball, "
+                 "video_path, fps) VALUES (1, 1, 'g1', 'Gym', 2.43, 'mikasa_v200w_yellow', "
+                 "'x.mp4', 59.94)")
     conn.execute("INSERT INTO sets (id, game_id, set_number, starting_lineup) "
                  "VALUES (1, 1, 1, '[7,1,2,3,4,5]')")
     conn.execute("INSERT INTO rallies (id, set_id, rally_number, start_frame, end_frame, "

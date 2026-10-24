@@ -8,7 +8,7 @@ from pathlib import Path
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 # Bump when schema.sql changes in a way CREATE ... IF NOT EXISTS can't apply
 # to an existing file. Stored in PRAGMA user_version.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class SchemaVersionError(RuntimeError):

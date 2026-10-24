@@ -37,6 +37,7 @@ class VideoEntry:
     venue: str = ""
     net_height_m: float = 2.43
     net_height_preset: str | None = None  # None: custom height
+    ball: str = ""                         # key of `balls` in config/court.yaml
     opponent: str | None = None
     played_on: str | None = None
     split: str | None = None
@@ -102,6 +103,11 @@ def load_manifest(path: str | Path) -> Manifest:
         venue = str(v.get("venue") or "").strip()
         if not venue_key(venue):
             issues.error(f"{key}: missing 'venue' (gym or tournament site)")
+        ball = str(v.get("ball") or "")
+        balls = config.load("court")["balls"]
+        if ball not in balls:
+            issues.error(f"{key}: ball must be one of {sorted(balls)} (got {ball!r}); "
+                         "add new balls under `balls` in config/court.yaml")
         try:
             net_height_m, preset = _net_height(v.get("net_height"))
         except ValueError as e:
@@ -132,6 +138,7 @@ def load_manifest(path: str | Path) -> Manifest:
             venue=venue,
             net_height_m=net_height_m,
             net_height_preset=preset,
+            ball=ball,
             opponent=v.get("opponent"),
             played_on=str(v["played_on"]) if v.get("played_on") else None,
             split=split,
