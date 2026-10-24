@@ -31,7 +31,7 @@ def load_detector(model: str, checkpoint: Path | None, resolution: int, fp16: bo
         pretrained.mkdir(parents=True, exist_ok=True)
         name = getattr(rfdetr.config, f"{MODELS[model]}Config") \
             .model_fields["pretrain_weights"].default
-        det = cls(pretrain_weights=str(pretrained / name))
+        det = cls(pretrain_weights=str(pretrained / name), resolution=resolution)
     if fp16:
         import torch
 
@@ -81,3 +81,14 @@ def predict_tiled(model, bgr: np.ndarray, grid: tuple[int, int], overlap: float,
         for i in np.array(cv2.dnn.NMSBoxes(boxes, scores, threshold, 0.5)).ravel():
             out.append((cls, items[int(i)][0], items[int(i)][1]))
     return out
+
+
+def predict_full(model, bgr: np.ndarray, threshold: float,
+                 keep: dict[int, str]) -> list[tuple[str, list[float], float]]:
+    """Whole frame at the model's resolution (for people: large, and tiles would cut them)
+    -> [(class, [x1, y1, x2, y2], score)] in full-image pixels."""
+    d = model.predict(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), threshold=threshold,
+                      include_source_image=False)
+    return [(keep[int(c)], [float(v) for v in box], float(s))
+            for box, c, s in zip(d.xyxy, d.class_id, d.confidence, strict=True)
+            if int(c) in keep]
