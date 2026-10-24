@@ -94,3 +94,35 @@ class TracksOverlay:
             c = role_colour(tid, role)
             size = int(px * 0.3) if role == "near_player" else int(px * 0.15)
             cv2.circle(image, to_px(*xy), max(2, size), c, -1, cv2.LINE_AA)
+
+
+RING_GREEN = (60, 220, 60)
+
+
+def draw_rings(image: np.ndarray, overlay: TracksOverlay, frame: int, cam, s: float,
+               radius_m: float = 0.45, alpha: float = 0.35) -> None:
+    """A green ring on the floor around each of our players' feet (Hudl style): a circle of
+    `radius_m` in court metres, projected through the camera so it lies on the court."""
+    rows = [r for r in overlay.rows_at(frame)
+            if overlay.role(int(overlay.t.track_id[r])) == "near_player"]
+    if not rows:
+        return
+    th = max(1, round(image.shape[1] / 960))
+    a = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+    fill = image.copy()
+    polys = []
+    for r in rows:
+        x, y = overlay.t.court_xy_smooth[r]
+        if not np.isfinite([x, y]).all():
+            continue
+        circle = np.stack([x + radius_m * np.cos(a), y + radius_m * np.sin(a), np.zeros_like(a)],
+                          axis=1)
+        uv, z = cam.project(circle)
+        if (z <= 0.1).any():
+            continue
+        poly = (uv * s).round().astype(np.int32)
+        polys.append(poly)
+        cv2.fillPoly(fill, [poly], RING_GREEN, cv2.LINE_AA)
+    cv2.addWeighted(fill, alpha, image, 1 - alpha, 0, dst=image)
+    for poly in polys:
+        cv2.polylines(image, [poly], True, RING_GREEN, 2 * th, cv2.LINE_AA)

@@ -55,7 +55,11 @@ def main() -> int:
     ap.add_argument("--ball-dir", type=Path, help="default: data/cache/<id>/")
     ap.add_argument("--people", action="store_true", help="draw the person detections")
     ap.add_argument("--rallies", action="store_true",
-                    help="rally banner + contact markers (implies --ball)")
+                    help="rally banner, ball trail with an X per touch, green rings under our "
+                         "players (implies --ball, --rings)")
+    ap.add_argument("--rings", action="store_true",
+                    help="green ring on the floor under each of our players (Hudl style)")
+    ap.add_argument("--detections", action="store_true", help="with --ball: raw ball boxes")
     ap.add_argument("--tracks", action="store_true",
                     help="draw people tracks with ids and a court map")
     ap.add_argument("--manifest", type=Path, default=config.repo_path(paths["manifest_path"]))
@@ -82,7 +86,8 @@ def main() -> int:
         from setter_eyes.ball.overlay import BallOverlay
 
         ball = BallOverlay(args.ball_dir or config.repo_path(paths["cache_dir"]) / entry.key,
-                           pipeline["ball"]["arcs"]["min_confidence"])
+                           pipeline["ball"]["arcs"]["min_confidence"],
+                           track.camera(track.ref_frame), show_detections=args.detections)
     people = None
     if args.people:
         from setter_eyes.ball.tracker import Detections
@@ -91,8 +96,10 @@ def main() -> int:
                                  "person_detections.npz")
         people_groups = people.by_frame()
     tracks = None
-    if args.tracks:
-        from setter_eyes.track.overlay import TracksOverlay
+    if args.rallies:
+        args.rings = True
+    if args.tracks or args.rings:
+        from setter_eyes.track.overlay import TracksOverlay, draw_rings
         from setter_eyes.track.people import PeopleTracks
         from setter_eyes.track.roles import load_roles
 
@@ -105,7 +112,7 @@ def main() -> int:
         from setter_eyes.rally.overlay import RallyOverlay
 
         rallies = RallyOverlay(config.repo_path(paths["cache_dir"]) / entry.key)
-    kind = ("rallies" if rallies else "ball" if ball else "tracks" if tracks
+    kind = ("rallies" if rallies else "ball" if ball else "tracks" if args.tracks
             else "people" if people else "calibration")
     name = {"rallies": "rallies", "ball": "ball", "tracks": "tracks", "people": "people",
             "calibration": "demo"}[kind]
@@ -131,8 +138,10 @@ def main() -> int:
             img = draw_court(frame.image, cam.scaled(s), model,
                              None if ball or people or tracks else label,
                              keypoints=False)
+            if args.rings and tracks is not None:
+                draw_rings(img, tracks, frame.index, cam, s)
             if ball is not None:
-                extra = ball.draw(img, frame.index, cam.scaled(s), s, ground=args.ground)
+                extra = ball.draw(img, frame.index, cam, s, ground=args.ground)
                 if rallies is not None:
                     banner = rallies.draw(img, frame.index, s)
                     _text(img, f"f{frame.index}   {banner}")
@@ -149,7 +158,7 @@ def main() -> int:
                     cv2.rectangle(img, (x1, y1), (x2, y2), colour, max(1, round(2 * s * 2)))
                 if ball is None:
                     _text(img, f"{label}   {len(idx)} people")
-            if tracks is not None:
+            if tracks is not None and args.tracks:
                 n_tracked = tracks.draw(img, frame.index, s)
                 if ball is None and people is None:
                     _text(img, f"{label}   {n_tracked} near-side players"
