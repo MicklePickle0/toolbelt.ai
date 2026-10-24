@@ -93,6 +93,28 @@ python scripts/track_camera.py --video mac-chrome_set1        # pose per frame +
   by eye with `data/outputs/calibration/<id>_track.mp4` and `<id>_stills/`.
 - Settings: `calibration:` in `config/court.yaml`.
 
+## Ball tracking (Milestone 3)
+
+```bash
+python scripts/detect_ball.py --video titan-rise_set1        # every 2nd frame, ~1.6 h per 4K set
+python scripts/track_ball.py --video titan-rise_set1         # tracks + 3D flight arcs, ~1 min
+python scripts/render_overlay.py --video titan-rise_set1 --ball --ground --start 60 --seconds 60
+```
+
+- Detection: the tiled RF-DETR ball detector (`models.ball_detector`), fp16, resumable;
+  `data/cache/<id>/ball_detections.npz`.
+- Tracking: detections are re-expressed in the calibrated reference view (camera pan
+  removed), joined into tracks with a constant-acceleration Kalman filter, and the
+  match ball is the long, confident, moving track (spare balls never move). Short gaps
+  are filled by smoothing; `data/cache/<id>/ball_path.npz`.
+- Flights: split where the path suddenly changes course (touches, bounces), then fit in
+  3D as `p0 + v0 t + g t^2 / 2` through the per-frame cameras; gravity fixes the depth.
+  Each arc has a confidence; low ones go to review. `data/cache/<id>/ball_arcs.json`.
+- Overlay: grey = detections, green = detected ball, orange = bridged, cyan = trail,
+  white = fitted 3D flight, `--ground` = drop line and ground trail.
+- Settings: `detect:` and `ball:` in `config/pipeline.yaml`. Needs a calibrated, tracked
+  video (Milestone 1).
+
 ## Detector training (local GPU)
 
 ```bash

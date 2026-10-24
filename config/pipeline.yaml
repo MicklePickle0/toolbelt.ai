@@ -63,16 +63,52 @@ detect:
   person_min_confidence: 0.4
   ball_min_confidence: 0.25
   ball_input_resolution: 1280
+  # Whole-video ball detection (scripts/detect_ball.py). Every Nth frame: the tracker
+  # bridges the gaps, and 2 keeps 30 samples per second at 59.94 fps.
+  ball_stride: 2
+  # Stored detections go down to this score; the tracker decides what to trust.
+  ball_store_threshold: 0.15
+  ball_save_every: 2000      # processed frames between checkpoints (resumable)
 
 track:
   tracker: bytetrack          # bytetrack | botsort
   camera_motion_compensation: true
 
 ball:
+  # Ball tracking (setter_eyes.ball, scripts/track_ball.py). Pixels are 4K, in the
+  # pan-free reference view of the calibrated frame.
   gravity: 9.81
-  # Kalman process / measurement noise, image px. Tune on real footage.
-  process_noise: 1.0
-  measurement_noise: 4.0
+  typical_depth_m: 15        # sets the starting image-space pull of gravity
+  gate_px: 150               # a touch can move the ball ~150 px off the prediction
+  meas_sigma_px: 3.0
+  meas_sigma_rel: 0.1        # ...or this share of the box size, whichever is larger
+  birth_score: 0.5           # unmatched detections this confident start a track
+  max_misses: 10             # samples (1/3 s at 30 Hz) before a track ends
+  tentative_max_misses: 2
+  bridge_samples: 3          # fill gaps up to this long (smoothed between neighbours)
+  static_spread_px: 60       # a track that never moves further is a spare ball / wall mark
+  kalman:
+    jerk_px_s3: 20000
+    init_sigma: {pos: 5.0, vel: 3000.0, acc: 3000.0}
+  arcs:
+    min_samples: 6           # shortest flight (0.2 s at 30 Hz)
+    max_gap_s: 0.15
+    window_samples: 5        # touches: one quadratic over +-5 samples vs two separate ones
+    break_px: 5.0            # ...splitting cuts the error by more than this (px RMS) = a touch
+    pixel_sigma: 3.0
+    depth_range_m: [3.0, 40.0]
+    depth_steps: 10
+    refine_starts: 3
+    # Physical bounds for the fit (court metres, m/s): stops depth running off to
+    # absurd distances where gravity's effect vanishes.
+    bounds_xy_m: [-15.0, 30.0]
+    max_speed_mps: 45.0
+    floor_tolerance_m: 0.3
+    max_height_m: 15.0
+    max_rms_px: 12.0         # confidence reaches 0 at this pixel RMS
+    full_confidence_s: 0.5   # shorter flights fix depth poorly
+    depth_spread_scale_m: 2.0
+    min_confidence: 0.4      # below this an arc goes to the review queue
 
 identity:
   number_vote_bind_threshold: 0.8

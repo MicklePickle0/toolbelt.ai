@@ -68,6 +68,16 @@ class Camera:
             xy = xy * (1 + self.k1 * (xy**2).sum(axis=1))[:, None]
         return xy * self.f + self.principal_point, z
 
+    def rays(self, uv: np.ndarray) -> np.ndarray:
+        """Pixels (N, 2) -> unit viewing directions (N, 3) in court coordinates, from
+        `centre`. Undoes k1 distortion."""
+        uv = np.asarray(uv, float).reshape(-1, 1, 2)
+        dist = np.array([self.k1, 0.0, 0.0, 0.0])
+        xy = cv2.undistortPoints(uv, self.K, dist).reshape(-1, 2)
+        d_cam = np.hstack([xy, np.ones((len(xy), 1))])
+        d = (d_cam @ self.R) * MIRROR            # camera -> mirrored court -> court
+        return d / np.linalg.norm(d, axis=1, keepdims=True)
+
     def scaled(self, s: float) -> Camera:
         """The same camera for an image resized by s (for drawing on previews)."""
         return Camera(round(self.width * s), round(self.height * s), self.f * s, self.rvec,
