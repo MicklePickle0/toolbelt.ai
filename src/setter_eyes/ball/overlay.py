@@ -52,7 +52,9 @@ class BallOverlay:
             x1, y1, x2, y2 = (self.dets.det_box[i] * s).round().astype(int)
             cv2.rectangle(image, (x1, y1), (x2, y2), COLOURS["detection"], 1)
         lo = max(0, k - self.trail)
-        trail = self.path.uv[lo:k + 1] * s
+        # Only the current track: a switch to another ball must not draw a jump.
+        same = self.path.track_id[lo:k + 1] == self.path.track_id[k]
+        trail = self.path.uv[lo:k + 1][same] * s
         trail = trail[np.isfinite(trail).all(axis=1)]
         if len(trail) > 1:
             cv2.polylines(image, [trail.round().astype(np.int32)], False, COLOURS["trail"],
@@ -71,8 +73,11 @@ class BallOverlay:
             now = min(max(frame / self.fps, arc.t0), arc.t0 + arc.duration_s)
             p = arc.position(np.array([now]), self.g)[0]
             v = np.array(arc.v0) + self.g * (now - arc.t0)
-            label = (f"ball z {p[2]:.1f} m  {np.linalg.norm(v):.0f} m/s  "
-                     f"arc conf {arc.confidence:.2f}")
+            if strong:
+                label = (f"ball z {p[2]:.1f} m  {np.linalg.norm(v):.0f} m/s  "
+                         f"arc conf {arc.confidence:.2f}")
+            else:
+                label = f"low-confidence flight ({arc.confidence:.2f}), to review"
             if ground and strong:
                 floor = np.array([p[0], p[1], 0.0])
                 (bu, fu), zz = cam.project(np.stack([p, floor]))
