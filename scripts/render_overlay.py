@@ -6,11 +6,14 @@ pan angle and tracking confidence in the corner. With --ball, also the tracked b
 data/cache/<id>/ball_* (scripts/detect_ball.py, track_ball.py): grey boxes = raw
 detections, green circle = detected ball, orange = bridged gap, cyan = 1 s trail, white
 curve = fitted 3D flight (grey = low confidence). --ground adds the drop line to the
-floor and the ball's ground trail. Encoded as H.264 so any player opens it.
+floor and the ball's ground trail. With --people, the person detections from
+data/cache/<id>/person_detections.npz (scripts/detect_people.py): green = score >= 0.4,
+orange = weaker. Encoded as H.264 so any player opens it.
 
 Usage:
   python scripts/render_overlay.py --video titan-rise_set1 [--start 60 --seconds 60 --width 1920]
   python scripts/render_overlay.py --video titan-rise_set1 --ball --ground --start 60
+  python scripts/render_overlay.py --video titan-rise_set1 --people --start 455
 """
 
 from __future__ import annotations
@@ -44,6 +47,7 @@ def main() -> int:
     ap.add_argument("--ball", action="store_true", help="draw the tracked ball and its arcs")
     ap.add_argument("--ground", action="store_true", help="with --ball: drop line + ground trail")
     ap.add_argument("--ball-dir", type=Path, help="default: data/cache/<id>/")
+    ap.add_argument("--people", action="store_true", help="draw the person detections")
     ap.add_argument("--manifest", type=Path, default=config.repo_path(paths["manifest_path"]))
     args = ap.parse_args()
 
@@ -67,9 +71,16 @@ def main() -> int:
 
         ball = BallOverlay(args.ball_dir or config.repo_path(paths["cache_dir"]) / entry.key,
                            pipeline["ball"]["arcs"]["min_confidence"])
-    out = args.out or (
-        config.repo_path(paths["output_dir"]) / "ball" / f"{entry.key}_ball.mp4" if ball
-        else config.repo_path(paths["output_dir"]) / "calibration" / f"{entry.key}_demo.mp4")
+    people = None
+    if args.people:
+        from setter_eyes.ball.tracker import Detections
+
+        people = Detections.load(config.repo_path(paths["cache_dir"]) / entry.key /
+                                 "person_detections.npz")
+        people_groups = people.by_frame()
+    kind = "ball" if ball else "people" if people else "calibration"
+    name = {"ball": "ball", "people": "people", "calibration": "demo"}[kind]
+    out = args.out or config.repo_path(paths["output_dir"]) / kind / f"{entry.key}_{name}.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)
     enc = subprocess.Popen(
         ["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "bgr24",
@@ -88,11 +99,21 @@ def main() -> int:
             pan = _angle_deg(cam.R, ref_R)
             label = (f"{entry.key}  f{frame.index}  pan {pan:.2f} deg  "
                      f"track conf {track.confidence[i]:.2f}")
-            img = draw_court(frame.image, cam.scaled(s), model, None if ball else label,
+            img = draw_court(frame.image, cam.scaled(s), model, None if ball or people else label,
                              keypoints=False)
             if ball is not None:
                 extra = ball.draw(img, frame.index, cam.scaled(s), s, ground=args.ground)
                 _text(img, f"f{frame.index}   {extra}")
+            if people is not None:
+                # Detections are on every Nth frame: show the latest processed one.
+                k = int(np.searchsorted(people.frames, frame.index, side="right")) - 1
+                idx = people_groups.get(int(people.frames[k]), []) if k >= 0 else []
+                for i in idx:
+                    x1, y1, x2, y2 = (people.det_box[i] * s).round().astype(int)
+                    colour = (0, 255, 0) if people.det_score[i] >= 0.4 else (0, 165, 255)
+                    cv2.rectangle(img, (x1, y1), (x2, y2), colour, max(1, round(2 * s * 2)))
+                if ball is None:
+                    _text(img, f"{label}   {len(idx)} people")
             enc.stdin.write(img.tobytes())
             n += 1
     finally:
