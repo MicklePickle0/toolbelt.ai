@@ -71,10 +71,14 @@ def segment(t: np.ndarray, uv: np.ndarray, cfg: dict) -> list[tuple[int, int]]:
         joint = _sse(t[k - w:k + w + 1], uv[k - w:k + w + 1])
         apart = _sse(t[k - w:k + 1], uv[k - w:k + 1]) + _sse(t[k:k + w + 1], uv[k:k + w + 1])
         score[k] = np.sqrt(max(0.0, joint - apart) / (2 * w + 1))
-    half = max(1, w // 2)
-    for k in range(w, n - w):
-        if score[k] > cfg["break_px"] and score[k] == score[max(0, k - half):k + half + 1].max():
-            cuts.add(k)
+    # One change point per touch: candidates closer than the shortest flight are thinned
+    # to the strongest, so no short weak scraps are left between them.
+    gap = cfg["min_samples"] - 1
+    for k in np.argsort(-score):
+        if score[k] <= cfg["break_px"]:
+            break
+        if all(abs(k - j) >= gap for j in cuts if 0 < j < n - 1):
+            cuts.add(int(k))
     edges = sorted(cuts)
     out = []
     for a, b in zip(edges[:-1], edges[1:], strict=True):

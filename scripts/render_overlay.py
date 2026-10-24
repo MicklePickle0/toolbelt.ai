@@ -8,7 +8,10 @@ detections, green circle = detected ball, orange = bridged gap, cyan = 1 s trail
 curve = fitted 3D flight (grey = low confidence). --ground adds the drop line to the
 floor and the ball's ground trail. With --people, the person detections from
 data/cache/<id>/person_detections.npz (scripts/detect_people.py): green = score >= 0.4,
-orange = weaker. With --tracks, the people tracks (scripts/track_people.py): a colour and
+orange = weaker. With --rallies (implies --ball), a banner with the rally number, serving
+team and how it ended, and a marker at each touch / serve / floor contact (yellow = us,
+blue = them, red = floor; thin = outside any rally). With --tracks, the people tracks
+(scripts/track_people.py): a colour and
 number per track, a dot at the feet, and a top-down court map with everyone's position.
 Encoded as H.264 so any player opens it.
 
@@ -51,6 +54,8 @@ def main() -> int:
     ap.add_argument("--ground", action="store_true", help="with --ball: drop line + ground trail")
     ap.add_argument("--ball-dir", type=Path, help="default: data/cache/<id>/")
     ap.add_argument("--people", action="store_true", help="draw the person detections")
+    ap.add_argument("--rallies", action="store_true",
+                    help="rally banner + contact markers (implies --ball)")
     ap.add_argument("--tracks", action="store_true",
                     help="draw people tracks with ids and a court map")
     ap.add_argument("--manifest", type=Path, default=config.repo_path(paths["manifest_path"]))
@@ -71,6 +76,8 @@ def main() -> int:
     ref_R = cv2.Rodrigues(track.rvecs[np.searchsorted(track.frames, track.ref_frame)])[0]
 
     ball = None
+    if args.rallies:
+        args.ball = True
     if args.ball:
         from setter_eyes.ball.overlay import BallOverlay
 
@@ -93,8 +100,14 @@ def main() -> int:
         roles_path = tdir / "people_roles.json"
         tracks = TracksOverlay(PeopleTracks.load(tdir / "people_tracks.npz"),
                                load_roles(roles_path) if roles_path.exists() else None)
-    kind = "ball" if ball else "tracks" if tracks else "people" if people else "calibration"
-    name = {"ball": "ball", "tracks": "tracks", "people": "people",
+    rallies = None
+    if args.rallies:
+        from setter_eyes.rally.overlay import RallyOverlay
+
+        rallies = RallyOverlay(config.repo_path(paths["cache_dir"]) / entry.key)
+    kind = ("rallies" if rallies else "ball" if ball else "tracks" if tracks
+            else "people" if people else "calibration")
+    name = {"rallies": "rallies", "ball": "ball", "tracks": "tracks", "people": "people",
             "calibration": "demo"}[kind]
     out = args.out or config.repo_path(paths["output_dir"]) / kind / f"{entry.key}_{name}.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -120,7 +133,12 @@ def main() -> int:
                              keypoints=False)
             if ball is not None:
                 extra = ball.draw(img, frame.index, cam.scaled(s), s, ground=args.ground)
-                _text(img, f"f{frame.index}   {extra}")
+                if rallies is not None:
+                    banner = rallies.draw(img, frame.index, s)
+                    _text(img, f"f{frame.index}   {banner}")
+                    _text(img, extra, line=2)
+                else:
+                    _text(img, f"f{frame.index}   {extra}")
             if people is not None:
                 # Detections are on every Nth frame: show the latest processed one.
                 k = int(np.searchsorted(people.frames, frame.index, side="right")) - 1
@@ -145,11 +163,11 @@ def main() -> int:
     return 0
 
 
-def _text(image: np.ndarray, label: str) -> None:
+def _text(image: np.ndarray, label: str, line: int = 1) -> None:
     t = max(1, round(image.shape[1] / 960))
     for colour, width in (((0, 0, 0), 4 * t), ((255, 255, 255), t)):
-        cv2.putText(image, label, (10 * t, 30 * t), cv2.FONT_HERSHEY_SIMPLEX, 0.6 * t, colour,
-                    width, cv2.LINE_AA)
+        cv2.putText(image, label, (10 * t, 30 * t * line), cv2.FONT_HERSHEY_SIMPLEX, 0.6 * t,
+                    colour, width, cv2.LINE_AA)
 
 
 if __name__ == "__main__":

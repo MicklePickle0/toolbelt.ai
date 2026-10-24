@@ -153,7 +153,39 @@ identity:
   min_crop_height_px: 80
 
 contacts:
+  # Touches and floor contacts from soft evidence (setter_eyes.contacts.events).
   max_contacts_per_side: 3   # plus a block
+  over_limit_penalty: 0.5    # confidence factor for a touch beyond that in a row
+  max_join_gap_samples: 2    # flights further apart than this aren't one event
+  min_arc_confidence: 0.4    # both flights at least this confident -> use 3D evidence
+  velocity_scale_mps: 4.0    # course change -> evidence: 1 - exp(-dv / scale)
+  reach_scale_m: 1.0         # person within reach -> evidence: exp(-distance / scale)
+  reach_scale_bodies: 0.5    # ...the same in body heights when only the image is known
+  overhead_reach_bodies: 0.6 # the reach zone extends this far above the head (sets, attacks)
+  max_reach_m: 3.6           # a touch higher than this isn't by a person (blocks reach ~3.4)
+  no_person_prior: 0.2       # nobody near: a course change can still be a touch (occlusion)
+  floor_height_m: 0.35       # ball this low after falling = floor contact
+  metres_per_px_at_typical_depth: 0.005   # rough image -> m/s for weak flights (4K, ~15 m)
+  min_confidence: 0.15       # weaker candidates are dropped
+
+serve:
+  end_line_y_m: 8.0          # ball at or behind |y| = 8 m (end lines at 9 m)
+  height_m: [1.5, 4.0]       # standing, jump-float and jump serves
+  min_arc_confidence: 0.4
+  # Serves traced back from the rally's first net-crossing flight:
+  traced_from_y_m: 9.5       # just behind the end line (at 9 m)
+  traced_height_m: [1.0, 4.2]
+  min_speed_mps: 8.0         # horizontal speed at the start of that flight
+  max_trace_back_s: 1.2
+
+rally:
+  max_ball_gap_s: 1.0        # the ball lost longer than this ends an episode
+  min_rally_s: 1.5
+  serve_window_s: 4.0        # a serve must be this close to the start of an episode
+  min_arc_confidence: 0.4    # flights trusted to show the ball crossing the net
+  base_confidence: 0.4
+  serve_bonus: 0.3
+  floor_bonus: 0.3
 
 # Global review policy: any automated output whose confidence is below its
 # stage threshold is queued for review.
