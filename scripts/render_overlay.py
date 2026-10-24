@@ -87,9 +87,12 @@ def main() -> int:
     if args.tracks:
         from setter_eyes.track.overlay import TracksOverlay
         from setter_eyes.track.people import PeopleTracks
+        from setter_eyes.track.roles import load_roles
 
-        tracks = TracksOverlay(PeopleTracks.load(config.repo_path(paths["cache_dir"]) /
-                                                 entry.key / "people_tracks.npz"))
+        tdir = config.repo_path(paths["cache_dir"]) / entry.key
+        roles_path = tdir / "people_roles.json"
+        tracks = TracksOverlay(PeopleTracks.load(tdir / "people_tracks.npz"),
+                               load_roles(roles_path) if roles_path.exists() else None)
     kind = "ball" if ball else "tracks" if tracks else "people" if people else "calibration"
     name = {"ball": "ball", "tracks": "tracks", "people": "people",
             "calibration": "demo"}[kind]
@@ -131,7 +134,8 @@ def main() -> int:
             if tracks is not None:
                 n_tracked = tracks.draw(img, frame.index, s)
                 if ball is None and people is None:
-                    _text(img, f"{label}   {n_tracked} tracked")
+                    _text(img, f"{label}   {n_tracked} near-side players"
+                               if tracks.roles is not None else f"{label}   {n_tracked} tracked")
             enc.stdin.write(img.tobytes())
             n += 1
     finally:

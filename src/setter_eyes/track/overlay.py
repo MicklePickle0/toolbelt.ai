@@ -1,5 +1,7 @@
 """Draw people tracks: a colour and number per track, a dot at the feet, and a top-down court
-map in the corner with everyone placed at their court position (from the feet)."""
+map in the corner with everyone placed at their court position (from the feet). With roles
+(track/roles.py): near-side players in colour, the far team thin grey, others faint;
+filled (hidden-player) rows get a hollow feet dot."""
 
 from __future__ import annotations
 
@@ -15,9 +17,17 @@ def track_colour(tid: int) -> tuple[int, int, int]:
     return int(bgr[0]), int(bgr[1]), int(bgr[2])
 
 
+GREY, FAINT = (170, 170, 170), (90, 90, 90)
+
+
+def role_colour(tid: int, role: str) -> tuple[int, int, int]:
+    return track_colour(tid) if role == "near_player" else GREY if role == "far_player" else FAINT
+
+
 class TracksOverlay:
-    def __init__(self, tracks: PeopleTracks):
+    def __init__(self, tracks: PeopleTracks, roles: dict[int, dict] | None = None):
         self.t = tracks
+        self.roles = roles
         self.frames = np.unique(tracks.frame)
         order = np.argsort(tracks.frame, kind="stable")
         self.order = order
@@ -34,16 +44,27 @@ class TracksOverlay:
     def draw(self, image: np.ndarray, frame: int, s: float) -> int:
         rows = self.rows_at(frame)
         th = max(1, round(image.shape[1] / 960))
+        n_near = 0
         for r in rows:
             tid = int(self.t.track_id[r])
-            c = track_colour(tid)
+            role = self.role(tid)
+            n_near += role == "near_player"
+            c = role_colour(tid, role)
+            w = 2 * th if role == "near_player" else 1
             x1, y1, x2, y2 = (self.t.box[r] * s).round().astype(int)
-            cv2.rectangle(image, (x1, y1), (x2, y2), c, th)
-            cv2.circle(image, ((x1 + x2) // 2, y2), 3 * th, c, -1, cv2.LINE_AA)
-            cv2.putText(image, str(tid), (x1, y1 - 4 * th), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.45 * th, c, th, cv2.LINE_AA)
+            cv2.rectangle(image, (x1, y1), (x2, y2), c, w)
+            filled = int(self.t.source[r]) == 1
+            cv2.circle(image, ((x1 + x2) // 2, y2), 3 * th, c, th if filled else -1, cv2.LINE_AA)
+            if role == "near_player":
+                cv2.putText(image, str(tid), (x1, y1 - 4 * th), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5 * th, c, th, cv2.LINE_AA)
         self._court_map(image, rows)
-        return len(rows)
+        return n_near if self.roles is not None else len(rows)
+
+    def role(self, tid: int) -> str:
+        if self.roles is None:
+            return "near_player"
+        return self.roles.get(tid, {}).get("role", "other")
 
     def _court_map(self, image: np.ndarray, rows: np.ndarray) -> None:
         """Top-down court in the top-right corner: far end at the top, our side at the bottom."""
@@ -65,8 +86,11 @@ class TracksOverlay:
         cv2.line(image, to_px(-0.5, 0), to_px(9.5, 0), (255, 0, 255), 2)      # net
         for r in rows:
             xy = self.t.court_xy_smooth[r]
-            if not np.isfinite(xy).all() or not (x_lo <= xy[0] <= x_hi and y_lo <= xy[1] <= y_hi):
+            inside = x_lo <= xy[0] <= x_hi and y_lo <= xy[1] <= y_hi
+            if not np.isfinite(xy).all() or not inside:
                 continue
             tid = int(self.t.track_id[r])
-            cv2.circle(image, to_px(*xy), max(3, int(px * 0.25)), track_colour(tid), -1,
-                       cv2.LINE_AA)
+            role = self.role(tid)
+            c = role_colour(tid, role)
+            size = int(px * 0.3) if role == "near_player" else int(px * 0.15)
+            cv2.circle(image, to_px(*xy), max(2, size), c, -1, cv2.LINE_AA)

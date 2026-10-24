@@ -6,7 +6,9 @@ data/calibration/<id>_track.npz (scripts/calibrate.py + track_camera.py). Writes
                                       score, court x/y (metres, from the feet; raw and
                                       smoothed), feet visible
   data/cache/<id>/people_tracks.json  per track: span, length, median court position and
-                                      share of time in our half (for the near-side filter)
+                                      share of time in our half
+  data/cache/<id>/people_roles.json   per track: near_player / far_player / other, with
+                                      confidence (provisional near-side filter)
 Settings: `track:` in config/pipeline.yaml. Check by eye: render_overlay.py --tracks.
 
 Usage:
@@ -25,6 +27,7 @@ from setter_eyes import config
 from setter_eyes.calibration.track import PoseTrack
 from setter_eyes.labels import load_manifest
 from setter_eyes.track.people import save_summary, track_people
+from setter_eyes.track.roles import classify_tracks, near_players_per_frame, save_roles
 
 
 def main() -> int:
@@ -58,6 +61,17 @@ def main() -> int:
           f" of {len(d['det_frame'])}), {len(summary)} tracks, {int(long.sum())} lasting >= 10 s, "
           f"median length {np.median(lengths) / 30:.1f} s")
     print(f"tracks >= 10 s spending >= 80% of their time in our half (+margin): {len(ours)}")
+    src = np.bincount(tracks.source, minlength=3) / len(tracks.source)
+    print(f"rows: {src[0]:.0%} detected, {src[1]:.0%} filled gaps (player hidden), "
+          f"{src[2]:.0%} corrected positions")
+    roles = classify_tracks(tracks, float(d["fps"]), cfg)
+    save_roles(roles, cache / "people_roles.json")
+    counts = {r: sum(x["role"] == r for x in roles) for r in ("near_player", "far_player",
+                                                              "other")}
+    _, per_frame = near_players_per_frame(tracks, roles)
+    q = np.percentile(per_frame, [10, 50, 90]).astype(int)
+    print(f"roles: {counts}; near players per frame: median {q[1]} "
+          f"(10th-90th percentile {q[0]}-{q[2]})")
     print(f"feet visible: {tracks.feet_visible.mean():.0%}; "
           f"took {time.time() - t0:.0f} s -> {cache / 'people_tracks.npz'}")
     return 0

@@ -91,7 +91,20 @@ track:
     lost_track_buffer: 60     # samples (2 s at 30 Hz) a lost track may come back within
   feet_edge_px: 15            # box bottom this close to the frame edge = feet cut off
   smooth_samples: 5           # rolling median of court positions per track
+  clean:
+    # A position this far (m) from the track's own rolling median is a glitch (a box
+    # swapped with a neighbour's, a jump across the court): replace it by interpolation.
+    outlier_dev_m: 1.5
+    outlier_window: 9         # samples (0.3 s) for that rolling median
+    # Fill samples where the track was alive but the player hidden, up to this long.
+    max_gap_s: 2.0
   our_half_margin_m: 3.0      # summaries: "in our half" includes this margin off the court
+  roles:                      # provisional near-side filter (setter_eyes.track.roles)
+    court_margin_m: 1.0       # players chase balls a little off court
+    net_overlap_m: 0.5        # either team can be this far past the centre line at the net
+    min_share: 0.6            # share of a track's time in a half to belong to that side
+    min_duration_s: 2.0       # shorter tracks are fragments: role "other"
+    full_confidence_s: 5.0
 
 ball:
   # Ball tracking (setter_eyes.ball, scripts/track_ball.py). Pixels are 4K, in the

@@ -72,8 +72,10 @@ def test_tracks_survive_the_pan_and_land_in_the_right_place():
         true_of[(int(f), round(float(b[0]), 3))] = (int(p), x, y)
     ids_per_player: dict[int, list[int]] = {}
     errs = []
-    for f, tid, b, xy in zip(tracks.frame, tracks.track_id, tracks.box, tracks.court_xy,
-                             strict=True):
+    for f, tid, b, xy, src in zip(tracks.frame, tracks.track_id, tracks.box, tracks.court_xy,
+                                  tracks.source, strict=True):
+        if src == 1:                                        # filled rows have no detection
+            continue
         p, x, y = true_of[(int(f), round(float(b[0]), 3))]
         ids_per_player.setdefault(p, []).append(int(tid))
         errs.append(np.hypot(xy[0] - x, xy[1] - y))
@@ -84,3 +86,43 @@ def test_tracks_survive_the_pan_and_land_in_the_right_place():
     assert np.median(errs) < 0.1                            # metres, from noisy boxes
     summary = tracks.summary(CFG)
     assert all(s["share_in_our_half"] > 0.9 for s in summary if s["samples"] > 30)
+
+
+def test_hidden_player_gap_is_filled_and_a_jump_is_corrected():
+    from setter_eyes.track.people import clean_tracks
+
+    frames = np.arange(0, 200, 2)
+    t = frames / FPS
+    xy = np.stack([2.0 + 1.0 * t, 3.0 + 0.5 * t], axis=1)          # walking steadily
+    keep = np.ones(len(frames), bool)
+    keep[40:52] = False                                             # hidden for ~0.4 s
+    glitch = xy.copy()
+    glitch[70] = [8.5, -2.0]                                        # one frame on the wrong side
+    box = np.stack([100 + 10 * t, 200 + 0 * t, 150 + 10 * t, 400 + 0 * t], axis=1)
+    cat = {"frame": frames[keep], "track_id": np.zeros(keep.sum(), int), "box": box[keep],
+           "score": np.full(keep.sum(), 0.8), "court_xy": glitch[keep],
+           "feet_visible": np.ones(keep.sum(), bool)}
+    tr = clean_tracks(cat, frames, FPS, CFG)
+    assert np.array_equal(tr.frame, frames)                         # the gap is filled
+    assert (tr.source[40:52] == 1).all() and tr.source[70] == 2
+    assert np.abs(tr.court_xy - xy).max() < 0.02                    # filled + corrected
+    assert np.abs(tr.court_xy_smooth - xy).max() < 0.05
+
+
+def test_roles_from_time_on_each_side():
+    from setter_eyes.track.people import PeopleTracks
+    from setter_eyes.track.roles import classify_tracks
+
+    n = 200
+    frames = np.arange(0, 2 * n, 2)
+    tracks = {0: (3.0, 4.0), 1: (5.0, -4.0), 2: (-4.0, 2.0), 3: (4.0, 5.0)}   # near, far, bench
+    rows = []
+    for tid, (x, y) in tracks.items():
+        m = n if tid != 3 else 20                          # track 3: a 0.7 s fragment
+        rows += [(f, tid, x, y) for f in frames[:m]]
+    f, tid, x, y = (np.array(c) for c in zip(*rows, strict=True))
+    xy = np.stack([x, y], axis=1).astype(float)
+    t = PeopleTracks(f, tid, np.zeros((len(f), 4)), np.ones(len(f)), xy, xy,
+                     np.ones(len(f), bool), np.zeros(len(f), np.int8))
+    roles = {r["track_id"]: r["role"] for r in classify_tracks(t, FPS, CFG)}
+    assert roles == {0: "near_player", 1: "far_player", 2: "other", 3: "other"}

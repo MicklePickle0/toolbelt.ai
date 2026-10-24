@@ -6,9 +6,17 @@ tracks survive it. ByteTrack's second pass uses low-score boxes to hold a track 
 partial occlusion, which is why detections down to 0.3 are kept.
 
 Court position: the bottom centre of a box (the feet) traced to the floor (z = 0) through
-that frame's camera, in court metres; smoothed per track with a short rolling median.
-Depth is less certain than lateral position (CLAUDE.md), and boxes whose bottom edge is
-at the frame edge (feet cut off) are flagged.
+that frame's camera, in court metres. Depth is less certain than lateral position
+(CLAUDE.md), and boxes whose bottom edge is at the frame edge (feet cut off) are flagged.
+
+Cleaning, per track (offline, so samples before and after are known):
+- corrected: a position far from the track's own rolling median (a jump to the wrong
+  side of the court, a box swapped with a neighbour's for a moment) or with the feet cut
+  off is replaced by interpolation between its good neighbours;
+- filled: samples where ByteTrack kept the track alive but had no box (the player was
+  hidden behind someone) are added, box and position interpolated between before/after,
+  for gaps up to `max_gap_s`;
+then positions get a short rolling median. `source` says which rows are which.
 """
 
 from __future__ import annotations
@@ -66,6 +74,7 @@ class PeopleTracks:
     court_xy: np.ndarray       # (N, 2) metres, from the feet
     court_xy_smooth: np.ndarray
     feet_visible: np.ndarray   # bool: box bottom not at the frame edge
+    source: np.ndarray         # 0 = detected, 1 = filled gap, 2 = corrected position
 
     def save(self, path: Path) -> None:
         np.savez_compressed(path, **{k: getattr(self, k) for k in self.__dataclass_fields__})
@@ -73,7 +82,9 @@ class PeopleTracks:
     @classmethod
     def load(cls, path: Path) -> PeopleTracks:
         d = np.load(path)
-        return cls(**{k: d[k] for k in cls.__dataclass_fields__})
+        fields = {k: d[k] for k in cls.__dataclass_fields__ if k in d}
+        fields.setdefault("source", np.zeros(len(d["frame"]), np.int8))
+        return cls(**fields)
 
     def summary(self, cfg: dict) -> list[dict]:
         """Per track: span, length and where on court it spends its time (for step 4)."""
@@ -136,20 +147,74 @@ def track_people(frames: np.ndarray, det_frame: np.ndarray, det_box: np.ndarray,
     if not rows["frame"]:
         empty = np.zeros(0)
         return PeopleTracks(empty.astype(int), empty.astype(int), np.zeros((0, 4)), empty,
-                            np.zeros((0, 2)), np.zeros((0, 2)), empty.astype(bool))
+                            np.zeros((0, 2)), np.zeros((0, 2)), empty.astype(bool),
+                            empty.astype(np.int8))
     cat = {k: np.concatenate(v) for k, v in rows.items()}
-    smooth = cat["court_xy"].copy()
-    w = cfg["smooth_samples"]
+    return clean_tracks(cat, np.asarray(frames), fps, cfg)
+
+
+def clean_tracks(cat: dict, frames: np.ndarray, fps: float, cfg: dict) -> PeopleTracks:
+    """Correct outlier positions, fill hidden-player gaps, smooth (see module docstring)."""
+    import pandas as pd
+
+    c = cfg["clean"]
+    out = {k: [] for k in ("frame", "track_id", "box", "score", "court_xy", "feet_visible",
+                           "source")}
+    grid_pos = {int(f): k for k, f in enumerate(frames)}
     for tid in np.unique(cat["track_id"]):
         sel = np.flatnonzero(cat["track_id"] == tid)
-        xy = cat["court_xy"][sel]
-        for j in range(len(sel)):
-            win = xy[max(0, j - w // 2):j + w // 2 + 1]
-            win = win[np.isfinite(win).all(axis=1)]
-            if len(win):
-                smooth[sel[j]] = np.median(win, axis=0)
-    return PeopleTracks(cat["frame"], cat["track_id"], cat["box"], cat["score"],
-                        cat["court_xy"], smooth, cat["feet_visible"])
+        sel = sel[np.argsort(cat["frame"][sel], kind="stable")]
+        fr = cat["frame"][sel].astype(np.int64)
+        xy = cat["court_xy"][sel].astype(float)
+        box = cat["box"][sel].astype(float)
+        t = fr / fps
+        # Corrected: far from the track's own rolling median, or feet cut off / no floor hit.
+        med = pd.DataFrame(xy).rolling(c["outlier_window"], center=True,
+                                       min_periods=1).median().to_numpy()
+        dev = np.linalg.norm(xy - med, axis=1)
+        bad = ~np.isfinite(dev) | (dev > c["outlier_dev_m"]) | ~cat["feet_visible"][sel]
+        source = np.where(bad, 2, 0).astype(np.int8)
+        good = ~bad
+        if good.sum() >= 2 and bad.any():
+            for a in range(2):
+                xy[bad, a] = np.interp(t[bad], t[good], xy[good, a])
+        # Filled: processed frames inside the track with no row, if the gap is short.
+        ks = np.array([grid_pos[int(f)] for f in fr])
+        fill_f = []
+        for a in range(len(ks) - 1):
+            missing = frames[ks[a] + 1:ks[a + 1]]
+            if len(missing) and (t[a + 1] - t[a]) <= c["max_gap_s"]:
+                fill_f.extend(missing.tolist())
+        if fill_f:
+            ff = np.array(fill_f, np.int64)
+            tf = ff / fps
+            fxy = np.stack([np.interp(tf, t, xy[:, a]) for a in range(2)], axis=1)
+            fbox = np.stack([np.interp(tf, t, box[:, a]) for a in range(4)], axis=1)
+            fr = np.concatenate([fr, ff])
+            xy = np.concatenate([xy, fxy])
+            box = np.concatenate([box, fbox])
+            score = np.concatenate([cat["score"][sel], np.zeros(len(ff))])
+            feet = np.concatenate([cat["feet_visible"][sel], np.ones(len(ff), bool)])
+            source = np.concatenate([source, np.ones(len(ff), np.int8)])
+            o = np.argsort(fr, kind="stable")
+            fr, xy, box, score, feet, source = fr[o], xy[o], box[o], score[o], feet[o], source[o]
+        else:
+            score, feet = cat["score"][sel], cat["feet_visible"][sel]
+        out["frame"].append(fr)
+        out["track_id"].append(np.full(len(fr), tid))
+        out["box"].append(box)
+        out["score"].append(score)
+        out["court_xy"].append(xy)
+        out["feet_visible"].append(feet)
+        out["source"].append(source)
+    cat2 = {k: np.concatenate(v) for k, v in out.items()}
+    smooth = np.empty_like(cat2["court_xy"])
+    for tid in np.unique(cat2["track_id"]):
+        sel = np.flatnonzero(cat2["track_id"] == tid)
+        smooth[sel] = pd.DataFrame(cat2["court_xy"][sel]).rolling(
+            cfg["smooth_samples"], center=True, min_periods=1).median().to_numpy()
+    return PeopleTracks(cat2["frame"], cat2["track_id"], cat2["box"], cat2["score"],
+                        cat2["court_xy"], smooth, cat2["feet_visible"], cat2["source"])
 
 
 def save_summary(tracks: PeopleTracks, cfg: dict, path: Path) -> list[dict]:
