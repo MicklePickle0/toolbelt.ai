@@ -8,12 +8,15 @@ detections, green circle = detected ball, orange = bridged gap, cyan = 1 s trail
 curve = fitted 3D flight (grey = low confidence). --ground adds the drop line to the
 floor and the ball's ground trail. With --people, the person detections from
 data/cache/<id>/person_detections.npz (scripts/detect_people.py): green = score >= 0.4,
-orange = weaker. Encoded as H.264 so any player opens it.
+orange = weaker. With --tracks, the people tracks (scripts/track_people.py): a colour and
+number per track, a dot at the feet, and a top-down court map with everyone's position.
+Encoded as H.264 so any player opens it.
 
 Usage:
   python scripts/render_overlay.py --video titan-rise_set1 [--start 60 --seconds 60 --width 1920]
   python scripts/render_overlay.py --video titan-rise_set1 --ball --ground --start 60
   python scripts/render_overlay.py --video titan-rise_set1 --people --start 455
+  python scripts/render_overlay.py --video titan-rise_set1 --tracks --start 455
 """
 
 from __future__ import annotations
@@ -48,6 +51,8 @@ def main() -> int:
     ap.add_argument("--ground", action="store_true", help="with --ball: drop line + ground trail")
     ap.add_argument("--ball-dir", type=Path, help="default: data/cache/<id>/")
     ap.add_argument("--people", action="store_true", help="draw the person detections")
+    ap.add_argument("--tracks", action="store_true",
+                    help="draw people tracks with ids and a court map")
     ap.add_argument("--manifest", type=Path, default=config.repo_path(paths["manifest_path"]))
     args = ap.parse_args()
 
@@ -78,8 +83,16 @@ def main() -> int:
         people = Detections.load(config.repo_path(paths["cache_dir"]) / entry.key /
                                  "person_detections.npz")
         people_groups = people.by_frame()
-    kind = "ball" if ball else "people" if people else "calibration"
-    name = {"ball": "ball", "people": "people", "calibration": "demo"}[kind]
+    tracks = None
+    if args.tracks:
+        from setter_eyes.track.overlay import TracksOverlay
+        from setter_eyes.track.people import PeopleTracks
+
+        tracks = TracksOverlay(PeopleTracks.load(config.repo_path(paths["cache_dir"]) /
+                                                 entry.key / "people_tracks.npz"))
+    kind = "ball" if ball else "tracks" if tracks else "people" if people else "calibration"
+    name = {"ball": "ball", "tracks": "tracks", "people": "people",
+            "calibration": "demo"}[kind]
     out = args.out or config.repo_path(paths["output_dir"]) / kind / f"{entry.key}_{name}.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)
     enc = subprocess.Popen(
@@ -99,7 +112,8 @@ def main() -> int:
             pan = _angle_deg(cam.R, ref_R)
             label = (f"{entry.key}  f{frame.index}  pan {pan:.2f} deg  "
                      f"track conf {track.confidence[i]:.2f}")
-            img = draw_court(frame.image, cam.scaled(s), model, None if ball or people else label,
+            img = draw_court(frame.image, cam.scaled(s), model,
+                             None if ball or people or tracks else label,
                              keypoints=False)
             if ball is not None:
                 extra = ball.draw(img, frame.index, cam.scaled(s), s, ground=args.ground)
@@ -114,6 +128,10 @@ def main() -> int:
                     cv2.rectangle(img, (x1, y1), (x2, y2), colour, max(1, round(2 * s * 2)))
                 if ball is None:
                     _text(img, f"{label}   {len(idx)} people")
+            if tracks is not None:
+                n_tracked = tracks.draw(img, frame.index, s)
+                if ball is None and people is None:
+                    _text(img, f"{label}   {n_tracked} tracked")
             enc.stdin.write(img.tobytes())
             n += 1
     finally:

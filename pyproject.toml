@@ -27,6 +27,9 @@ vision = [
     "torchvision>=0.17",
     "rfdetr",
     "supervision>=0.20",
+    # ByteTrack moved out of supervision; install with --no-deps (it pulls opencv-python,
+    # which clashes with opencv-contrib-python on cv2)
+    "trackers>=2.6",
     "rtmlib",
     "onnxruntime>=1.17",
 ]
@@ -35,6 +38,9 @@ vision-gpu = [
     "torchvision>=0.17",
     "rfdetr",
     "supervision>=0.20",
+    # ByteTrack moved out of supervision; install with --no-deps (it pulls opencv-python,
+    # which clashes with opencv-contrib-python on cv2)
+    "trackers>=2.6",
     "rtmlib",
     "onnxruntime-gpu>=1.17",
 ]

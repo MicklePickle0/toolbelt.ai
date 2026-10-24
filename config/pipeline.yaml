@@ -78,8 +78,20 @@ detect:
   person_store_threshold: 0.3
 
 track:
-  tracker: bytetrack          # bytetrack | botsort
-  camera_motion_compensation: true
+  # People tracking (setter_eyes.track.people, scripts/track_people.py). Boxes are moved
+  # into the calibrated reference view first: that is the camera-motion compensation.
+  tracker: bytetrack
+  bytetrack:
+    # The pretrained detector scores players ~0.5, so ByteTrack's defaults (0.6/0.7)
+    # would treat most players as low-confidence; these suit our scores.
+    high_conf_det_threshold: 0.45
+    track_activation_threshold: 0.45
+    minimum_consecutive_frames: 3
+    minimum_iou_threshold: 0.1
+    lost_track_buffer: 60     # samples (2 s at 30 Hz) a lost track may come back within
+  feet_edge_px: 15            # box bottom this close to the frame edge = feet cut off
+  smooth_samples: 5           # rolling median of court positions per track
+  our_half_margin_m: 3.0      # summaries: "in our half" includes this margin off the court
 
 ball:
   # Ball tracking (setter_eyes.ball, scripts/track_ball.py). Pixels are 4K, in the
