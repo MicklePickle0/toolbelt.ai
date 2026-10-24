@@ -98,6 +98,11 @@ track:
     outlier_window: 9         # samples (0.3 s) for that rolling median
     # Fill samples where the track was alive but the player hidden, up to this long.
     max_gap_s: 2.0
+  link:                       # join broken tracks of one person (step 4b)
+    max_gap_s: 1.5
+    max_speed_mps: 6.0        # faster than a player moves = a different person
+    slack_m: 0.5
+    area_margin_m: 1.0        # pieces join only within one area: our half / theirs / off court
   our_half_margin_m: 3.0      # summaries: "in our half" includes this margin off the court
   roles:                      # provisional near-side filter (setter_eyes.track.roles)
     court_margin_m: 1.0       # players chase balls a little off court
@@ -105,6 +110,7 @@ track:
     min_share: 0.6            # share of a track's time in a half to belong to that side
     min_duration_s: 2.0       # shorter tracks are fragments: role "other"
     full_confidence_s: 5.0
+    min_move_m: 0.75          # players move; spectators/coaches near the court don't (4a)
 
 ball:
   # Ball tracking (setter_eyes.ball, scripts/track_ball.py). Pixels are 4K, in the

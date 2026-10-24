@@ -26,7 +26,7 @@ import numpy as np
 from setter_eyes import config
 from setter_eyes.calibration.track import PoseTrack
 from setter_eyes.labels import load_manifest
-from setter_eyes.track.people import save_summary, track_people
+from setter_eyes.track.people import link_tracks, save_summary, track_people
 from setter_eyes.track.roles import classify_tracks, near_players_per_frame, save_roles
 
 
@@ -51,6 +51,8 @@ def main() -> int:
     tracks = track_people(d["frames"], d["det_frame"], d["det_box"], d["det_score"],
                           float(d["fps"]), cams.camera, cams.camera(cams.ref_frame),
                           cams.base.height, cfg)
+    tracks, joins = link_tracks(tracks, d["frames"], float(d["fps"]), cfg)
+    print(f"joined {joins} broken tracks")
     tracks.save(cache / "people_tracks.npz")
     summary = save_summary(tracks, cfg, cache / "people_tracks.json")
 

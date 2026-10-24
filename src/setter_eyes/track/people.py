@@ -174,6 +174,8 @@ def clean_tracks(cat: dict, frames: np.ndarray, fps: float, cfg: dict) -> People
         dev = np.linalg.norm(xy - med, axis=1)
         bad = ~np.isfinite(dev) | (dev > c["outlier_dev_m"]) | ~cat["feet_visible"][sel]
         source = np.where(bad, 2, 0).astype(np.int8)
+        if "source" in cat:                         # keep earlier corrections' labels
+            source = np.maximum(source, cat["source"][sel]).astype(np.int8)
         good = ~bad
         if good.sum() >= 2 and bad.any():
             for a in range(2):
@@ -221,3 +223,66 @@ def save_summary(tracks: PeopleTracks, cfg: dict, path: Path) -> list[dict]:
     summary = tracks.summary(cfg)
     path.write_text(json.dumps({"tracks": summary}, indent=1), encoding="utf-8")
     return summary
+
+
+def link_tracks(tracks: PeopleTracks, frames: np.ndarray, fps: float,
+                cfg: dict) -> tuple[PeopleTracks, int]:
+    """Join a track that ends to one that starts shortly after, close enough for one person
+    to have moved there and in the same area (our half / their half / off court), so joins
+    don't chain different people across sides in crowds (step 4b). Closest pairs first;
+    each end and start used once. The joined gap is filled like a hidden-player gap.
+    -> (tracks, number of joins)."""
+    c = cfg["link"]
+    ids = np.unique(tracks.track_id)
+    first, last, start_xy, end_xy, area = {}, {}, {}, {}, {}
+    for tid in ids:
+        sel = np.flatnonzero(tracks.track_id == tid)
+        o = sel[np.argsort(tracks.frame[sel])]
+        first[tid], last[tid] = int(tracks.frame[o[0]]), int(tracks.frame[o[-1]])
+        start_xy[tid], end_xy[tid] = tracks.court_xy_smooth[o[0]], tracks.court_xy_smooth[o[-1]]
+        area[tid] = _area(tracks.court_xy_smooth[o], c["area_margin_m"])
+    ends = sorted(ids, key=lambda t: last[t])
+    starts = sorted(ids, key=lambda t: first[t])
+    start_frames = np.array([first[t] for t in starts])
+    pairs = []
+    for a in ends:
+        lo = np.searchsorted(start_frames, last[a] + 1)
+        hi = np.searchsorted(start_frames, last[a] + c["max_gap_s"] * fps, side="right")
+        for b in starts[lo:hi]:
+            gap = (first[b] - last[a]) / fps
+            dist = float(np.linalg.norm(start_xy[b] - end_xy[a]))
+            if np.isfinite(dist) and dist <= c["slack_m"] + c["max_speed_mps"] * gap \
+                    and area[a] == area[b]:
+                pairs.append((dist, a, b))
+    parent: dict = {}
+    used_end, used_start = set(), set()
+    for _, a, b in sorted(pairs):
+        if a in used_end or b in used_start:
+            continue
+        used_end.add(a)
+        used_start.add(b)
+        parent[b] = a
+
+    def root(t):
+        while t in parent:
+            t = parent[t]
+        return t
+
+    new_id = np.array([root(t) for t in tracks.track_id])
+    keep = tracks.source != 1                       # refill gaps after joining
+    cat = {"frame": tracks.frame[keep], "track_id": new_id[keep], "box": tracks.box[keep],
+           "score": tracks.score[keep], "court_xy": tracks.court_xy[keep],
+           "feet_visible": tracks.feet_visible[keep], "source": tracks.source[keep]}
+    return clean_tracks(cat, np.asarray(frames), fps, cfg), len(parent)
+
+
+def _area(xy: np.ndarray, margin: float) -> str:
+    """Where a track piece mostly is: "near" (our half), "far" or "off" court."""
+    ok = np.isfinite(xy).all(axis=1)
+    x, y = xy[ok, 0], xy[ok, 1]
+    if not len(x):
+        return "off"
+    across = (x >= -margin) & (x <= 9 + margin)
+    near = (across & (y >= 0) & (y <= 9 + margin)).mean()
+    far = (across & (y < 0) & (y >= -9 - margin)).mean()
+    return "near" if near >= max(far, 0.5) else "far" if far >= 0.5 else "off"

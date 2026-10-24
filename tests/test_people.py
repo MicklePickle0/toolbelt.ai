@@ -115,14 +115,43 @@ def test_roles_from_time_on_each_side():
 
     n = 200
     frames = np.arange(0, 2 * n, 2)
-    tracks = {0: (3.0, 4.0), 1: (5.0, -4.0), 2: (-4.0, 2.0), 3: (4.0, 5.0)}   # near, far, bench
+    # near, far, bench, a 0.7 s fragment, a spectator standing still just behind our end line
+    tracks = {0: (3.0, 4.0), 1: (5.0, -4.0), 2: (-4.0, 2.0), 3: (4.0, 5.0), 4: (6.0, 9.5)}
     rows = []
     for tid, (x, y) in tracks.items():
-        m = n if tid != 3 else 20                          # track 3: a 0.7 s fragment
-        rows += [(f, tid, x, y) for f in frames[:m]]
+        m = n if tid != 3 else 20
+        sway = 0.0 if tid == 4 else 1.5                     # players move around their spot
+        rows += [(f, tid, x + sway * np.sin(f / 40), y) for f in frames[:m]]
     f, tid, x, y = (np.array(c) for c in zip(*rows, strict=True))
     xy = np.stack([x, y], axis=1).astype(float)
     t = PeopleTracks(f, tid, np.zeros((len(f), 4)), np.ones(len(f)), xy, xy,
                      np.ones(len(f), bool), np.zeros(len(f), np.int8))
     roles = {r["track_id"]: r["role"] for r in classify_tracks(t, FPS, CFG)}
-    assert roles == {0: "near_player", 1: "far_player", 2: "other", 3: "other"}
+    assert roles == {0: "near_player", 1: "far_player", 2: "other", 3: "other", 4: "other"}
+
+
+def test_broken_track_is_joined_but_a_far_jump_is_not():
+    from setter_eyes.track.people import PeopleTracks, link_tracks
+
+    frames = np.arange(0, 400, 2)
+    t = frames / FPS
+
+    def rows(tid, sel, x0, vx):
+        f = frames[sel]
+        xy = np.stack([x0 + vx * f / FPS, np.full(len(f), 4.0)], axis=1)
+        return f, np.full(len(f), tid), xy
+
+    a = rows(1, slice(0, 100), 2.0, 1.0)                   # walks, then hidden...
+    b = rows(2, slice(130, 200), 2.0, 1.0)                 # ...reappears 1 s later, same path
+    c = rows(3, slice(130, 200), 8.5, 0.0)                 # someone else, 4 m away
+    f, tid, xy = (np.concatenate(z) for z in zip(a, b, c, strict=True))
+    n = len(f)
+    tr = PeopleTracks(f, tid, np.tile([100.0, 100, 150, 300], (n, 1)), np.ones(n), xy, xy,
+                      np.ones(n, bool), np.zeros(n, np.int8))
+    linked, joins = link_tracks(tr, frames, FPS, CFG)
+    assert joins == 1
+    assert set(np.unique(linked.track_id)) == {1, 3}
+    one = linked.track_id == 1
+    assert (np.diff(linked.frame[one]) == 2).all()         # the 1 s gap is filled
+    assert np.abs(linked.court_xy[one, 0] - (2.0 + linked.frame[one] / FPS)).max() < 0.05
+    assert len(t) == len(frames)

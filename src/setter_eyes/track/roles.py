@@ -2,7 +2,9 @@
 
 Per track, from its cleaned court positions: the share of time inside our half (with a
 margin, players chase balls off court) or the far half, and how long the track lasts.
-  near_player  >= `min_share` of its time in our half, lasting >= `min_duration_s`
+  near_player  >= `min_share` of its time in our half, lasting >= `min_duration_s`, and
+               moving at least `min_move_m` around its usual spot (spectators and coaches
+               standing just behind our end line don't)
   far_player   the same for the far half
   other        everyone else: referees, coaches, spectators, short fragments
 Confidence = share x min(1, duration / `full_confidence_s`).
@@ -37,19 +39,24 @@ def classify_tracks(tracks: PeopleTracks, fps: float, cfg: dict) -> list[dict]:
         near = across & (y >= -net) & (y <= 9 + m)
         far = across & (y <= net) & (y >= -9 - m)
         n = max(1, ok.sum())
+        centre = np.median(xy[ok], axis=0) if ok.any() else np.zeros(2)
+        dist = np.linalg.norm(xy[ok] - centre, axis=1)
+        moves = float(np.percentile(dist, 90)) if ok.any() else 0.0
+        mobile = moves >= c["min_move_m"]
         fr = tracks.frame[sel]
         duration = float((fr.max() - fr.min()) / fps)
         share_near, share_far = float(near.sum() / n), float(far.sum() / n)
-        if duration >= c["min_duration_s"] and share_near >= c["min_share"]:
+        if duration >= c["min_duration_s"] and share_near >= c["min_share"] and mobile:
             role, share = "near_player", share_near
-        elif duration >= c["min_duration_s"] and share_far >= c["min_share"]:
+        elif duration >= c["min_duration_s"] and share_far >= c["min_share"] and mobile:
             role, share = "far_player", share_far
         else:
             role, share = "other", 1 - max(share_near, share_far)
         conf = share * min(1.0, duration / c["full_confidence_s"])
         out.append({"track_id": int(tid), "role": role, "confidence": round(conf, 3),
                     "duration_s": round(duration, 2), "share_near": round(share_near, 3),
-                    "share_far": round(share_far, 3), "first_frame": int(fr.min()),
+                    "share_far": round(share_far, 3), "moves_m": round(moves, 2),
+                    "first_frame": int(fr.min()),
                     "last_frame": int(fr.max())})
     return out
 
