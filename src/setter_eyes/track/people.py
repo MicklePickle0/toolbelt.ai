@@ -11,8 +11,9 @@ that frame's camera, in court metres. Depth is less certain than lateral positio
 
 Cleaning, per track (offline, so samples before and after are known):
 - corrected: a position far from the track's own rolling median (a jump to the wrong
-  side of the court, a box swapped with a neighbour's for a moment) or with the feet cut
-  off is replaced by interpolation between its good neighbours;
+  side of the court, a box swapped with a neighbour's for a moment), with the feet cut
+  off, or taken mid-jump (airborne: the apparent height inflates) is replaced by
+  interpolation between its good neighbours;
 - filled: samples where ByteTrack kept the track alive but had no box (the player was
   hidden behind someone) are added, box and position interpolated between before/after,
   for gaps up to `max_gap_s`;
@@ -64,6 +65,15 @@ def feet_on_floor(cam: Camera, boxes: np.ndarray) -> np.ndarray:
     return xy
 
 
+def apparent_height(cam: Camera, boxes: np.ndarray, court_xy: np.ndarray) -> np.ndarray:
+    """Box height in px x distance from the camera / focal length: about a person's real
+    height when the feet are on the floor (1.5-1.9 m standing or crouched). Mid-jump the feet
+    ray lands too far away, so this inflates: that is how jumps are spotted."""
+    pts = np.column_stack([court_xy, np.zeros(len(court_xy))])
+    dist = np.linalg.norm(pts - cam.centre, axis=1)
+    return (boxes[:, 3] - boxes[:, 1]) * dist / cam.f
+
+
 @dataclass
 class PeopleTracks:
     """One row per tracked detection."""
@@ -75,6 +85,7 @@ class PeopleTracks:
     court_xy_smooth: np.ndarray
     feet_visible: np.ndarray   # bool: box bottom not at the frame edge
     source: np.ndarray         # 0 = detected, 1 = filled gap, 2 = corrected position
+    height_m: np.ndarray       # apparent height: box height x distance / focal length (m)
 
     def save(self, path: Path) -> None:
         np.savez_compressed(path, **{k: getattr(self, k) for k in self.__dataclass_fields__})
@@ -84,6 +95,7 @@ class PeopleTracks:
         d = np.load(path)
         fields = {k: d[k] for k in cls.__dataclass_fields__ if k in d}
         fields.setdefault("source", np.zeros(len(d["frame"]), np.int8))
+        fields.setdefault("height_m", np.full(len(d["frame"]), np.nan))
         return cls(**fields)
 
     def summary(self, cfg: dict) -> list[dict]:
@@ -124,7 +136,8 @@ def track_people(frames: np.ndarray, det_frame: np.ndarray, det_box: np.ndarray,
     starts = np.searchsorted(det_frame[order], frames)
     ends = np.searchsorted(det_frame[order], frames, side="right")
 
-    rows = {k: [] for k in ("frame", "track_id", "box", "score", "court_xy", "feet_visible")}
+    rows = {k: [] for k in ("frame", "track_id", "box", "score", "court_xy", "feet_visible",
+                            "height_m")}
     for f, a, b in zip(frames, starts, ends, strict=True):
         idx = order[a:b]
         cam = camera_at(int(f))
@@ -143,12 +156,13 @@ def track_people(frames: np.ndarray, det_frame: np.ndarray, det_box: np.ndarray,
         rows["score"].append(scores[i])
         rows["court_xy"].append(feet_on_floor(cam, boxes[i]))
         rows["feet_visible"].append(boxes[i, 3] < image_height - cfg["feet_edge_px"])
+        rows["height_m"].append(apparent_height(cam, boxes[i], rows["court_xy"][-1]))
 
     if not rows["frame"]:
         empty = np.zeros(0)
         return PeopleTracks(empty.astype(int), empty.astype(int), np.zeros((0, 4)), empty,
                             np.zeros((0, 2)), np.zeros((0, 2)), empty.astype(bool),
-                            empty.astype(np.int8))
+                            empty.astype(np.int8), empty)
     cat = {k: np.concatenate(v) for k, v in rows.items()}
     return clean_tracks(cat, np.asarray(frames), fps, cfg)
 
@@ -159,7 +173,7 @@ def clean_tracks(cat: dict, frames: np.ndarray, fps: float, cfg: dict) -> People
 
     c = cfg["clean"]
     out = {k: [] for k in ("frame", "track_id", "box", "score", "court_xy", "feet_visible",
-                           "source")}
+                           "source", "height_m")}
     grid_pos = {int(f): k for k, f in enumerate(frames)}
     for tid in np.unique(cat["track_id"]):
         sel = np.flatnonzero(cat["track_id"] == tid)
@@ -173,6 +187,18 @@ def clean_tracks(cat: dict, frames: np.ndarray, fps: float, cfg: dict) -> People
                                        min_periods=1).median().to_numpy()
         dev = np.linalg.norm(xy - med, axis=1)
         bad = ~np.isfinite(dev) | (dev > c["outlier_dev_m"]) | ~cat["feet_visible"][sel]
+        # Airborne: mid-jump the feet are off the floor, so the feet ray lands too far away
+        # and the apparent height inflates. Treat those positions as glitches too.
+        height = cat["height_m"][sel] if "height_m" in cat else np.full(len(sel), np.nan)
+        typical = pd.Series(height).rolling(c["jump_window_samples"], center=True,
+                                            min_periods=1).median().to_numpy()
+        airborne = height > typical * (1 + c["jump_tolerance"])
+        # Take-off and landing (feet only just off the floor) barely inflate the height but
+        # still throw the floor point far off from a low camera: widen each jump.
+        pad = c["jump_pad_samples"]
+        if pad and airborne.any():
+            airborne = np.convolve(np.pad(airborne, pad), np.ones(2 * pad + 1), "valid") > 0
+        bad |= airborne
         source = np.where(bad, 2, 0).astype(np.int8)
         if "source" in cat:                         # keep earlier corrections' labels
             source = np.maximum(source, cat["source"][sel]).astype(np.int8)
@@ -197,9 +223,11 @@ def clean_tracks(cat: dict, frames: np.ndarray, fps: float, cfg: dict) -> People
             box = np.concatenate([box, fbox])
             score = np.concatenate([cat["score"][sel], np.zeros(len(ff))])
             feet = np.concatenate([cat["feet_visible"][sel], np.ones(len(ff), bool)])
+            height = np.concatenate([height, np.full(len(ff), np.nan)])
             source = np.concatenate([source, np.ones(len(ff), np.int8)])
             o = np.argsort(fr, kind="stable")
             fr, xy, box, score, feet, source = fr[o], xy[o], box[o], score[o], feet[o], source[o]
+            height = height[o]
         else:
             score, feet = cat["score"][sel], cat["feet_visible"][sel]
         out["frame"].append(fr)
@@ -208,6 +236,7 @@ def clean_tracks(cat: dict, frames: np.ndarray, fps: float, cfg: dict) -> People
         out["score"].append(score)
         out["court_xy"].append(xy)
         out["feet_visible"].append(feet)
+        out["height_m"].append(height)
         out["source"].append(source)
     cat2 = {k: np.concatenate(v) for k, v in out.items()}
     smooth = np.empty_like(cat2["court_xy"])
@@ -216,7 +245,8 @@ def clean_tracks(cat: dict, frames: np.ndarray, fps: float, cfg: dict) -> People
         smooth[sel] = pd.DataFrame(cat2["court_xy"][sel]).rolling(
             cfg["smooth_samples"], center=True, min_periods=1).median().to_numpy()
     return PeopleTracks(cat2["frame"], cat2["track_id"], cat2["box"], cat2["score"],
-                        cat2["court_xy"], smooth, cat2["feet_visible"], cat2["source"])
+                        cat2["court_xy"], smooth, cat2["feet_visible"], cat2["source"],
+                        cat2["height_m"])
 
 
 def save_summary(tracks: PeopleTracks, cfg: dict, path: Path) -> list[dict]:
@@ -272,7 +302,8 @@ def link_tracks(tracks: PeopleTracks, frames: np.ndarray, fps: float,
     keep = tracks.source != 1                       # refill gaps after joining
     cat = {"frame": tracks.frame[keep], "track_id": new_id[keep], "box": tracks.box[keep],
            "score": tracks.score[keep], "court_xy": tracks.court_xy[keep],
-           "feet_visible": tracks.feet_visible[keep], "source": tracks.source[keep]}
+           "feet_visible": tracks.feet_visible[keep], "source": tracks.source[keep],
+           "height_m": tracks.height_m[keep]}
     return clean_tracks(cat, np.asarray(frames), fps, cfg), len(parent)
 
 

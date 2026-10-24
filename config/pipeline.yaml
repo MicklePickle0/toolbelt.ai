@@ -98,6 +98,11 @@ track:
     outlier_window: 9         # samples (0.3 s) for that rolling median
     # Fill samples where the track was alive but the player hidden, up to this long.
     max_gap_s: 2.0
+    # Jumps: apparent height (box height x distance / f) more than this above the
+    # track's own median over the window means the feet are off the floor.
+    jump_tolerance: 0.05      # low camera: 10 cm off the floor is ~0.75 m of error at the net
+    jump_window_samples: 61   # 2 s: longer than any jump, so the median stays grounded
+    jump_pad_samples: 3       # widen each detected jump to cover take-off and landing
   link:                       # join broken tracks of one person (step 4b)
     max_gap_s: 1.5
     max_speed_mps: 6.0        # faster than a player moves = a different person

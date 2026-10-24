@@ -125,7 +125,7 @@ def test_roles_from_time_on_each_side():
     f, tid, x, y = (np.array(c) for c in zip(*rows, strict=True))
     xy = np.stack([x, y], axis=1).astype(float)
     t = PeopleTracks(f, tid, np.zeros((len(f), 4)), np.ones(len(f)), xy, xy,
-                     np.ones(len(f), bool), np.zeros(len(f), np.int8))
+                     np.ones(len(f), bool), np.zeros(len(f), np.int8), np.full(len(f), 1.8))
     roles = {r["track_id"]: r["role"] for r in classify_tracks(t, FPS, CFG)}
     assert roles == {0: "near_player", 1: "far_player", 2: "other", 3: "other", 4: "other"}
 
@@ -147,7 +147,7 @@ def test_broken_track_is_joined_but_a_far_jump_is_not():
     f, tid, xy = (np.concatenate(z) for z in zip(a, b, c, strict=True))
     n = len(f)
     tr = PeopleTracks(f, tid, np.tile([100.0, 100, 150, 300], (n, 1)), np.ones(n), xy, xy,
-                      np.ones(n, bool), np.zeros(n, np.int8))
+                      np.ones(n, bool), np.zeros(n, np.int8), np.full(n, 1.8))
     linked, joins = link_tracks(tr, frames, FPS, CFG)
     assert joins == 1
     assert set(np.unique(linked.track_id)) == {1, 3}
@@ -155,3 +155,30 @@ def test_broken_track_is_joined_but_a_far_jump_is_not():
     assert (np.diff(linked.frame[one]) == 2).all()         # the 1 s gap is filled
     assert np.abs(linked.court_xy[one, 0] - (2.0 + linked.frame[one] / FPS)).max() < 0.05
     assert len(t) == len(frames)
+
+
+def test_a_jump_keeps_the_player_on_the_spot():
+    from setter_eyes.track.people import apparent_height, clean_tracks, feet_on_floor
+
+    cam = look_at((4.5, 13.0, 1.6), (4.5, 0.0, 0.6))
+    frames = np.arange(0, 180, 2)
+    t = frames / FPS
+    spot = np.array([4.0, 2.0])                        # a blocker at the net, jumping
+    lift = np.clip(np.sin((t - 1.0) / 0.7 * np.pi), 0, None) * ((t > 1.0) & (t < 1.7)) * 0.7
+    boxes, xy = [], []
+    for z in lift:
+        b = person_box(cam, spot)
+        top = cam.project(np.array([[spot[0], spot[1], 1.85 + z]]))[0][0, 1]
+        bottom = cam.project(np.array([[spot[0], spot[1], z]]))[0][0, 1]
+        b = np.array([b[0], top, b[2], bottom])
+        boxes.append(b)
+        xy.append(feet_on_floor(cam, b[None])[0])
+    boxes, xy = np.array(boxes), np.array(xy)
+    assert np.linalg.norm(xy - spot, axis=1).max() > 1.0   # mid-jump the feet ray lands far off
+    n = len(frames)
+    cat = {"frame": frames, "track_id": np.zeros(n, int), "box": boxes, "score": np.ones(n),
+           "court_xy": xy, "feet_visible": np.ones(n, bool),
+           "height_m": apparent_height(cam, boxes, xy)}
+    tr = clean_tracks(cat, frames, FPS, CFG)
+    assert np.linalg.norm(tr.court_xy_smooth - spot, axis=1).max() < 0.3
+    assert (tr.source[(t > 1.15) & (t < 1.55)] == 2).all()
