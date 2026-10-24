@@ -60,7 +60,11 @@ keypoints:
 calibration:
   # Below this, auto line fitting defers to the manual-click UI.
   auto_min_confidence: 0.7
-  manual_min_points: 6
+  manual_min_points: 6        # corner points + line clicks (at least 4 corner points)
+  # After clicking, also pull the fit toward detected line pixels. Off: where courts are
+  # bounded by floor colour (Humber) the detected lines are unreliable and can drag the
+  # fit away from the clicks.
+  manual_refine_on_mask: false
   # Reprojection error (px, full resolution) above which a manual solve is flagged.
   max_reprojection_error_px: 4.0
   # Re-validate pose against drift every N frames.

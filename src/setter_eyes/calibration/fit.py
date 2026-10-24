@@ -64,6 +64,52 @@ def solve_from_points(world: np.ndarray, image: np.ndarray, width: int, height: 
     return cam, _rms(cam, world, image)
 
 
+def line_click_distances(cam: Camera, segments: list[np.ndarray],
+                         clicks: list[np.ndarray]) -> np.ndarray:
+    """Pixel distance from each clicked point to the projected court line it was clicked on.
+    segments[i] is that line's (2, 3) court endpoints, clicks[i] its (n, 2) pixels."""
+    out = []
+    for (a, b), pts in zip(segments, clicks, strict=True):
+        uv, z = cam.project(np.linspace(a, b, 120))
+        uv = uv[z > 0.1]
+        if len(uv) < 2:
+            out.append(np.full(len(pts), 1e3))
+            continue
+        p0, d = uv[:-1], uv[1:] - uv[:-1]
+        length2 = (d ** 2).sum(axis=1) + 1e-12
+        for q in np.asarray(pts, float):
+            t = np.clip(((q - p0) * d).sum(axis=1) / length2, 0, 1)
+            out.append([np.linalg.norm(p0 + t[:, None] * d - q, axis=1).min()])
+    return np.concatenate([np.ravel(o) for o in out]) if out else np.zeros(0)
+
+
+def fit_points_and_lines(cam: Camera, world: np.ndarray, pixels: np.ndarray,
+                         segments: list[np.ndarray], clicks: list[np.ndarray],
+                         hfov_range: tuple[float, float], estimate_k1: bool = False,
+                         ) -> tuple[Camera, float, float]:
+    """Refine pose + focal (+ k1) so keypoints land on their clicks AND each court line
+    passes through the points clicked along it (for lines whose corners are hidden).
+    -> (camera, keypoint RMS px, line-click RMS px)."""
+    world = np.asarray(world, float).reshape(-1, 3)
+    pixels = np.asarray(pixels, float).reshape(-1, 2)
+
+    def residuals(x):
+        c = _unpack(x, cam, estimate_k1)
+        r = [(c.project(world)[0] - pixels).ravel()]
+        if segments:
+            r.append(line_click_distances(c, segments, clicks))
+        return np.concatenate(r)
+
+    x0 = _pack(cam, estimate_k1)
+    lo, hi = _bounds(cam, hfov_range, estimate_k1)
+    sol = least_squares(residuals, np.clip(x0, lo + 1e-9, hi - 1e-9), bounds=(lo, hi),
+                        loss="soft_l1", f_scale=3.0, x_scale="jac")
+    cam = _unpack(sol.x, cam, estimate_k1)
+    line_d = line_click_distances(cam, segments, clicks) if segments else np.zeros(0)
+    line_rms = float(np.sqrt((line_d ** 2).mean())) if len(line_d) else 0.0
+    return cam, _rms(cam, world, pixels), line_rms
+
+
 def _rms(cam: Camera, world: np.ndarray, image: np.ndarray) -> float:
     uv, z = cam.project(world)
     if (z <= 0).any():

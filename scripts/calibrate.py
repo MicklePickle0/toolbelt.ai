@@ -35,36 +35,52 @@ from setter_eyes.calibration import (
     solve_from_points,
 )
 from setter_eyes.calibration.court_model import CourtModel
+from setter_eyes.calibration.fit import fit_points_and_lines
 from setter_eyes.labels import load_manifest
 from setter_eyes.labels.boxes import frame_from_name
 
 
 def manual(image: np.ndarray, model: CourtModel, cfg: dict, key: str, frame: int,
            scorer: LineScorer) -> Calibration | None:
-    from setter_eyes.calibration.manual import click_keypoints, confirm
+    from setter_eyes.calibration.manual import click_keypoints, click_lines, confirm
 
+    hfov = tuple(cfg["hfov_range_deg"])
     while True:
         clicks = click_keypoints(image, model)
         if clicks is None:
             return None
-        if len(clicks) < cfg["manual_min_points"]:
-            print(f"  need at least {cfg['manual_min_points']} points, got {len(clicks)}")
+        # Then points anywhere along lines whose corners are hidden (e.g. the near end line).
+        line_clicks = click_lines(image, clicks)
+        if line_clicks is None:
+            return None
+        n_line = sum(len(v) for v in line_clicks.values())
+        if len(clicks) < 4 or len(clicks) + n_line < cfg["manual_min_points"]:
+            print(f"  need at least 4 corner points and {cfg['manual_min_points']} clicks in "
+                  f"total, got {len(clicks)} + {n_line}")
             continue
         world = np.array([model.keypoints[n] for n in clicks])
         pixels = np.array(list(clicks.values()))
         h, w = image.shape[:2]
-        cam, _ = solve_from_points(world, pixels, w, h, tuple(cfg["hfov_range_deg"]))
-        cam = refine_on_lines(cam, scorer, cfg, estimate_k1=cfg["estimate_distortion"],
-                              points=(world, pixels))
-        rms = float(np.sqrt(((cam.project(world)[0] - pixels) ** 2).sum(axis=1).mean()))
+        cam, _ = solve_from_points(world, pixels, w, h, hfov)
+        segments = [model.lines[n] for n in line_clicks]
+        pts = [np.array(v) for v in line_clicks.values()]
+        k1 = cfg["estimate_distortion"] and len(clicks) + n_line >= 12
+        cam, rms, line_rms = fit_points_and_lines(cam, world, pixels, segments, pts, hfov, k1)
+        if cfg.get("manual_refine_on_mask"):
+            cam = refine_on_lines(cam, scorer, cfg, estimate_k1=k1, points=(world, pixels))
+            rms = float(np.sqrt(((cam.project(world)[0] - pixels) ** 2).sum(axis=1).mean()))
         sup = scorer.evaluate(cam)
-        label = f"{key}  manual  rms {rms:.1f}px"
+        label = f"{key}  manual  points rms {rms:.1f}px  lines rms {line_rms:.1f}px"
+        print(f"  {len(clicks)} points (rms {rms:.1f} px), {n_line} line clicks on "
+              f"{len(line_clicks)} lines (rms {line_rms:.1f} px)")
         if confirm(draw_court(image, cam, model, label)):
-            ok = rms <= cfg["max_reprojection_error_px"]
+            ok = max(rms, line_rms) <= cfg["max_reprojection_error_px"]
             return Calibration(video=key, camera=cam, method="manual",
                                confidence=1.0 if ok else 0.5, net_height_m=model.net_height,
                                frame=frame, support=sup.to_dict(), clicks=clicks,
-                               reprojection_rms_px=round(rms, 2), needs_review=not ok)
+                               line_clicks=line_clicks,
+                               reprojection_rms_px=round(max(rms, line_rms), 2),
+                               needs_review=not ok)
 
 
 def reference_frame(cache_dir: Path, key: str, frame: int | None) -> tuple[int, Path]:

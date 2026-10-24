@@ -198,3 +198,31 @@ def test_track_rotation_follows_a_pan():
     errs = [_angle_deg(track.camera(i).R, pans[i] @ base.R) for i in range(n)]
     assert max(errs) < 0.3, max(errs)
     assert np.allclose(track.camera(77).centre, base.centre, atol=1e-6)
+
+
+def test_line_clicks_fix_a_line_whose_corners_are_hidden():
+    from setter_eyes.calibration.fit import fit_points_and_lines, line_click_distances
+
+    truth = VIEWS["centred"]
+    # Only far-side and net keypoints: the near end line is unconstrained.
+    names = ["far_left_attack", "far_right_attack", "far_left_corner", "far_right_corner",
+             "centre_left", "centre_right", "net_tape_left", "net_tape_right"]
+    world = np.array([MODEL.keypoints[n] for n in names])
+    rng = np.random.default_rng(2)
+    pixels = truth.project(world)[0] + rng.normal(0, 1.5, (len(names), 2))
+    start, _ = solve_from_points(world, pixels, W, H)
+    # Points clicked along the middle of the near end line (corners not visible).
+    end = MODEL.lines["end_near"]
+    along = truth.project(np.linspace(end[0], end[1], 7)[1:-1])[0] + rng.normal(0, 1.0, (5, 2))
+    cam, rms, line_rms = fit_points_and_lines(start, world, pixels, [end], [along], (30, 120))
+
+    true_line = truth.project(np.linspace(end[0], end[1], 25))[0]
+    on_screen = (true_line[:, 0] >= 0) & (true_line[:, 0] < W) & (true_line[:, 1] < H)
+
+    def end_error(c):
+        """How far the true near end line lies from where camera c draws it (px)."""
+        return float(line_click_distances(c, [end], [true_line[on_screen]]).max())
+
+    assert line_rms < 2.0 and rms < 3.0
+    assert end_error(cam) < end_error(start) and end_error(cam) < 4.0
+    assert line_click_distances(cam, [end], [along]).max() < 3.0

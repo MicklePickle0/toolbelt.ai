@@ -26,6 +26,7 @@ class Calibration:
     frame: int | None = None                      # exact frame index the camera was fitted on
     support: dict = field(default_factory=dict)
     clicks: dict[str, list[float]] = field(default_factory=dict)   # keypoint -> [u, v]
+    line_clicks: dict[str, list[list[float]]] = field(default_factory=dict)  # line -> [[u, v]]
     reprojection_rms_px: float | None = None
     needs_review: bool = False
 
@@ -34,6 +35,7 @@ class Calibration:
                 "confidence": round(self.confidence, 4), "needs_review": self.needs_review,
                 "net_height_m": self.net_height_m, "frame": self.frame,
                 "camera": self.camera.to_dict(), "support": self.support, "clicks": self.clicks,
+                "line_clicks": self.line_clicks,
                 "reprojection_rms_px": self.reprojection_rms_px,
                 "saved_at": datetime.now(UTC).isoformat(timespec="seconds")}
 
@@ -42,7 +44,8 @@ class Calibration:
         return cls(video=d["video"], camera=Camera.from_dict(d["camera"]), method=d["method"],
                    confidence=d["confidence"], net_height_m=d["net_height_m"],
                    frame=d.get("frame"), support=d.get("support", {}),
-                   clicks=d.get("clicks", {}), reprojection_rms_px=d.get("reprojection_rms_px"),
+                   clicks=d.get("clicks", {}), line_clicks=d.get("line_clicks", {}),
+                   reprojection_rms_px=d.get("reprojection_rms_px"),
                    needs_review=d.get("needs_review", False))
 
 
