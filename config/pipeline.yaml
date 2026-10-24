@@ -111,6 +111,10 @@ track:
     min_duration_s: 2.0       # shorter tracks are fragments: role "other"
     full_confidence_s: 5.0
     min_move_m: 0.75          # players move; spectators/coaches near the court don't (4a)
+    now:                      # per-moment test (rings, later the serve rule): roles.ours_now
+      inside_margin_m: 0.5    # inside our court incl. this much over the lines: ours
+      net_clearance_m: 0.2    # feet must be this far on our side of the centre line
+      chase_margin_m: 1.5     # further out only during a rally, for near-player tracks
 
 ball:
   # Ball tracking (setter_eyes.ball, scripts/track_ball.py). Pixels are 4K, in the

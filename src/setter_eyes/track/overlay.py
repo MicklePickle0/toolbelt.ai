@@ -100,11 +100,15 @@ RING_GREEN = (60, 220, 60)
 
 
 def draw_rings(image: np.ndarray, overlay: TracksOverlay, frame: int, cam, s: float,
-               radius_m: float = 0.45, alpha: float = 0.35) -> None:
+               cfg: dict, in_rally: bool, radius_m: float = 0.45, alpha: float = 0.35) -> None:
     """A green ring on the floor around each of our players' feet (Hudl style): a circle of
-    `radius_m` in court metres, projected through the camera so it lies on the court."""
+    `radius_m` in court metres, projected through the camera so it lies on the court.
+    Who gets one is decided per moment (roles.ours_now), not per whole track."""
+    from setter_eyes.track.roles import ours_now
+
     rows = [r for r in overlay.rows_at(frame)
-            if overlay.role(int(overlay.t.track_id[r])) == "near_player"]
+            if ours_now(overlay.t.court_xy_smooth[r], overlay.role(int(overlay.t.track_id[r])),
+                        in_rally, cfg)]
     if not rows:
         return
     th = max(1, round(image.shape[1] / 960))
@@ -126,3 +130,40 @@ def draw_rings(image: np.ndarray, overlay: TracksOverlay, frame: int, cam, s: fl
     cv2.addWeighted(fill, alpha, image, 1 - alpha, 0, dst=image)
     for poly in polys:
         cv2.polylines(image, [poly], True, RING_GREEN, 2 * th, cv2.LINE_AA)
+
+
+def draw_court_map(image: np.ndarray, overlay: TracksOverlay, frame: int, cfg: dict,
+                   in_rally: bool, ball_xyz=None) -> None:
+    """Top-down court in the top-right corner (far end at the top, our side at the bottom):
+    our players green (same per-moment rule as the rings), the far team grey, the ball white
+    when its 3D position is known."""
+    from setter_eyes.track.roles import ours_now
+
+    h, w = image.shape[:2]
+    px = h / 40
+    margin = 3.0
+    x_lo, x_hi, y_lo, y_hi = -margin, 9 + margin, -9 - margin, 9 + margin
+    mw, mh = int((x_hi - x_lo) * px), int((y_hi - y_lo) * px)
+    ox, oy = w - mw - 10, 40
+    panel = image[oy:oy + mh, ox:ox + mw]
+    panel[:] = (panel * 0.35).astype(np.uint8)
+
+    def to_px(x, y):
+        return int((x - x_lo) * px) + ox, int((y - y_lo) * px) + oy
+
+    cv2.rectangle(image, to_px(0, -9), to_px(9, 9), (0, 255, 255), 1)
+    for y in (-3, 3):
+        cv2.line(image, to_px(0, y), to_px(9, y), (0, 200, 200), 1)
+    cv2.line(image, to_px(-0.5, 0), to_px(9.5, 0), (255, 0, 255), 2)
+    for r in overlay.rows_at(frame):
+        xy = overlay.t.court_xy_smooth[r]
+        if not np.isfinite(xy).all() or not (x_lo <= xy[0] <= x_hi and y_lo <= xy[1] <= y_hi):
+            continue
+        role = overlay.role(int(overlay.t.track_id[r]))
+        if ours_now(xy, role, in_rally, cfg):
+            cv2.circle(image, to_px(*xy), max(3, int(px * 0.3)), RING_GREEN, -1, cv2.LINE_AA)
+        elif role == "far_player" and xy[1] < 0.5:
+            cv2.circle(image, to_px(*xy), max(2, int(px * 0.2)), GREY, -1, cv2.LINE_AA)
+    if ball_xyz is not None and x_lo <= ball_xyz[0] <= x_hi and y_lo <= ball_xyz[1] <= y_hi:
+        cv2.circle(image, to_px(ball_xyz[0], ball_xyz[1]), max(3, int(px * 0.22)),
+                   (255, 255, 255), -1, cv2.LINE_AA)

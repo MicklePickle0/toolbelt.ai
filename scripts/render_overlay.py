@@ -99,7 +99,7 @@ def main() -> int:
     if args.rallies:
         args.rings = True
     if args.tracks or args.rings:
-        from setter_eyes.track.overlay import TracksOverlay, draw_rings
+        from setter_eyes.track.overlay import TracksOverlay, draw_court_map, draw_rings
         from setter_eyes.track.people import PeopleTracks
         from setter_eyes.track.roles import load_roles
 
@@ -139,10 +139,14 @@ def main() -> int:
                              None if ball or people or tracks else label,
                              keypoints=False)
             if args.rings and tracks is not None:
-                draw_rings(img, tracks, frame.index, cam, s)
+                in_rally = rallies is not None and rallies.in_rally(frame.index)
+                draw_rings(img, tracks, frame.index, cam, s, pipeline["track"], in_rally)
             if ball is not None:
                 extra = ball.draw(img, frame.index, cam, s, ground=args.ground)
                 if rallies is not None:
+                    if tracks is not None:
+                        draw_court_map(img, tracks, frame.index, pipeline["track"],
+                                       rallies.in_rally(frame.index), ball.ball_xyz)
                     banner = rallies.draw(img, frame.index, s)
                     _text(img, f"f{frame.index}   {banner}")
                     _text(img, extra, line=2)

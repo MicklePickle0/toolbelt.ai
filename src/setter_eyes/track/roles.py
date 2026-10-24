@@ -77,3 +77,23 @@ def save_roles(roles: list[dict], path: Path) -> None:
 
 def load_roles(path: Path) -> dict[int, dict]:
     return {r["track_id"]: r for r in json.loads(path.read_text(encoding="utf-8"))["roles"]}
+
+
+def ours_now(xy: np.ndarray, track_role: str, in_rally: bool, cfg: dict) -> bool:
+    """Is this person one of our players at this moment? Decided from where they are now,
+    not only from the track's lifetime role: tracks can swap between teams at the net or
+    mix with bench time, and the libero's tracks are short.
+      - inside our court (lines + `inside_margin_m`, our side of the net): yes, any track
+      - just off it (up to `chase_margin_m`): only during a rally, for near-player tracks
+      - anywhere else (far side, benches, well behind the end line): no
+    """
+    r = cfg["roles"]["now"]
+    x, y = xy
+    if not np.isfinite([x, y]).all():
+        return False
+    m = r["inside_margin_m"]
+    if -m <= x <= 9 + m and r["net_clearance_m"] <= y <= 9 + m:
+        return True
+    c = r["chase_margin_m"]
+    near_court = -c <= x <= 9 + c and r["net_clearance_m"] <= y <= 9 + c
+    return bool(in_rally and track_role == "near_player" and near_court)

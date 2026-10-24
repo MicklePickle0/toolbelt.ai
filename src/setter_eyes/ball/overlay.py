@@ -96,12 +96,14 @@ class BallOverlay:
                     self._x(image, c, cam, s, th)
 
         label = ""
+        self.ball_xyz = None
         arc = self.arc_at(k)
         if arc is not None and arc.confidence >= self.min_conf:
             now = min(max(t_now, arc.t0), arc.t0 + arc.duration_s)
             p = arc.position(np.array([now]), self.g)[0]
             v = np.array(arc.v0) + self.g * (now - arc.t0)
             label = f"ball z {p[2]:.1f} m  {np.linalg.norm(v):.0f} m/s"
+            self.ball_xyz = p
             if ground:
                 self._ground(image, arc, p, now, cam.scaled(s), th)
         if np.isfinite(self.path.uv[k]).all():

@@ -16,6 +16,10 @@ class RallyOverlay:
         self.contacts = c["contacts"]
         self.rallies = r["rallies"]
 
+    def in_rally(self, frame: int) -> bool:
+        t = frame / self.fps
+        return any(ra["start_t"] <= t <= ra["end_t"] for ra in self.rallies)
+
     def banner(self, frame: int) -> str:
         t = frame / self.fps
         for ra in self.rallies:
