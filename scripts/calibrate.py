@@ -12,6 +12,7 @@ data/outputs/calibration/<id>.jpg (overlay) and <id>_mask.png (line evidence).
 Usage:
   python scripts/calibrate.py --video KEY [--frame N] [--manual] [--no-ui]
   python scripts/calibrate.py --all --no-ui       # try auto everywhere, click later
+  python scripts/calibrate.py --missing --manual  # click every uncalibrated video in turn
 """
 
 from __future__ import annotations
@@ -146,6 +147,8 @@ def main() -> int:
     paths = config.load("pipeline")["paths"]
     ap.add_argument("--video", action="append", help="manifest key (repeatable)")
     ap.add_argument("--all", action="store_true", help="every video in the manifest")
+    ap.add_argument("--missing", action="store_true",
+                    help="every manifest video that has no calibration yet")
     ap.add_argument("--frame", type=int, help="cached frame index (default: the first cached)")
     ap.add_argument("--manifest", type=Path, default=config.repo_path(paths["manifest_path"]))
     ap.add_argument("--manual", action="store_true", help="skip auto, click points")
@@ -154,8 +157,13 @@ def main() -> int:
 
     manifest = load_manifest(args.manifest)
     entries = manifest.videos if args.all else [manifest.video(k) for k in args.video or []]
+    if args.missing:
+        cal_dir = config.repo_path(paths["calibration_dir"])
+        entries = [v for v in manifest.videos if not (cal_dir / f"{v.key}.json").exists()]
+        print(f"{len(entries)} videos without a calibration: "
+              + ", ".join(v.key for v in entries))
     if not entries:
-        ap.error("give --video KEY or --all")
+        ap.error("give --video KEY, --all or --missing (or everything is calibrated)")
     cfg = config.load("court")["calibration"]
     done = [calibrate_one(v.key, v.net_height_m, args, cfg, paths) for v in entries]
     ok = [c for c in done if c is not None]
