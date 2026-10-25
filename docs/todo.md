@@ -20,6 +20,32 @@ Ordered by priority within each section. Scores are from the labelled `titan-ris
       given the wrong team (team right 90%).
 - [ ] **Serve-only rallies from our off-screen server** (aces, service errors): 3 of 42
       missed.
+- [ ] **Dead-ball touches after the whistle (live-ball check).** Build this into the rally
+      end / game logic.
+      - *Problem:* the pipeline keeps adding touches after a rally has ended: the ball is
+        caught, held or tossed back after the whistle. Seen on `titan-rise_set1`: 5 of 42
+        rallies, extra touch 0.5-1.8 s after the end, after kills, a ball-handling error and
+        a service error. Seen in the `mac-chrome_set1` demo: a net touch ended the point, and
+        a "dig" was still tracked after it. Each extra touch also makes the point outcome
+        wrong, since the outcome reads the rally's last touch.
+      - *Why the pipeline can't hear it:* no audio, by design. A net touch, a lift or a
+        line call is only a whistle.
+      - *Fix, a live-ball check on each rally's trailing touches:* accept a touch only if
+        play still looks on. Signals:
+        1. *Ball goes dead:* little speed after the touch, no fast flight, the ball stops in
+           someone's hands. Live touches send it away with pace.
+        2. *Players stop:* near-side players' combined movement drops sharply within about
+           1 s of the whistle (people tracks already give this).
+        3. *Net shakes:* optical flow in the net region (known per frame from the
+           calibration) while the ball isn't near it, which means a player touched the net.
+           This catches net touches directly.
+        A trailing touch that fails ends the rally before it, at reduced confidence (review
+        queue).
+      - *Caveats:* only 6 labelled examples so far, so hand-set rules, not a model; check
+        against the labels that no real last touches are cut. Label the end of a rally at
+        the whistle (as done so far) to get more examples.
+      - *Backstop:* a one-key "rally ended here" in the review UI (Milestone 6), next to the
+        point-winner key; corrections become training data.
 - [ ] **Ball-size check for other courts' balls** (a ball behind our court looks too
       small for where it seems to be). Only the airspace check is used so far.
 

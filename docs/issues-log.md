@@ -128,6 +128,10 @@ Labelling conventions decided along the way (also in `docs/labelling.md`, "Judge
 ## Still open
 
 - **Rally detection is the weakest step:** 32 of 42 rallies found, 8 false rallies, serve found in 22. It still relies mostly on ball visibility; next step is to build rallies from the (now reliable) touches.
+- **Touches after the whistle:** caught or tossed balls after a rally ends (e.g. a net
+  touch, which is only a whistle) are kept as touches: 5 of 42 rallies, and they make the
+  point outcome wrong. Planned fix: a live-ball check (ball speed, players stopping, net
+  shaking); see `docs/todo.md`.
 - **Blocks:** 7 of 18 found; a quick deflection at the net, often hidden by the tape.
 - **The touch scorer is tested within one set only.** A second labelled set (`mac-chrome_set1` is fully processed) is needed to show it works on a different court.
 - **Camera:** a second jump in the last ~25 s of `mac-chrome_set2` can't be fixed (no saved frame after it). `mac-iron_set1` and `reach-apex_set2` keep a small offset (20-40 px in 4K).
