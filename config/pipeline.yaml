@@ -231,6 +231,22 @@ rally:
     y_m: [-12.0, 12.0]
     max_z_m: 10.0
 
+classify:
+  # Stage-1 action rules (setter_eyes.classify.rules): touch order within each side's run.
+  block_zone_m: 1.0          # a block: ball this close to the net plane...
+  block_min_z_m: 2.0         # ...and at least this high (tape at 2.24-2.43 m)
+  rule_confidence:           # per rule; times the touch's own confidence
+    serve: 0.95
+    receive: 0.9
+    set: 0.85
+    attack: 0.8
+    dig: 0.75
+    block: 0.6
+    coverage: 0.6
+    dump: 0.6
+    overpass: 0.6
+    uncertain: 0.4           # a 4th touch in a row, or a reply on the serving side
+
 overlay:                     # drawing sizes in render_overlay.py demos
   ring_radius_m: 0.55        # green ring under each of our players, court metres
   trail_px: 3                # ball trail width at 1920 px wide (scaled with the video)

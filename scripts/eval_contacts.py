@@ -76,12 +76,12 @@ def main() -> int:
     with open(out / f"{entry.key}_touches.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["result", "rally", "label_time", "pred_time", "label_team", "pred_team",
-                    "action", "pred_confidence", "pred_source"])
+                    "action", "pred_action", "pred_confidence", "pred_source"])
         for m in ev.touches:
             result = "miss" if m.pred_t is None else "false_alarm" if m.label_t is None else \
                 "hit" if m.label_team == m.pred_team else "hit_wrong_team"
             w.writerow([result, m.rally, _clock(m.label_t), _clock(m.pred_t), m.label_team,
-                        m.pred_team, m.action, m.confidence, m.source])
+                        m.pred_team, m.action, m.pred_action, m.confidence, m.source])
     with open(out / f"{entry.key}_rallies.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(asdict(ev.rallies[0])) if ev.rallies else [])
         w.writeheader()
@@ -95,6 +95,9 @@ def main() -> int:
           f"recall {pct(s['touch_recall'])}, precision {pct(s['touch_precision'])}, "
           f"team right {pct(s['team_accuracy'])}, timing {sec(s['median_time_error_s'])}")
     print(f"recall by action: {s['recall_by_action']}")
+    if s["action_accuracy"] is not None:
+        print(f"actions right on found touches: {s['action_accuracy']:.0%}  "
+              f"(right/labelled: {s['action_accuracy_by_label']})")
     print(f"rallies: {s['rallies_found']}/{s['rallies_labelled']} found, "
           f"{s['false_rallies']} false (no rally there), serve found in "
           f"{s['serves_found']} (serving team right in {s['serving_team_correct']}); "

@@ -43,6 +43,8 @@ class Contact:
     person_distance: float          # m (3D) or body heights (image), inf if nobody near
     confidence: float
     serve: bool = False
+    action: str | None = None                # classify/rules.py, after the rally is built
+    action_confidence: float | None = None
 
     def to_dict(self) -> dict:
         d = asdict(self)

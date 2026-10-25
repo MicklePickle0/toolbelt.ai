@@ -32,6 +32,7 @@ import numpy as np
 from setter_eyes import config
 from setter_eyes.ball.arcs import Arc
 from setter_eyes.ball.tracker import BallPath
+from setter_eyes.classify.rules import classify_rally
 from setter_eyes.contacts.events import Contact, find_contacts
 from setter_eyes.contacts.scorer import TouchScorer, scored_contacts
 from setter_eyes.labels import load_manifest
@@ -77,6 +78,13 @@ def main() -> int:
     learned = args.oof or model_path.exists()
     rallies = (segment_from_touches if learned else segment_rallies)(
         path, arcs, contacts, g, fps, cfg)
+    for r in rallies:                                  # actions, once the rally is known
+        touches = [contacts[i] for i in r.contacts if contacts[i].kind == "touch"]
+        serve = contacts[r.serve_contact] if r.serve_contact is not None and \
+            r.serve_contact >= 0 else None
+        for c, (action, conf) in zip(touches, classify_rally(touches, serve, r.serving_team,
+                                                             cfg["classify"]), strict=True):
+            c.action, c.action_confidence = action, conf
     (cache / f"contacts{suffix}.json").write_text(json.dumps(
         {"video": entry.key, "fps": fps, "contacts": [c.to_dict() for c in contacts]},
         indent=1), encoding="utf-8")

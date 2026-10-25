@@ -36,6 +36,7 @@ class TouchMatch:
     confidence: float | None = None
     source: str = ""            # touch | traced
     rally: int | None = None    # labelled rally number
+    pred_action: str | None = None
 
 
 @dataclass
@@ -64,6 +65,7 @@ class Evaluation:
         n_pred = sum(m.pred_t is not None for m in self.touches)
         team_ok = [m.label_team == m.pred_team for m in matched]
         dt = [abs(m.pred_t - m.label_t) for m in matched]
+        acted = [m for m in matched if m.pred_action is not None]
         by_action: dict[str, list[int]] = {}
         for m in self.touches:
             if m.label_t is not None:
@@ -80,6 +82,12 @@ class Evaluation:
             "team_accuracy": float(np.mean(team_ok)) if team_ok else None,
             "median_time_error_s": float(np.median(dt)) if dt else None,
             "recall_by_action": {a: f"{h}/{n}" for a, (h, n) in sorted(by_action.items())},
+            "action_accuracy": float(np.mean([m.pred_action == m.action for m in acted]))
+            if acted else None,
+            "action_accuracy_by_label": {
+                a: f"{sum(m.pred_action == a for m in acted if m.action == a)}/"
+                   f"{sum(m.action == a for m in acted)}"
+                for a in sorted({m.action for m in acted if m.action})},
             "rallies_labelled": len(self.rallies),
             "rallies_found": len(found),
             "false_rallies": len(self.false_rallies),
@@ -113,11 +121,12 @@ def evaluate(labels: list[RallyLabel], contacts: list[dict], rallies: list[dict]
     lab = [(c.frame / fps, c.team, c.action, r.rally_number)
            for r in labels for c in r.contacts]
     # Predicted side: touches inside the labelled stretch, plus traced serves.
-    pred = [(c["t"], c["team"], c["confidence"], "touch") for c in contacts
+    pred = [(c["t"], c["team"], c["confidence"], "touch", c.get("action")) for c in contacts
             if c["kind"] == "touch" and window_of(c["t"]) is not None]
     for ra in rallies:
         if ra["serve_contact"] == TRACED and window_of(ra["start_t"]) is not None:
-            pred.append((ra["start_t"], ra["serving_team"], ra["confidence"], "traced"))
+            pred.append((ra["start_t"], ra["serving_team"], ra["confidence"], "traced",
+                         "serve"))
 
     out = Evaluation()
     pairs = _match([p[0] for p in pred], [lb[0] for lb in lab], tol)
@@ -125,14 +134,15 @@ def evaluate(labels: list[RallyLabel], contacts: list[dict], rallies: list[dict]
     used_l = {j for _, j in pairs}
     for i, j in pairs:
         p, lb = pred[i], lab[j]
-        out.touches.append(TouchMatch(lb[0], p[0], lb[1], p[1], lb[2], p[2], p[3], lb[3]))
+        out.touches.append(TouchMatch(lb[0], p[0], lb[1], p[1], lb[2], p[2], p[3], lb[3],
+                                      p[4]))
     for j, lb in enumerate(lab):
         if j not in used_l:
             out.touches.append(TouchMatch(lb[0], None, lb[1], None, lb[2], rally=lb[3]))
     for i, p in enumerate(pred):
         if i not in used_p:
             out.touches.append(TouchMatch(None, p[0], None, p[1], None, p[2], p[3],
-                                          window_of(p[0])))
+                                          window_of(p[0]), p[4]))
     out.touches.sort(key=lambda m: m.label_t if m.label_t is not None else m.pred_t)
 
     for r in labels:
