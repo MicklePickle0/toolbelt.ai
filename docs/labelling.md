@@ -137,6 +137,20 @@ These are **warnings**:
 - more than three contacts by one side
 - a jersey that isn't in the roster
 
+The quickest way to write `events.csv` is the keyboard labeller,
+`python scripts/label_events.py --video KEY` (keys listed in the script's help).
+
+### Judgement calls
+
+- **Our serve starts off-screen:** label the hit, or the first frame the ball appears if the hit can't be seen. Put `rally_start` about 1 s before it.
+- **A touch lasting several frames** (a set, a dig): one label, on the first frame of contact.
+- **The ball hits the net:** no label; it only shows in how the rally ends (e.g. a serve into the net is a `service_error`).
+- **Scramble touches:** label by touch order: 1st `dig`, 2nd `set` (even an ugly bump in mid-court), 3rd `attack` if swung, else `free_ball`. This is our own convention, not a DataVolley or Hudl rule.
+- **Passing a free ball:** label it `dig`, after their `free_ball` or `overpass`. The stats count it as a free-ball pass, not a dig.
+- **Our serve receive goes straight back over:** label it `overpass` (no pass score). It counts as a 0 pass in the passer's average.
+- **A dig called for a ball-handling error:** label the `dig`, then end the rally with outcome `ball_handling_error`. It counts as an error, not a dig. If the dig was clean and the next touch was called, the dig still counts.
+- **Timeouts:** no labels. Label rallies in an unbroken run, so the scorer can count fake rallies between them.
+
 ## Box labels (`boxes.coco.json`)
 
 Use standard COCO detection JSON, from any tool (CVAT, Roboflow, Label Studio).
