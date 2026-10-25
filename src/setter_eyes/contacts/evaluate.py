@@ -165,7 +165,7 @@ def evaluate(labels: list[RallyLabel], contacts: list[dict], rallies: list[dict]
             m.pred_serving = best["serving_team"]
             m.serve_how = {TRACED: "traced", -3: "inferred", None: "not found"}.get(sc, "seen")
             m.end_reason = best["end_reason"]
-            touches = [contacts[i] for i in best["contacts"]
+            touches = [contacts[i] for i in best.get("contacts", [])
                        if i < len(contacts) and contacts[i]["kind"] == "touch"]
             last = touches[-1] if touches else {}
             if r.point_winner:
