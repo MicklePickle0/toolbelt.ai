@@ -147,7 +147,7 @@ def evaluate(labels: list[RallyLabel], contacts: list[dict], rallies: list[dict]
             sc = best["serve_contact"]
             m.pred_index, m.pred_start, m.pred_end = best["index"], best["start_t"], best["end_t"]
             m.pred_serving = best["serving_team"]
-            m.serve_how = "traced" if sc == TRACED else "seen" if sc is not None else "not found"
+            m.serve_how = {TRACED: "traced", -3: "inferred", None: "not found"}.get(sc, "seen")
             m.end_reason = best["end_reason"]
         out.rallies.append(m)
     if labels:

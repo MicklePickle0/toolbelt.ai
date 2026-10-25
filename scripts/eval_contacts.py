@@ -7,8 +7,11 @@ Writes, for going through the misses and false alarms by eye:
   data/outputs/eval/<id>_rallies.csv   each labelled rally against its predicted rally
 Settings: `evaluate:` in config/pipeline.yaml.
 
+--oof scores contacts_oof.json / rallies_oof.json (find_rallies.py --oof): touches chosen
+without training on them, the honest figure for a video the scorer was trained on.
+
 Usage:
-  python scripts/eval_contacts.py --video titan-rise_set1
+  python scripts/eval_contacts.py --video titan-rise_set1 [--oof]
 """
 
 from __future__ import annotations
@@ -39,6 +42,7 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--video", required=True, help="manifest key")
     ap.add_argument("--manifest", type=Path, default=config.repo_path(paths["manifest_path"]))
+    ap.add_argument("--oof", action="store_true", help="score the out-of-fold outputs")
     args = ap.parse_args()
 
     manifest = load_manifest(args.manifest)
@@ -54,7 +58,7 @@ def main() -> int:
         return 1
 
     model_path = config.repo_path(cfg["contacts"]["scorer"]["path"])
-    if model_path.exists():
+    if model_path.exists() and not args.oof:
         from setter_eyes.contacts.scorer import TouchScorer
 
         if entry.key in TouchScorer.load(model_path).trained_on:
@@ -62,8 +66,9 @@ def main() -> int:
                   "optimistic; the honest figure is train_touch_scorer.py's validation, or a "
                   "labelled video it wasn't trained on")
     cache = config.repo_path(paths["cache_dir"]) / entry.key
-    c = json.loads((cache / "contacts.json").read_text(encoding="utf-8"))
-    r = json.loads((cache / "rallies.json").read_text(encoding="utf-8"))
+    suffix = "_oof" if args.oof else ""
+    c = json.loads((cache / f"contacts{suffix}.json").read_text(encoding="utf-8"))
+    r = json.loads((cache / f"rallies{suffix}.json").read_text(encoding="utf-8"))
     ev = evaluate(vl.rallies, c["contacts"], r["rallies"], float(c["fps"]), cfg)
 
     out = config.repo_path(paths["output_dir"]) / "eval"

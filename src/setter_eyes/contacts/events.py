@@ -50,6 +50,13 @@ class Contact:
             round(self.person_distance, 2)
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict) -> Contact:
+        d = dict(d)
+        if d.get("person_distance") is None:
+            d["person_distance"] = float("inf")
+        return cls(**d)
+
 
 def _people_at(people: PeopleTracks, frames_index: dict, frame: int) -> np.ndarray:
     return frames_index.get(int(frame), np.zeros(0, int))

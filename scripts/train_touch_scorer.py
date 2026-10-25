@@ -6,6 +6,11 @@ Reports a validation grouped by rally (each rally scored by a model that never s
 then trains on everything and saves it to contacts.scorer.path (config/pipeline.yaml).
 find_rallies.py uses the saved model from then on.
 
+Also writes data/cache/<id>/contacts_oof.json: touches as the pipeline would choose them
+WITHOUT having trained on them (labelled rallies: out-of-fold; everything else: the final
+model, which never saw it), plus floor contacts. find_rallies.py --oof and
+eval_contacts.py --oof test the rally logic on those, so it isn't flattered either.
+
 The validation is within the training videos. The honest test is a labelled video it
 was NOT trained on: scripts/eval_contacts.py warns when you score a training video.
 
@@ -17,6 +22,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 from pathlib import Path
 
@@ -27,6 +33,7 @@ from setter_eyes import config
 from setter_eyes.ball.arcs import Arc
 from setter_eyes.ball.tracker import BallPath
 from setter_eyes.contacts.evaluate import evaluate
+from setter_eyes.contacts.events import _merge
 from setter_eyes.contacts.features import NAMES, candidate_features
 from setter_eyes.contacts.scorer import TouchScorer, decode, raw_candidates, touch_targets
 from setter_eyes.labels import load_manifest
@@ -46,8 +53,11 @@ def video_dataset(entry, manifest, cfg: dict, paths: dict) -> dict:
     g = np.array([0.0, 0.0, -float(ad["gravity"])])
     people = PeopleTracks.load(d / "people_tracks.npz")
     roles = load_roles(d / "people_roles.json")
-    cands = [c for c in raw_candidates(path, [Arc(**a) for a in ad["arcs"]], g, fps, people,
-                                       roles, cfg) if c.kind == "touch"]
+    every = raw_candidates(path, [Arc(**a) for a in ad["arcs"]], g, fps, people, roles, cfg)
+    c = cfg["contacts"]
+    floors = _merge([x for x in every if x.kind == "floor"
+                     and x.confidence >= c["min_confidence"]], c["merge_window_s"])
+    cands = [x for x in every if x.kind == "touch"]
     X = candidate_features(cands, path, people, fps, cfg["contacts"]["overhead_reach_bodies"])
     t = np.array([c.t for c in cands])
     windows = [(r.start_frame / fps - 1, r.end_frame / fps + 1) for r in vl.rallies]
@@ -59,7 +69,20 @@ def video_dataset(entry, manifest, cfg: dict, paths: dict) -> dict:
     ours = np.array([int(labels[w].team == "us") if w >= 0 else -1 for w in which])
     keep = rally >= 0
     return {"key": entry.key, "fps": fps, "labels": vl.rallies, "cands": np.array(cands)[keep],
-            "X": X[keep], "t": t[keep], "y": y[keep], "ours": ours[keep], "rally": rally[keep]}
+            "X": X[keep], "t": t[keep], "y": y[keep], "ours": ours[keep], "rally": rally[keep],
+            "outside": {"cands": np.array(cands)[~keep], "X": X[~keep], "t": t[~keep]},
+            "floors": floors, "cache": d}
+
+
+def _chosen(cands, t, p_touch, p_ours, s: dict) -> list:
+    """The candidates decode() keeps, with the scorer's confidence and team."""
+    out = []
+    for j in decode(t, p_touch, s["threshold"], s["nms_s"]):
+        c = copy.copy(cands[j])
+        c.confidence = round(float(p_touch[j]), 3)
+        c.team = "us" if p_ours[j] >= 0.5 else "them"
+        out.append(c)
+    return out
 
 
 def main() -> int:
@@ -92,19 +115,30 @@ def main() -> int:
         n = len(d["y"])
         pt, po = p_touch[off:off + n], p_ours[off:off + n]
         off += n
-        kept = []
-        for j in decode(d["t"], pt, s["threshold"], s["nms_s"]):
-            c = d["cands"][j].to_dict()
-            c["confidence"], c["team"] = float(pt[j]), "us" if po[j] >= 0.5 else "them"
-            kept.append(c)
+        d["oof"] = (pt, po)
+        kept = [c.to_dict() for c in _chosen(d["cands"], d["t"], pt, po, s)]
         r = evaluate(d["labels"], kept, [], d["fps"], cfg).summary()
         print(f"  {d['key']} (validation by rally): touches found {r['touch_recall']:.0%}, "
               f"of predicted real {r['touch_precision']:.0%}, team right "
               f"{r['team_accuracy']:.0%}, timing {r['median_time_error_s']:.2f} s")
 
+    model = TouchScorer.fit(X, y, ours, list(args.video), s)
+    for d in data:                     # everything predicted without training on it
+        o = d["outside"]
+        po_t, po_o = model.predict(o["X"])
+        t_all = np.concatenate([d["t"], o["t"]])
+        order = np.argsort(t_all, kind="stable")
+        cands = np.concatenate([d["cands"], o["cands"]])[order]
+        pt = np.concatenate([d["oof"][0], po_t])[order]
+        po = np.concatenate([d["oof"][1], po_o])[order]
+        chosen = _chosen(cands, t_all[order], pt, po, s)
+        contacts = sorted(chosen + d["floors"], key=lambda c: c.t)
+        (d["cache"] / "contacts_oof.json").write_text(json.dumps(
+            {"video": d["key"], "fps": d["fps"], "out_of_fold": True,
+             "contacts": [c.to_dict() for c in contacts]}, indent=1), encoding="utf-8")
+        print(f"  {d['key']}: out-of-fold touches -> {d['cache'] / 'contacts_oof.json'}")
     if args.no_save:
         return 0
-    model = TouchScorer.fit(X, y, ours, list(args.video), s)
     imp = np.abs(np.corrcoef(np.nan_to_num(X).T, y)[-1, :-1])
     top = ", ".join(NAMES[i] for i in np.argsort(-np.nan_to_num(imp))[:6])
     out = model.save(config.repo_path(s["path"]))
