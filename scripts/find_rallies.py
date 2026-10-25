@@ -7,6 +7,8 @@ Needs the ball path and arcs (scripts/track_ball.py) and the people tracks and r
   data/cache/<id>/rallies.json    rallies: start (serve) and end (floor / ball lost),
                                   serving team, contacts, net crossings, confidence
 Rallies carry no point winner: that comes from the review UI (CLAUDE.md).
+Also writes rallies and touches (with actions) to the event DB (paths.db_path), unreviewed,
+replacing what was there for this video; --no-db skips it.
 Touches are chosen by the learned scorer when its model exists (contacts.scorer.path,
 scripts/train_touch_scorer.py), else by the hand-tuned fusion in contacts/events.py.
 Settings: `contacts:`, `serve:` and `rally:` in config/pipeline.yaml.
@@ -29,12 +31,13 @@ from pathlib import Path
 
 import numpy as np
 
-from setter_eyes import config
+from setter_eyes import config, db
 from setter_eyes.ball.arcs import Arc
 from setter_eyes.ball.tracker import BallPath
 from setter_eyes.classify.rules import classify_rally
 from setter_eyes.contacts.events import Contact, find_contacts
 from setter_eyes.contacts.scorer import TouchScorer, scored_contacts
+from setter_eyes.db.pipeline import write_video
 from setter_eyes.labels import load_manifest
 from setter_eyes.rally.segment import segment_from_touches, segment_rallies
 from setter_eyes.track.people import PeopleTracks
@@ -48,11 +51,13 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--video", required=True, help="manifest key")
     ap.add_argument("--manifest", type=Path, default=config.repo_path(paths["manifest_path"]))
+    ap.add_argument("--no-db", action="store_true", help="don't write the event DB")
     ap.add_argument("--oof", action="store_true",
                     help="rallies from contacts_oof.json (honest test of the rally logic)")
     args = ap.parse_args()
 
-    entry = load_manifest(args.manifest).video(args.video)
+    manifest = load_manifest(args.manifest)
+    entry = manifest.video(args.video)
     cache = config.repo_path(paths["cache_dir"]) / entry.key
     path = BallPath.load(cache / "ball_path.npz")
     arcs_doc = json.loads((cache / "ball_arcs.json").read_text(encoding="utf-8"))
@@ -109,6 +114,12 @@ def main() -> int:
     print(f"rally length s: median {np.median(lengths):.1f}, max {lengths.max():.1f}; "
           f"below review confidence {review}: {sum(r.confidence < review for r in rallies)}")
     print(f"-> {cache / f'contacts{suffix}.json'}, {cache / f'rallies{suffix}.json'}")
+    if not args.no_db and not args.oof:
+        conn = db.connect(config.repo_path(paths["db_path"]))
+        w = write_video(conn, manifest, entry, fps, [r.to_dict() for r in rallies],
+                        [c.to_dict() for c in contacts])
+        conn.close()
+        print(f"event DB: {w.rallies} rallies, {w.contacts} touches -> {paths['db_path']}")
     return 0
 
 
