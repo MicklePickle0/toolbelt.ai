@@ -13,11 +13,15 @@ Usage:
   python scripts/calibrate.py --video KEY [--frame N] [--manual] [--no-ui]
   python scripts/calibrate.py --all --no-ui       # try auto everywhere, click later
   python scripts/calibrate.py --missing --manual  # click every uncalibrated video in turn
+  python scripts/calibrate.py --video KEY --frame N --segment --manual
+      # the camera was moved (scripts/check_camera.py): calibrate a cached frame after the
+      # move; it applies from the move on. Then: track_camera.py --video KEY --reanchor
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import cv2
@@ -130,15 +134,34 @@ def calibrate_one(key: str, net_height: float, args, cfg: dict, paths: dict) -> 
         print("  NOT CALIBRATED (run again without --no-ui to click points)")
         return None
 
+    name = key
+    if args.segment:
+        cal.applies_from = segment_start(config.repo_path(paths["calibration_dir"]), key, frame)
+        name = f"{key}@f{frame:06d}"
+        print(f"  extra calibration: applies from frame {cal.applies_from}")
     label = f"{key}  f{frame}  {cal.method}  confidence {cal.confidence:.2f}"
     overlay = draw_court(image, cal.camera, model, label)
     s_out = min(1.0, 1920 / overlay.shape[1])
-    cv2.imwrite(str(out_dir / f"{key}.jpg"),
+    cv2.imwrite(str(out_dir / f"{name}.jpg"),
                 cv2.resize(overlay, None, fx=s_out, fy=s_out, interpolation=cv2.INTER_AREA))
-    saved = save(cal, config.repo_path(paths["calibration_dir"]))
+    saved = save(cal, config.repo_path(paths["calibration_dir"]), segment=args.segment)
     flag = "  NEEDS REVIEW" if cal.needs_review else ""
-    print(f"  saved {saved}{flag}\n  overlay {out_dir / f'{key}.jpg'}")
+    print(f"  saved {saved}{flag}\n  overlay {out_dir / f'{name}.jpg'}")
+    if args.segment:
+        print(f"  next: python scripts/track_camera.py --video {key} --reanchor")
     return cal
+
+
+def segment_start(cal_dir: Path, key: str, frame: int) -> int:
+    """Where an extra calibration on `frame` takes over: the last camera move found by
+    scripts/check_camera.py at or before that frame, else the frame itself."""
+    report = cal_dir / f"{key}_alignment.json"
+    if report.exists():
+        moves = [hi for _, hi in json.loads(report.read_text(encoding="utf-8"))["moves"]
+                 if hi <= frame]
+        if moves:
+            return int(max(moves))
+    return frame
 
 
 def main() -> int:
@@ -153,7 +176,11 @@ def main() -> int:
     ap.add_argument("--manifest", type=Path, default=config.repo_path(paths["manifest_path"]))
     ap.add_argument("--manual", action="store_true", help="skip auto, click points")
     ap.add_argument("--no-ui", action="store_true", help="never open the click UI")
+    ap.add_argument("--segment", action="store_true",
+                    help="the camera was moved: save an extra calibration (needs --frame)")
     args = ap.parse_args()
+    if args.segment and (args.frame is None or not args.video):
+        ap.error("--segment needs --video and --frame")
 
     manifest = load_manifest(args.manifest)
     entries = manifest.videos if args.all else [manifest.video(k) for k in args.video or []]

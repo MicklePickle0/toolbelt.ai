@@ -1,6 +1,9 @@
 """Calibration results on disk: data/calibration/<video>.json.
 
-Kept outside data/cache because manual clicks are human work, not regenerable.
+If the camera was moved during the video (scripts/check_camera.py finds it), a later
+calibration covers the rest: data/calibration/<video>@f<frame>.json, applying from its
+`applies_from` frame on. Kept outside data/cache because manual clicks are human work,
+not regenerable.
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ class Calibration:
     line_clicks: dict[str, list[list[float]]] = field(default_factory=dict)  # line -> [[u, v]]
     reprojection_rms_px: float | None = None
     needs_review: bool = False
+    applies_from: int | None = None               # extra calibrations: first frame they cover
 
     def to_dict(self) -> dict:
         return {"video": self.video, "method": self.method,
@@ -37,6 +41,7 @@ class Calibration:
                 "camera": self.camera.to_dict(), "support": self.support, "clicks": self.clicks,
                 "line_clicks": self.line_clicks,
                 "reprojection_rms_px": self.reprojection_rms_px,
+                "applies_from": self.applies_from,
                 "saved_at": datetime.now(UTC).isoformat(timespec="seconds")}
 
     @classmethod
@@ -46,12 +51,21 @@ class Calibration:
                    frame=d.get("frame"), support=d.get("support", {}),
                    clicks=d.get("clicks", {}), line_clicks=d.get("line_clicks", {}),
                    reprojection_rms_px=d.get("reprojection_rms_px"),
-                   needs_review=d.get("needs_review", False))
+                   needs_review=d.get("needs_review", False),
+                   applies_from=d.get("applies_from"))
 
 
-def save(cal: Calibration, directory: Path) -> Path:
+def segment_path(directory: Path, video: str, frame: int) -> Path:
+    return directory / f"{video}@f{frame:06d}.json"
+
+
+def save(cal: Calibration, directory: Path, segment: bool = False) -> Path:
+    """The video's calibration, or (segment) an extra one for after the camera moved."""
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f"{cal.video}.json"
+    if segment and (cal.frame is None or cal.applies_from is None):
+        raise ValueError("an extra calibration needs frame and applies_from")
+    path = segment_path(directory, cal.video, cal.frame) if segment else \
+        directory / f"{cal.video}.json"
     path.write_text(json.dumps(cal.to_dict(), indent=2), encoding="utf-8")
     return path
 
@@ -61,6 +75,13 @@ def load(video: str, directory: Path) -> Calibration | None:
     if not path.exists():
         return None
     return Calibration.from_dict(json.loads(path.read_text(encoding="utf-8")))
+
+
+def load_segments(video: str, directory: Path) -> list[Calibration]:
+    """Extra calibrations (camera moved), in order of the frame they apply from."""
+    cals = [Calibration.from_dict(json.loads(p.read_text(encoding="utf-8")))
+            for p in directory.glob(f"{video}@f*.json")]
+    return sorted(cals, key=lambda c: c.applies_from)
 
 
 def sample_frames(path: str | Path, n: int, start: float = 0.05,

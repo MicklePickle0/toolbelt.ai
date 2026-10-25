@@ -13,6 +13,8 @@ noisy frame-to-frame steps random-walks off by degrees.
    so returning to an old view re-uses it and adds no drift), else make the current
    frame a new keyframe.
 3. At the end, rotations are re-expressed relative to the calibrated frame.
+4. If the camera was MOVED (not panned) part-way, later calibrations take over from where
+   they apply (reanchor): the pan between frames is kept, the anchor and centre change.
 
 Confidence per frame = RANSAC inlier share x share of corners still tracked.
 """
@@ -20,7 +22,7 @@ Confidence per frame = RANSAC inlier share x share of corners still tracked.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
@@ -32,6 +34,22 @@ from setter_eyes.ingest import Frame, iter_frames_scaled
 
 
 @dataclass
+class Segment:
+    """A later calibration: the camera was moved, so from `start` on it is the base."""
+    start: int                   # first frame it covers
+    ref_frame: int               # the frame it was fitted on
+    base: Camera
+
+
+def _cam_row(b: Camera) -> list[float]:
+    return [b.width, b.height, b.f, *b.rvec, *b.tvec, b.k1]
+
+
+def _cam_from_row(b: np.ndarray) -> Camera:
+    return Camera(int(b[0]), int(b[1]), float(b[2]), b[3:6], b[6:9], float(b[9]))
+
+
+@dataclass
 class PoseTrack:
     video: str
     base: Camera                 # the calibrated camera (centre, focal length, k1)
@@ -39,6 +57,15 @@ class PoseTrack:
     frames: np.ndarray           # (N,) frame indices
     rvecs: np.ndarray            # (N, 3) absolute rotations
     confidence: np.ndarray       # (N,)
+    segments: list[Segment] = field(default_factory=list)
+    rvecs_main: np.ndarray | None = None    # anchored on the first calibration only
+
+    def base_at(self, frame: int) -> Camera:
+        b = self.base
+        for s in self.segments:
+            if frame >= s.start:
+                b = s.base
+        return b
 
     def camera(self, frame: int) -> Camera:
         i = int(np.clip(np.searchsorted(self.frames, frame), 0, len(self.frames) - 1))
@@ -46,25 +73,54 @@ class PoseTrack:
                 abs(self.frames[i - 1] - frame) < abs(self.frames[i] - frame):
             i -= 1
         R = cv2.Rodrigues(self.rvecs[i])[0]
-        t = -R @ to_cv(self.base.centre[None])[0]
-        b = self.base
+        b = self.base_at(int(self.frames[i]))
+        t = -R @ to_cv(b.centre[None])[0]
         return Camera(b.width, b.height, b.f, self.rvecs[i], t, b.k1)
 
     def save(self, path: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
-        b = self.base
+        extra = {}
+        if self.segments:
+            extra = {"segments": np.array([[s.start, s.ref_frame, *_cam_row(s.base)]
+                                           for s in self.segments]),
+                     "rvecs_main": self.rvecs_main}
         np.savez_compressed(path, video=self.video, ref_frame=self.ref_frame, frames=self.frames,
                             rvecs=self.rvecs, confidence=self.confidence,
-                            base=np.array([b.width, b.height, b.f, *b.rvec, *b.tvec, b.k1]))
+                            base=np.array(_cam_row(self.base)), **extra)
         return path
 
     @classmethod
     def load(cls, path: Path) -> PoseTrack:
         d = np.load(path)
-        b = d["base"]
-        base = Camera(int(b[0]), int(b[1]), float(b[2]), b[3:6], b[6:9], float(b[9]))
-        return cls(str(d["video"]), base, int(d["ref_frame"]), d["frames"], d["rvecs"],
-                   d["confidence"])
+        segs = [Segment(int(r[0]), int(r[1]), _cam_from_row(r[2:]))
+                for r in d["segments"]] if "segments" in d else []
+        return cls(str(d["video"]), _cam_from_row(d["base"]), int(d["ref_frame"]), d["frames"],
+                   d["rvecs"], d["confidence"], segs,
+                   d["rvecs_main"] if "rvecs_main" in d else None)
+
+
+def reanchor(track: PoseTrack, later: list[Calibration]) -> PoseTrack:
+    """Apply later calibrations (the camera was moved part-way): from each one's
+    `applies_from` frame on, rotations are re-expressed relative to it,
+        R(t) = R_main(t) R_main(ref)^T R_calibrated,
+    so the tracked pan between frames is kept and only the anchor and the camera centre
+    change. Starts again from the first-calibration rotations, so it can be redone or
+    (with no later calibrations) undone."""
+    main = track.rvecs_main if track.rvecs_main is not None else track.rvecs
+    rvecs = main.copy()
+    later = sorted(later, key=lambda c: c.applies_from)
+    segments = []
+    for i, cal in enumerate(later):
+        j = int(np.searchsorted(track.frames, cal.frame))
+        if j >= len(track.frames) or track.frames[j] != cal.frame:
+            raise ValueError(f"calibration frame {cal.frame} is not in the track")
+        C = cv2.Rodrigues(main[j])[0].T @ cal.camera.R
+        end = later[i + 1].applies_from if i + 1 < len(later) else np.inf
+        for k in np.flatnonzero((track.frames >= cal.applies_from) & (track.frames < end)):
+            rvecs[k] = cv2.Rodrigues(cv2.Rodrigues(main[k])[0] @ C)[0].ravel()
+        segments.append(Segment(int(cal.applies_from), int(cal.frame), cal.camera))
+    return PoseTrack(track.video, track.base, track.ref_frame, track.frames, rvecs,
+                     track.confidence, segments, main.copy() if segments else None)
 
 
 def _polar(H: np.ndarray) -> np.ndarray:

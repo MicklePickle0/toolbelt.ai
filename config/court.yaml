@@ -127,3 +127,29 @@ calibration:
     max_keyframe_jump_deg: 1.0
     # Frames whose tracking confidence is below this go to the review queue.
     min_confidence: 0.2
+  alignment:                   # scripts/check_camera.py: did the camera move, not just pan?
+    every_s: 60                # sample this often
+    orb_features: 3000
+    min_matches: 30
+    ransac_px: 4.0             # at the tracking width: matches agreeing with each other
+    # Median background offset from the tracked pan, full-resolution pixels. Pan-only
+    # footage stays ~2-9 px; a moved tripod jumps to ~100 px and stays there.
+    drifting_px: 15
+    moved_px: 40
+    bisect_s: 2                # narrow a move down to this many seconds
+  transfer:                    # scripts/fix_camera.py: carry a calibration past a camera move
+    features: 8000             # SIFT features per frame (full resolution)
+    ratio: 0.75                # Lowe ratio test
+    floor_x_m: [-4, 13]        # matches whose floor point lands here (court + surrounds)
+    floor_y_m: [-14, 14]
+    min_ray_down: 0.02         # rays must point clearly down to hit the floor
+    ransac_px: 6.0             # solvePnPRansac reprojection threshold (full resolution)
+    iterations: 2000
+    min_inliers: 30
+    full_inliers: 80           # confidence: inliers / this (capped at 1)
+    rms_scale_px: 8.0          #   x exp(-rms / this)
+    full_spread_m: 8.0         #   x floor extent of the inliers in x and in y / this
+    min_confidence: 0.4        # below: not used, click it instead
+    good_confidence: 0.7       # stop trying further frames at this
+    settle_s: 2                # use frames at least this long after the move
+    max_tries: 4               # cached frames to try per move
