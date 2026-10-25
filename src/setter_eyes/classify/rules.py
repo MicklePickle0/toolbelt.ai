@@ -14,8 +14,14 @@ counted:
   - from the END for a run that sends the ball over the net with fewer than three
     touches seen: the touch that sends it over is the attack, the one before it the set.
     (Counting from the start there turned attacks into digs and sets into dumps.)
-A receive run of one touch that goes straight back over is an overpass. Dumps and free
-balls need the trajectory and pose (stage 2) and aren't called yet.
+A receive run of one touch that goes straight back over is an overpass.
+
+Stage 2, from the ball's flight after the touch (`launch_up`: the vertical speed at the
+start of the first confident flight after it):
+  - an "attack" launched upward faster than `free_ball_min_up_mps` is a free ball: a free
+    ball is lofted, an attack driven (labelled titan-rise_set1: 5 of 6 free balls above
+    4 m/s up, none of 30 attacks; few examples, to confirm on more sets).
+Dumps, and attack vs free ball by arm swing, need pose and aren't called yet.
 
 Confidence: the rule's (config) times the touch's own; places counted from the end and a
 4th+ touch (one of them probably wrong) get the `uncertain` confidence.
@@ -26,6 +32,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+import numpy as np
+
+from setter_eyes.ball.arcs import Arc
 from setter_eyes.contacts.events import Contact
 
 _PLACE = {1: "dig", 2: "set", 3: "attack"}
@@ -37,10 +46,21 @@ def _at_net(c: Contact, cfg: dict) -> bool:
     return abs(c.ball_xyz[1]) <= cfg["block_zone_m"] and c.ball_xyz[2] >= cfg["block_min_z_m"]
 
 
+def launch_up(c: Contact, arcs: Sequence[Arc], cfg: dict) -> float | None:
+    """Vertical speed (m/s, + up) at the start of the first confident flight leaving the
+    touch, or None when no confident flight starts within `launch_window_s`."""
+    for a in arcs:
+        if a.confidence >= cfg["launch_min_arc_confidence"] and \
+                c.t - 0.05 <= a.t0 <= c.t + cfg["launch_window_s"]:
+            return float(a.v0[2])
+    return None
+
+
 def classify_rally(touches: Sequence[Contact], serve: Contact | None, serving_team: str | None,
-                   cfg: dict) -> list[tuple[str, float]]:
+                   cfg: dict, launches: Sequence[float | None] | None = None
+                   ) -> list[tuple[str, float]]:
     """(action, confidence) for each of `touches` (the rally's touches in time order; the
-    serve touch, if seen, among them)."""
+    serve touch, if seen, among them). `launches`: launch_up() per touch, for stage 2."""
     rule = cfg["rule_confidence"]
     actions: list[tuple[str, float] | None] = [None] * len(touches)
 
@@ -84,6 +104,10 @@ def classify_rally(touches: Sequence[Contact], serve: Contact | None, serving_te
             else:
                 name = _PLACE.get(place, "attack")
             conf = rule["uncertain"] if from_end or place > 3 else rule[name]
+            up = launches[i] if launches is not None else None
+            if name == "attack" and up is not None and np.isfinite(up) and \
+                    up > cfg["free_ball_min_up_mps"]:
+                name, conf = "free_ball", rule["free_ball"]
             actions[i] = (name, conf)
         if receive_run and n == 1 and crosses:
             actions[first] = ("overpass", rule["overpass"])

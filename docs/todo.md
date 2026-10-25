@@ -55,7 +55,9 @@ Ordered by priority within each section. Scores are from the labelled `titan-ris
 - [x] Point outcome from the last touch and the winner (39/42 on labelled touches; 19/39
       on pipeline touches)
 - [x] Pipeline output written to the event DB
-- [ ] **Stage-2 overrides** from trajectory and pose: dump, free ball, attack vs free ball
+- [x] Stage 2, free ball: an "attack" launched upward > 4 m/s is a free ball (free balls
+      0/4 -> 2/4 right, no attacks lost; 6 labelled examples, confirm on more sets)
+- [ ] **Stage-2 overrides** from trajectory and pose: dump, attack vs free ball
       (arm swing), block (arms above the tape). Needs pose (RTMPose).
 - [ ] **Learned action classifier** (stage 3): tried at 64%, no better than the rules on
       one set; retry with two labelled sets.
