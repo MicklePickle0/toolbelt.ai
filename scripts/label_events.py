@@ -5,6 +5,10 @@ use with ffmpeg; frame numbers match the original exactly) and writes events.csv
 go. Opening an existing events.csv continues it. Rules for what to label:
 docs/labelling.md.
 
+On another computer, only the code, data/manifest.yaml and data/cache/<id>/proxy.mp4 are
+needed (not the original video); copy data/labels/<id>/events.csv across to continue it,
+and back afterwards.
+
 Moving around:
   Space          play / pause            -              toggle slow motion (x0.25)
   Left / Right   one frame               ,  .           10 frames
@@ -150,11 +154,12 @@ def main() -> int:
 
     manifest = load_manifest(args.manifest)
     entry = manifest.video(args.video)
-    info = probe(entry.path)
-    fps = info.fps
     proxy = config.repo_path(paths["cache_dir"]) / entry.key / "proxy.mp4"
     if not proxy.exists():
         make_proxy(entry.path, proxy)
+    # The proxy keeps the original's frames and rate, so it is enough on its own (e.g. on a
+    # laptop with only the proxy copied over).
+    fps = probe(entry.path if entry.path.exists() else proxy).fps
     out = entry.events or config.repo_path("data/labels") / entry.key / "events.csv"
     ed = EventEditor(out, fps, args.set)
     print(f"labels -> {out} ({len(ed.events)} already there)")
