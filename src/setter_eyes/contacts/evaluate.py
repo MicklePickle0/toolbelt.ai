@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
+from setter_eyes.classify.outcome import point_outcome
 from setter_eyes.labels.events import RallyLabel
 
 TRACED = -2                     # rallies.json serve_contact when traced back from flight
@@ -49,8 +50,10 @@ class RallyMatch:
     pred_start: float | None = None
     pred_end: float | None = None
     pred_serving: str | None = None
-    serve_how: str = ""         # seen | traced | not found
+    serve_how: str = ""         # seen | traced | inferred | not found
     end_reason: str = ""
+    label_outcome: str | None = None
+    pred_outcome: str | None = None   # from the pipeline's last touch + the true winner
 
 
 @dataclass
@@ -95,6 +98,9 @@ class Evaluation:
             "serving_team_correct": sum(r.pred_serving == r.label_serving for r in served),
             "median_start_error_s": _median_abs(r.pred_start - r.label_start for r in served),
             "median_end_error_s": _median_abs(r.pred_end - r.label_end for r in found),
+            "outcomes_right": sum(r.pred_outcome == r.label_outcome for r in found
+                                  if r.label_outcome),
+            "outcomes_labelled": sum(bool(r.label_outcome) for r in found),
         }
 
 
@@ -147,7 +153,7 @@ def evaluate(labels: list[RallyLabel], contacts: list[dict], rallies: list[dict]
 
     for r in labels:
         t0, t1 = r.start_frame / fps, r.end_frame / fps
-        m = RallyMatch(r.rally_number, t0, t1, r.serving_team)
+        m = RallyMatch(r.rally_number, t0, t1, r.serving_team, label_outcome=r.outcome)
         best, overlap = None, 0.0
         for ra in rallies:
             ov = min(t1, ra["end_t"]) - max(t0, ra["start_t"])
@@ -159,6 +165,13 @@ def evaluate(labels: list[RallyLabel], contacts: list[dict], rallies: list[dict]
             m.pred_serving = best["serving_team"]
             m.serve_how = {TRACED: "traced", -3: "inferred", None: "not found"}.get(sc, "seen")
             m.end_reason = best["end_reason"]
+            touches = [contacts[i] for i in best["contacts"]
+                       if i < len(contacts) and contacts[i]["kind"] == "touch"]
+            last = touches[-1] if touches else {}
+            if r.point_winner:
+                m.pred_outcome = point_outcome(last.get("action"), last.get("team"),
+                                               r.point_winner,
+                                               last.get("action_confidence"))[0]
         out.rallies.append(m)
     if labels:
         lo, hi = labels[0].start_frame / fps, labels[-1].end_frame / fps

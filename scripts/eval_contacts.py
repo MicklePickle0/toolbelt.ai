@@ -103,6 +103,9 @@ def main() -> int:
           f"{s['serves_found']} (serving team right in {s['serving_team_correct']}); "
           f"start error {sec(s['median_start_error_s'])}, end error "
           f"{sec(s['median_end_error_s'])}")
+    if s["outcomes_labelled"]:
+        print(f"point outcome (true winner, pipeline's touches): {s['outcomes_right']}/"
+              f"{s['outcomes_labelled']} right")
     for ra in ev.false_rallies:
         print(f"  false rally {ra['index']}: {_clock(ra['start_t'])}-{_clock(ra['end_t'])}")
     print(f"-> {out / (entry.key + '_touches.csv')}, {out / (entry.key + '_rallies.csv')}")
