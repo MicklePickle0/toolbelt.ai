@@ -1,4 +1,4 @@
-# Setter-Eyes
+# toolbelt.ai
 
 Offline volleyball stat tracker. Input: a match video filmed low from behind one end of the court.
 Output: per-player stats for the near-side team, a ball-path overlay, and an editable event database.
