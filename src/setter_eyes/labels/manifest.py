@@ -11,10 +11,16 @@ from pathlib import Path
 
 import yaml
 
+from setter_eyes import config
 from setter_eyes.labels.issues import Issues, LabelError
 
 SPLITS = ("train", "valid", "test")
 _KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def venue_key(venue: str) -> str:
+    """Normalised venue name, so "Queen's ARC" and "queens arc" are the same venue."""
+    return re.sub(r"[^a-z0-9]", "", venue.lower())
 
 
 @dataclass(frozen=True)
@@ -28,7 +34,10 @@ class RosterEntry:
 class VideoEntry:
     key: str
     path: Path
-    division: str = "men"
+    venue: str = ""
+    net_height_m: float = 2.43
+    net_height_preset: str | None = None  # None: custom height
+    ball: str = ""                         # key of `balls` in config/court.yaml
     opponent: str | None = None
     played_on: str | None = None
     split: str | None = None
@@ -91,9 +100,19 @@ def load_manifest(path: str | Path) -> Manifest:
         if not v.get("path"):
             issues.error(f"{key}: missing 'path'")
             continue
-        division = v.get("division", "men")
-        if division not in ("men", "women"):
-            issues.error(f"{key}: division must be men or women (got {division!r})")
+        venue = str(v.get("venue") or "").strip()
+        if not venue_key(venue):
+            issues.error(f"{key}: missing 'venue' (gym or tournament site)")
+        ball = str(v.get("ball") or "")
+        balls = config.load("court")["balls"]
+        if ball not in balls:
+            issues.error(f"{key}: ball must be one of {sorted(balls)} (got {ball!r}); "
+                         "add new balls under `balls` in config/court.yaml")
+        try:
+            net_height_m, preset = _net_height(v.get("net_height"))
+        except ValueError as e:
+            issues.error(f"{key}: {e}")
+            net_height_m, preset = 0.0, None
         split = v.get("split")
         if split is not None and split not in SPLITS:
             issues.error(f"{key}: split must be one of {SPLITS} (got {split!r})")
@@ -116,15 +135,39 @@ def load_manifest(path: str | Path) -> Manifest:
         videos.append(VideoEntry(
             key=key,
             path=root / v["path"],
-            division=division,
+            venue=venue,
+            net_height_m=net_height_m,
+            net_height_preset=preset,
+            ball=ball,
             opponent=v.get("opponent"),
             played_on=str(v["played_on"]) if v.get("played_on") else None,
             split=split,
-            events=root / labels["events"] if labels.get("events") else None,
-            boxes=root / labels["boxes"] if labels.get("boxes") else None,
+            events=_label_path(root, key, labels, "events", "events.csv"),
+            boxes=_label_path(root, key, labels, "boxes", "boxes.coco.json"),
             lineups=lineups,
         ))
 
     if issues.errors:
         raise LabelError(issues.errors)
     return Manifest(path=path, team=str(team), roster=roster, videos=videos)
+
+
+def _net_height(value: object) -> tuple[float, str | None]:
+    """A preset name from config/court.yaml or a custom height in metres -> (metres, preset)."""
+    net = config.load("court")["net"]
+    presets: dict[str, float] = net["height_presets"]
+    if isinstance(value, str) and value in presets:
+        return float(presets[value]), value
+    lo, hi = net["custom_height_range"]
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and lo <= value <= hi:
+        return float(value), None
+    raise ValueError(f"net_height must be one of {sorted(presets)} or metres in "
+                     f"[{lo}, {hi}] (got {value!r})")
+
+
+def _label_path(root: Path, key: str, labels: dict, field: str, default_name: str) -> Path | None:
+    """An explicit labels.<field> path, else labels/<id>/<default_name> if that file exists."""
+    if labels.get(field):
+        return root / labels[field]
+    default = root / "labels" / key / default_name
+    return default if default.exists() else None

@@ -21,10 +21,16 @@ CREATE TABLE IF NOT EXISTS players (
 CREATE TABLE IF NOT EXISTS games (
     id            INTEGER PRIMARY KEY,
     team_id       INTEGER NOT NULL REFERENCES teams(id),
-    video_key     TEXT NOT NULL UNIQUE,        -- stable id from the manifest; splits are by this
+    video_key     TEXT NOT NULL UNIQUE,        -- stable id from the manifest
     opponent      TEXT,
     played_on     TEXT,                       -- ISO date
-    division      TEXT NOT NULL DEFAULT 'men' CHECK (division IN ('men', 'women')),
+    venue         TEXT NOT NULL,              -- gym / tournament site; splits are grouped by it
+    -- Tape height for this game. Everything that uses it (calibration scale,
+    -- block check, ball height) reads this column. Preset names are in
+    -- config/court.yaml; NULL preset means a custom height.
+    net_height_m      REAL NOT NULL CHECK (net_height_m > 0),
+    net_height_preset TEXT,
+    ball          TEXT NOT NULL,              -- key of `balls` in config/court.yaml
     video_path    TEXT NOT NULL,
     fps           REAL NOT NULL,
     frame_count   INTEGER,
@@ -125,6 +131,7 @@ CREATE TABLE IF NOT EXISTS corrections (
     created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX IF NOT EXISTS idx_games_venue ON games(venue);
 CREATE INDEX IF NOT EXISTS idx_contacts_rally ON contacts(rally_id);
 CREATE INDEX IF NOT EXISTS idx_contacts_player ON contacts(player_id);
 CREATE INDEX IF NOT EXISTS idx_ball_samples_game_frame ON ball_samples(game_id, frame);

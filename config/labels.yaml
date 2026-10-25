@@ -32,6 +32,10 @@ outcomes:
 box_classes:
   ball: [ball, volleyball, sports ball]
   person: [person, player]
+  # Balls not in play (spare balls, other courts, warm-up). Imported and kept, but not
+  # a training class (datasets.detection_classes), so the detector isn't told they are
+  # background either way until we decide how to use them.
+  other_ball: [other_ball, other ball, spare_ball, stray_ball]
 
 # How a COCO image's file_name maps to a frame index of the source video.
 # Tried in order against the file stem (Roboflow ".rf.<hash>" suffixes are

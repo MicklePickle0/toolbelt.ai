@@ -5,7 +5,8 @@ def test_court_dimensions():
     court = config.load("court")
     assert court["length"] == 18.0
     assert court["width"] == 9.0
-    assert court["net"]["height"] == {"men": 2.43, "women": 2.24}
+    assert court["net"]["height_presets"] == {
+        "boys_17_18u": 2.43, "boys_15_16u": 2.35, "boys_13_14u": 2.24, "women": 2.24}
 
 
 def test_pass_scale_grades_are_ordered_and_complete():

@@ -1,9 +1,11 @@
-"""Build the RF-DETR training dataset (Roboflow COCO layout) from box labels, split by video.
+"""Build the RF-DETR training dataset (Roboflow COCO layout) from box labels.
+
+Split by venue (or by video; see datasets.split_by in config/pipeline.yaml).
 
 Usage:
   python scripts/build_detection_dataset.py [--out DIR] [--classes ball person] [--overwrite]
 
-Then train on a rented GPU, e.g. RFDETRMedium().train(dataset_dir=OUT, resolution=1280, ...).
+Then train: python scripts/train_detector.py
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from pathlib import Path
 
 from setter_eyes import config
 from setter_eyes.datasets import assign_splits, export_detection_dataset
+from setter_eyes.datasets.tiles import parse_grid
 from setter_eyes.labels import load_manifest, load_video_labels
 
 
@@ -44,12 +47,22 @@ def main() -> int:
 
     summary = export_detection_dataset(
         args.out, videos, splits, args.classes, pipeline["ingest"]["jpeg_quality"],
-        overwrite=args.overwrite, progress=print)
+        overwrite=args.overwrite, progress=print,
+        tiles=parse_grid(ds["tiles"]) if ds.get("tiles") else None,
+        tile_overlap=ds["tile_overlap"], negative_tiles=ds["negative_tiles_per_frame"],
+        frame_cache=config.repo_path(paths["cache_dir"]),
+        recolor_hues=ds.get("recolor_hues"), recolor_copies=ds.get("recolor_copies", 0))
+    by_ball: dict[str, list[str]] = {}
+    for entry, _ in videos:
+        by_ball.setdefault(entry.ball, []).append(f"{entry.key} [{splits[entry.key]}]")
+    for ball, keys in sorted(by_ball.items()):
+        print(f"ball type {ball}: {len(keys)} videos")
     for split, n in summary.images.items():
         counts = ", ".join(f"{c} {k}" for c, k in summary.boxes[split].items())
         print(f"{split:5}: {n} images ({counts})")
         if n == 0:
-            print(f"  WARNING: {split} is empty; pin a video to it with 'split:' in the manifest")
+            print(f"  WARNING: {split} is empty; pin a video (and so its venue) to it with "
+                  "'split:' in the manifest")
     print(f"wrote {args.out}")
     return 0
 

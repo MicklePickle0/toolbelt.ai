@@ -79,7 +79,7 @@ data/ (gitignored)  models/ (gitignored)  tests/  scripts/
 - Data/stats: `duckdb` (or stdlib `sqlite3`), `pandas`.
 - App: `fastapi`, `uvicorn`, plus Streamlit for a first review UI.
 - Dev: `pytest`, `ruff`.
-- Training (RF-DETR fine-tune at 1280): use a rented GPU; do not train on a laptop CPU.
+- Training (RF-DETR fine-tune at 1280): on the local GPU (RTX 4070 SUPER, 12 GB) via `scripts/train_detector.py`, or a rented GPU; never on a CPU.
 - Verify current versions and licenses (especially RF-DETR model sizes) before committing.
 
 ## Data labeling and venue variety

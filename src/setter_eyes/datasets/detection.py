@@ -7,17 +7,27 @@
 
 Frames are decoded from the source video, so the dataset always matches the
 labels' frame indices. Category ids are 1..N in config order.
+
+With `tiles` (e.g. (3, 3)) each frame is cut into overlapping native-resolution tiles
+(datasets/tiles.py) so the small ball isn't shrunk by the model's input resize. A tile
+is kept if it fully contains a box; tiles that cut through a box are dropped (a half
+ball with no label would teach the wrong thing); `negative_tiles` box-free tiles per
+frame are kept as background examples.
 """
 
 from __future__ import annotations
 
 import json
+import random
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from setter_eyes.ingest.video import frame_filename, read_frames, write_image
+import cv2
+
+from setter_eyes.datasets.tiles import tile_boxes
+from setter_eyes.ingest.video import Frame, frame_filename, read_frames, write_image
 from setter_eyes.labels.boxes import BoxLabels
 from setter_eyes.labels.manifest import SPLITS, VideoEntry
 
@@ -51,6 +61,12 @@ def export_detection_dataset(
     jpeg_quality: int = 95,
     overwrite: bool = False,
     progress: Callable[[str], None] | None = None,
+    tiles: tuple[int, int] | None = None,
+    tile_overlap: float = 0.15,
+    negative_tiles: int = 1,
+    frame_cache: Path | None = None,
+    recolor_hues: list[float] | None = None,
+    recolor_copies: int = 0,
 ) -> ExportSummary:
     out_dir = Path(out_dir)
     if out_dir.exists():
@@ -69,23 +85,37 @@ def export_detection_dataset(
         split_dir = out_dir / split
         if progress:
             progress(f"{entry.key}: {len(labels.frames)} frames -> {split}")
-        for frame in read_frames(entry.path, labels.frames):
-            name = frame_filename(entry.key, frame.index)
-            write_image(split_dir / name, frame.image, jpeg_quality)
-            image_id = len(b.images) + 1
+        rng = random.Random(entry.key)
+        for frame in _frames(entry, sorted(labels.frames), frame_cache):
             h, w = frame.image.shape[:2]
-            b.images.append({"id": image_id, "file_name": name, "width": w, "height": h,
-                             "video": entry.key, "frame": frame.index})
-            for box in labels.frames[frame.index]:
-                if box.cls not in cat_ids:
-                    continue
-                b.annotations.append({
-                    "id": len(b.annotations) + 1, "image_id": image_id,
-                    "category_id": cat_ids[box.cls],
-                    "bbox": [box.x, box.y, box.w, box.h], "area": box.w * box.h,
-                    "iscrowd": 0,
-                })
-                boxes_count[split][box.cls] += 1
+            boxes = [bx for bx in labels.frames[frame.index] if bx.cls in cat_ids]
+            # Boxes of non-training classes (other_ball): tiles touching them are left out,
+            # so a stray ball is never shown to the model as background.
+            avoid = [bx for bx in labels.frames[frame.index] if bx.cls not in cat_ids]
+            for name, (x0, y0, tw, th), tile_boxes_ in _crops(entry.key, frame.index, w, h,
+                                                              boxes, tiles, tile_overlap,
+                                                              negative_tiles, rng, avoid):
+                crop = frame.image[y0:y0 + th, x0:x0 + tw]
+                # Train-split ball tiles also get hue-shifted copies, so other ball colours
+                # (green, red/white, ...) look familiar before real footage of them exists.
+                hues = [0.0]
+                if split == "train" and tile_boxes_ and recolor_hues and recolor_copies:
+                    hues += rng.sample(list(recolor_hues), min(recolor_copies, len(recolor_hues)))
+                for hue in hues:
+                    out_name = name if not hue else name.replace(".jpg", f"_h{round(hue)}.jpg")
+                    write_image(split_dir / out_name, _shift_hue(crop, hue), jpeg_quality)
+                    image_id = len(b.images) + 1
+                    b.images.append({"id": image_id, "file_name": out_name, "width": tw,
+                                     "height": th, "video": entry.key, "frame": frame.index,
+                                     "tile": [x0, y0, tw, th], "hue_shift": hue})
+                    for box in tile_boxes_:
+                        b.annotations.append({
+                            "id": len(b.annotations) + 1, "image_id": image_id,
+                            "category_id": cat_ids[box.cls],
+                            "bbox": [box.x - x0, box.y - y0, box.w, box.h],
+                            "area": box.w * box.h, "iscrowd": 0,
+                        })
+                        boxes_count[split][box.cls] += 1
 
     for split, b in builders.items():
         split_dir = out_dir / split
@@ -94,5 +124,57 @@ def export_detection_dataset(
 
     used = {entry.key: splits[entry.key] for entry, _ in videos}
     (out_dir / "provenance.json").write_text(
-        json.dumps({"classes": classes, "videos": used}, indent=2), encoding="utf-8")
+        json.dumps({"classes": classes, "videos": used,
+                    "balls": {entry.key: entry.ball for entry, _ in videos},
+                    "tiles": list(tiles) if tiles else None, "tile_overlap": tile_overlap,
+                    "recolor_hues": recolor_hues, "recolor_copies": recolor_copies},
+                   indent=2), encoding="utf-8")
     return ExportSummary({s: len(b.images) for s, b in builders.items()}, boxes_count, used)
+
+
+def _shift_hue(image, degrees: float):
+    """Rotate every pixel's hue (OpenCV hue runs 0-179, 2 degrees per step)."""
+    if not degrees:
+        return image
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    hsv[..., 0] = ((hsv[..., 0].astype(int) + round(degrees / 2)) % 180).astype(hsv.dtype)
+    return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+
+def _frames(entry: VideoEntry, indices: list[int], cache: Path | None):
+    """Labelled frames, from data/cache/<id>/frames/ when cached (written with exact
+    indices by extract_frames / sample_active_frames), else decoded from the video."""
+    folder = cache / entry.key / "frames" if cache is not None else None
+    missing = []
+    for i in indices:
+        path = folder / frame_filename(entry.key, i) if folder is not None else None
+        image = cv2.imread(str(path)) if path is not None and path.exists() else None
+        if image is None:
+            missing.append(i)
+        else:
+            yield Frame(i, 0.0, image)
+    if missing:
+        yield from read_frames(entry.path, missing)
+
+
+def _crops(key, index, w, h, boxes, tiles, overlap, negatives, rng, avoid=()):
+    """-> [(file name, (x, y, w, h), boxes inside)]: the whole frame, or kept tiles."""
+    if tiles is None:
+        return [(frame_filename(key, index), (0, 0, w, h), boxes)]
+
+    def touches(b, x0, y0, tw, th):
+        return b.x < x0 + tw and b.x + b.w > x0 and b.y < y0 + th and b.y + b.h > y0
+
+    out, empty = [], []
+    for t, (x0, y0, tw, th) in enumerate(tile_boxes(w, h, tiles, overlap)):
+        if any(touches(b, x0, y0, tw, th) for b in avoid):
+            continue
+        inside = [b for b in boxes if b.x >= x0 and b.y >= y0
+                  and b.x + b.w <= x0 + tw and b.y + b.h <= y0 + th]
+        touching = [b for b in boxes if touches(b, x0, y0, tw, th)]
+        name = frame_filename(key, index).replace(".jpg", f"_t{t}.jpg")
+        if inside and len(inside) == len(touching):
+            out.append((name, (x0, y0, tw, th), inside))
+        elif not touching:
+            empty.append((name, (x0, y0, tw, th), []))
+    return out + rng.sample(empty, min(negatives, len(empty)))

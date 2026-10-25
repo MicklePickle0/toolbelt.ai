@@ -39,5 +39,10 @@ grades:
 # Score 0 (ace) is not geometric: it comes from the point-outcome logic.
 ace_score: 0
 
+# Our first touch after their serve going straight back over the net (labelled
+# `overpass`) is still a serve receive: it scores this and counts in the passer's
+# average (owner's rule, 2026-10-24).
+overpass_score: 0
+
 # Below this confidence the pass score goes to the review queue.
 review_below_confidence: 0.6

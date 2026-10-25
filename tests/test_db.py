@@ -30,8 +30,9 @@ def test_schema_is_idempotent(tmp_path):
 def test_contact_round_trip_and_constraints(conn):
     conn.execute("INSERT INTO teams (id, name) VALUES (1, 'Us')")
     conn.execute("INSERT INTO players (id, team_id, jersey_number, name) VALUES (1, 1, 7, 'A')")
-    conn.execute("INSERT INTO games (id, team_id, video_key, video_path, fps) "
-                 "VALUES (1, 1, 'g1', 'x.mp4', 59.94)")
+    conn.execute("INSERT INTO games (id, team_id, video_key, venue, net_height_m, ball, "
+                 "video_path, fps) VALUES (1, 1, 'g1', 'Gym', 2.43, 'mikasa_v200w_yellow', "
+                 "'x.mp4', 59.94)")
     conn.execute("INSERT INTO sets (id, game_id, set_number, starting_lineup) "
                  "VALUES (1, 1, 1, '[7,1,2,3,4,5]')")
     conn.execute("INSERT INTO rallies (id, set_id, rally_number, start_frame, end_frame, "
@@ -46,3 +47,12 @@ def test_contact_round_trip_and_constraints(conn):
                      "VALUES (1, 2.0, 120, 5)")
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("INSERT INTO contacts (rally_id, t, frame) VALUES (999, 2.0, 120)")
+
+
+def test_old_schema_version_is_refused(tmp_path):
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.execute("CREATE TABLE games (id INTEGER PRIMARY KEY, division TEXT)")
+    old.close()
+    with pytest.raises(db.SchemaVersionError, match="delete it"):
+        db.connect(path)

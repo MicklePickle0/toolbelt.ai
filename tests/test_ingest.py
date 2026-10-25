@@ -1,9 +1,17 @@
 import shutil
 
+import cv2
 import pytest
 
 from conftest import FPS, N_FRAMES, SIZE, decoded_index
-from setter_eyes.ingest import frame_filename, iter_frames, normalise, probe, read_frames
+from setter_eyes.ingest import (
+    burst_indices,
+    frame_filename,
+    iter_frames,
+    normalise,
+    probe,
+    read_frames,
+)
 from setter_eyes.labels import frame_from_name
 
 
@@ -56,3 +64,25 @@ def test_normalise_keeps_frames(video, tmp_path):
     assert not info.variable_frame_rate
     f = next(read_frames(out, [40]))
     assert decoded_index(f.image) == 40
+
+
+def test_burst_indices():
+    idx = burst_indices(100, 10_100, bursts=20, length=10, seed="clip")
+    assert idx == burst_indices(100, 10_100, bursts=20, length=10, seed="clip")
+    assert len(idx) == len(set(idx)) == 200 and idx == sorted(idx)
+    runs = [idx[i:i + 10] for i in range(0, 200, 10)]
+    for i, run in enumerate(runs):
+        assert run == list(range(run[0], run[0] + 10))
+        assert 100 + i * 500 <= run[0] and run[-1] < 100 + (i + 1) * 500
+    with pytest.raises(ValueError):
+        burst_indices(0, 50, bursts=10, length=10, seed="x")
+
+
+def test_iter_frames_scaled_keeps_indices(video):
+    from setter_eyes.ingest import iter_frames_scaled
+
+    frames = list(iter_frames_scaled(video, SIZE[0] // 2))
+    assert [f.index for f in frames] == list(range(N_FRAMES))
+    assert frames[0].image.shape == (SIZE[1] // 2, SIZE[0] // 2, 3)
+    gray = next(iter_frames_scaled(video, SIZE[0], gray=True))
+    assert decoded_index(cv2.cvtColor(gray.image, cv2.COLOR_GRAY2BGR)) == 0

@@ -119,14 +119,16 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=config.repo_path("data/demo"))
     args = ap.parse_args()
 
-    clips = {"demo_a": ("train", 3), "demo_b": ("valid", 2)}
-    for i, (key, (_, n)) in enumerate(clips.items()):
+    clips = {"demo_a": ("train", 3, "Demo Gym A"), "demo_b": ("valid", 2, "Demo Gym B")}
+    for i, (key, (_, n, _)) in enumerate(clips.items()):
         make_clip(args.out, key, n, seed=i)
     lines = ["team: Demo Team", "roster:"]
     lines += [f"  - {{number: {n}, name: Player {n}}}" for n in (1, 2, 3, 4, 5, 7)]
     lines.append("videos:")
-    for key, (split, _) in clips.items():
-        lines += [f"  - id: {key}", f"    path: videos/{key}.mp4", f"    split: {split}",
+    for key, (split, _, venue) in clips.items():
+        lines += [f"  - id: {key}", f"    path: videos/{key}.mp4", f"    venue: {venue}",
+                  "    net_height: boys_17_18u",
+                  "    ball: mikasa_v200w_yellow", f"    split: {split}",
                   "    labels:", f"      events: labels/{key}/events.csv",
                   f"      boxes: labels/{key}/boxes.coco.json",
                   "    lineups:", "      1: [1, 7, 2, 3, 4, 5]"]

@@ -9,7 +9,7 @@ import pytest
 from conftest import decoded_index
 from setter_eyes.config import REPO_ROOT
 from setter_eyes.datasets import assign_splits, export_detection_dataset, split_for
-from setter_eyes.labels import load_manifest, load_video_labels
+from setter_eyes.labels import LabelError, load_manifest, load_video_labels
 from setter_eyes.labels.manifest import Manifest, VideoEntry
 
 RATIOS = {"train": 0.7, "valid": 0.15, "test": 0.15}
@@ -19,8 +19,8 @@ def test_split_is_stable_and_respects_pins():
     videos = [VideoEntry(key=f"v{i}", path=Path("x")) for i in range(200)]
     videos.append(VideoEntry(key="pinned", path=Path("x"), split="test"))
     m = Manifest(Path("m"), "Us", [], videos)
-    a = assign_splits(m, RATIOS)
-    assert a == assign_splits(m, RATIOS)
+    a = assign_splits(m, RATIOS, split_by="video")
+    assert a == assign_splits(m, RATIOS, split_by="video")
     assert a["pinned"] == "test"
     counts = {s: list(a.values()).count(s) for s in RATIOS}
     assert 110 < counts["train"] < 170 and counts["valid"] > 10 and counts["test"] > 10
@@ -62,3 +62,62 @@ def test_ingest_labels_script(workspace, tmp_path):
     assert run.returncode == 0, run.stdout + run.stderr
     assert "imported: game 1, 1 sets, 2 rallies, 5 contacts, 4 ball samples" in run.stdout
     assert db_path.exists()
+
+
+def test_split_by_venue_keeps_venues_together():
+    def v(key, venue, split=None):
+        return VideoEntry(key=key, path=Path("x"), venue=venue, split=split)
+
+    videos = [v(f"g{i}_{j}", f"Gym {i}") for i in range(60) for j in range(3)]
+    videos += [v("arc1", "Queen's ARC"), v("arc2", "queens arc", split="test")]
+    a = assign_splits(Manifest(Path("m"), "Us", [], videos), RATIOS, split_by="venue")
+    for i in range(60):
+        assert len({a[f"g{i}_{j}"] for j in range(3)}) == 1
+    assert len(set(a.values())) == 3
+    # Pinning one video pins its whole venue (names are normalised).
+    assert a["arc1"] == a["arc2"] == "test"
+
+    videos.append(v("arc3", "Queens ARC", split="train"))
+    with pytest.raises(LabelError, match="pinned to several splits"):
+        assign_splits(Manifest(Path("m"), "Us", [], videos), RATIOS, split_by="venue")
+
+
+def test_tiles_cover_frame_and_tiled_export(workspace, tmp_path):
+    from setter_eyes.datasets.tiles import tile_boxes
+
+    t = tile_boxes(3840, 2160, (3, 3), 0.15)
+    assert len(t) == 9 and t[0][:2] == (0, 0)
+    assert max(x + w for x, _, w, _ in t) == 3840 and max(y + h for _, y, _, h in t) == 2160
+
+    m = load_manifest(workspace)
+    vl = load_video_labels(m, m.videos[0])
+    out = tmp_path / "tiled"
+    summary = export_detection_dataset(out, [(vl.entry, vl.boxes)], {"clip": "train"},
+                                       ["ball", "person"], tiles=(2, 2), negative_tiles=1)
+    ann = json.loads((out / "train" / "_annotations.coco.json").read_text())
+    # Every ball box lies fully inside its tile, in tile coordinates.
+    sizes = {i["id"]: (i["width"], i["height"]) for i in ann["images"]}
+    for a in ann["annotations"]:
+        x, y, w, h = a["bbox"]
+        tw, th = sizes[a["image_id"]]
+        assert x >= 0 and y >= 0 and x + w <= tw and y + h <= th
+    assert summary.boxes["train"]["ball"] >= 4
+    assert all(i["width"] < 160 for i in ann["images"])
+
+
+def test_recolored_copies_only_for_train_ball_tiles(workspace, tmp_path):
+    m = load_manifest(workspace)
+    vl = load_video_labels(m, m.videos[0])
+    out = tmp_path / "recolor"
+    plain = export_detection_dataset(tmp_path / "plain", [(vl.entry, vl.boxes)],
+                                     {"clip": "train"}, ["ball", "person"], tiles=(2, 2))
+    summary = export_detection_dataset(out, [(vl.entry, vl.boxes)], {"clip": "train"},
+                                       ["ball", "person"], tiles=(2, 2),
+                                       recolor_hues=[60, -40], recolor_copies=1)
+    ann = json.loads((out / "train" / "_annotations.coco.json").read_text())
+    shifted = [i for i in ann["images"] if i["hue_shift"]]
+    with_ball = {a["image_id"] for a in ann["annotations"]}
+    assert shifted and all(i["id"] in with_ball for i in shifted)
+    assert summary.boxes["train"]["ball"] == 2 * plain.boxes["train"]["ball"]
+    balls = json.loads((out / "provenance.json").read_text())["balls"]
+    assert balls == {"clip": "mikasa_v200w_yellow"}

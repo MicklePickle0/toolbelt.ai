@@ -41,13 +41,21 @@ def main() -> int:
     except LabelError as e:
         print(e)
         return 1
-    splits = assign_splits(manifest)
+    try:
+        splits = assign_splits(manifest)
+    except LabelError as e:
+        print(e)
+        return 1
     entries = [manifest.video(k) for k in args.video] if args.video else manifest.videos
 
-    conn = None if args.check else db.connect(args.db)
+    try:
+        conn = None if args.check else db.connect(args.db)
+    except db.SchemaVersionError as e:
+        print(e)
+        return 1
     failed = 0
     for entry in entries:
-        print(f"\n== {entry.key}  [{splits[entry.key]}]  {entry.path}")
+        print(f"\n== {entry.key}  [{splits[entry.key]}]  {entry.venue}  {entry.path}")
         vl = load_video_labels(manifest, entry, count_frames=args.count_frames)
         for issue in vl.issues:
             print(f"  {issue}")

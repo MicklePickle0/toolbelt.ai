@@ -17,6 +17,8 @@ dependencies = [
     "pyyaml>=6.0",
     "pandas>=2.1",
     "duckdb>=1.0",
+    # Small learned scorers trained on hand labels (touch candidates; later actions).
+    "scikit-learn>=1.5",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +29,9 @@ vision = [
     "torchvision>=0.17",
     "rfdetr",
     "supervision>=0.20",
+    # ByteTrack moved out of supervision; install with --no-deps (it pulls opencv-python,
+    # which clashes with opencv-contrib-python on cv2)
+    "trackers>=2.6",
     "rtmlib",
     "onnxruntime>=1.17",
 ]
@@ -35,10 +40,13 @@ vision-gpu = [
     "torchvision>=0.17",
     "rfdetr",
     "supervision>=0.20",
+    # ByteTrack moved out of supervision; install with --no-deps (it pulls opencv-python,
+    # which clashes with opencv-contrib-python on cv2)
+    "trackers>=2.6",
     "rtmlib",
     "onnxruntime-gpu>=1.17",
 ]
-# Fine-tuning RF-DETR (on the rented GPU box): training loop, COCO eval, pycocotools.
+# Fine-tuning RF-DETR (local GPU or a rented one): training loop, COCO eval, pycocotools.
 train = ["rfdetr[train]"]
 ocr = ["easyocr>=1.7"]
 app = ["fastapi>=0.110", "uvicorn>=0.29", "streamlit>=1.33"]

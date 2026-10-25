@@ -6,18 +6,39 @@
 #   x: lateral, 0 at left sideline -> 9 at right sideline
 #   y: depth, 0 at the net -> 9 at the near end line (far side is negative)
 #   z: up, 0 on the floor
-# Lines are measured to the outer edge as per FIVB; line width ignored for now.
+# This frame is left-handed (x right, y toward the camera, z up). The camera
+# model mirrors x internally so OpenCV sees a proper rotation; stats and
+# overlays use the coordinates exactly as described here.
+# Lines are measured to the outer edge as per FIVB; the calibration model puts
+# each painted line's centre half a line width inside the court.
 length: 18.0
 width: 9.0
 attack_line_distance: 3.0  # from the net centre line
 line_width: 0.05
 
+# Match balls. Each video names one (manifest `ball`, stored in games.ball). Ball type
+# is variety like the venue: training is balanced and scored per ball type, but the
+# detector has a single class `ball` for all of them. All are regulation size.
+balls:
+  mikasa_v200w_yellow:        {maker: Mikasa, model: V200W, colours: [yellow, blue]}
+  mikasa_vq200w_ova_green:    {maker: Mikasa, model: VQ200W-OVA, colours: [green]}
+  mikasa_vq200w_can_red:      {maker: Mikasa, model: VQ200W-CAN, colours: [red]}
+  molten_flistatec_5000_blue_red_white:  {maker: Molten, model: FLISTATEC 5000, colours: [blue, red, white]}
+  molten_flistatec_5000_green_red_white: {maker: Molten, model: FLISTATEC 5000, colours: [green, red, white]}
+
 net:
-  height:
-    men: 2.43
+  # Tape height is a per-game setting (games.net_height_m). A manifest video
+  # names one of these presets or gives a custom height in metres.
+  height_presets:
+    boys_17_18u: 2.43
+    boys_15_16u: 2.35
+    boys_13_14u: 2.24
     women: 2.24
+  # Custom heights outside this range are rejected as typos.
+  custom_height_range: [2.00, 2.60]
   antenna_height_above_tape: 0.80
   tape_width: 0.07
+  width: 1.0                 # top tape to bottom tape
 
 # Named keypoints used by auto line fitting and the manual-click fallback.
 # Coordinates are (x, y, z) in the frame above.
@@ -30,15 +51,105 @@ keypoints:
   centre_right:            [9.0, 0.0, 0.0]
   far_left_attack:         [0.0, -3.0, 0.0]
   far_right_attack:        [9.0, -3.0, 0.0]
-  # Net tape top at the sidelines; z filled from net.height at runtime.
+  far_left_corner:         [0.0, -9.0, 0.0]
+  far_right_corner:        [9.0, -9.0, 0.0]
+  # Net tape top at the sidelines (where the antennas are); z = the game's net_height_m.
   net_tape_left:           [0.0, 0.0, null]
   net_tape_right:          [9.0, 0.0, null]
 
 calibration:
   # Below this, auto line fitting defers to the manual-click UI.
   auto_min_confidence: 0.7
-  manual_min_points: 6
-  # Reprojection error (px) above which a solvePnP result is flagged.
+  manual_min_points: 6        # corner points + line clicks (at least 4 corner points)
+  # After clicking, also pull the fit toward detected line pixels. Off: where courts are
+  # bounded by floor colour (Humber) the detected lines are unreliable and can drag the
+  # fit away from the clicks.
+  manual_refine_on_mask: false
+  # Reprojection error (px, full resolution) above which a manual solve is flagged.
   max_reprojection_error_px: 4.0
   # Re-validate pose against drift every N frames.
   drift_check_every_n_frames: 30
+  # Frames spread over the video whose per-pixel median (players removed) is calibrated.
+  background_frames: 9
+  # Focal length search range, as horizontal field of view.
+  hfov_range_deg: [30, 120]
+  focal_candidates: 20
+  # Fit one radial distortion term (k1) during line refinement.
+  estimate_distortion: true
+
+  # All pixel values below are at process_width (frames are downscaled first).
+  process_width: 1920
+  line_mask:
+    # Painted lines = thin, bright, unsaturated. A white top-hat keeps structures
+    # narrower than the kernel, so broad floor reflections drop out.
+    tophat_kernel_px: 21
+    min_tophat: 22
+    max_saturation: 90
+    min_value: 110
+  hough:
+    threshold: 40
+    min_length_px: 40
+    max_gap_px: 8
+  vanishing:
+    max_points: 4
+    inlier_angle_deg: 1.5
+    ransac_iterations: 600
+    # |cos| between the two floor directions above which a focal length is rejected.
+    max_orthogonality_error: 0.06
+  lines_per_family: 8
+  merge_tolerance_px: 10
+  sample_step_m: 0.1
+  search_sample_step_m: 0.25
+  inlier_tolerance_px: 3.0
+  refine_cap_px: 25.0
+  refine_top_k: 12
+  # A line counts as found when this share of its visible samples are inliers.
+  line_found_fraction: 0.3
+  # ...and its matching pixels must span at least this long in the image.
+  min_found_line_px: 80
+  min_found_lines: 4
+  # Plausible camera placement (court metres).
+  camera_height_m: [0.3, 8.0]
+  camera_min_y_m: 1.0        # on our side of the net
+  camera_max_distance_m: 40.0
+  # Pan tracking (scripts/track_camera.py): the camera stays put and rotates.
+  track:
+    width: 960                 # frames are tracked at this width
+    max_corners: 400
+    min_corner_distance: 12
+    ransac_px: 1.5
+    min_flow_confidence: 0.2   # below this, switch keyframe (real footage: ~0.45 typical)
+    keyframe_spacing_deg: 3.0  # switch keyframe after panning this far from it
+    orb_features: 1500
+    min_matches: 40
+    min_keyframe_inliers: 0.35
+    # A stored-keyframe match further than this from the flow estimate is a false match.
+    max_keyframe_jump_deg: 1.0
+    # Frames whose tracking confidence is below this go to the review queue.
+    min_confidence: 0.2
+  alignment:                   # scripts/check_camera.py: did the camera move, not just pan?
+    every_s: 60                # sample this often
+    orb_features: 3000
+    min_matches: 30
+    ransac_px: 4.0             # at the tracking width: matches agreeing with each other
+    # Median background offset from the tracked pan, full-resolution pixels. Pan-only
+    # footage stays ~2-9 px; a moved tripod jumps to ~100 px and stays there.
+    drifting_px: 15
+    moved_px: 40
+    bisect_s: 2                # narrow a move down to this many seconds
+  transfer:                    # scripts/fix_camera.py: carry a calibration past a camera move
+    features: 8000             # SIFT features per frame (full resolution)
+    ratio: 0.75                # Lowe ratio test
+    floor_x_m: [-4, 13]        # matches whose floor point lands here (court + surrounds)
+    floor_y_m: [-14, 14]
+    min_ray_down: 0.02         # rays must point clearly down to hit the floor
+    ransac_px: 6.0             # solvePnPRansac reprojection threshold (full resolution)
+    iterations: 2000
+    min_inliers: 30
+    full_inliers: 80           # confidence: inliers / this (capped at 1)
+    rms_scale_px: 8.0          #   x exp(-rms / this)
+    full_spread_m: 8.0         #   x floor extent of the inliers in x and in y / this
+    min_confidence: 0.4        # below: not used, click it instead
+    good_confidence: 0.7       # stop trying further frames at this
+    settle_s: 2                # use frames at least this long after the move
+    max_tries: 4               # cached frames to try per move
