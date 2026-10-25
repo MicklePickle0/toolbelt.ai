@@ -87,7 +87,8 @@ def main() -> int:
 
         ball = BallOverlay(args.ball_dir or config.repo_path(paths["cache_dir"]) / entry.key,
                            pipeline["ball"]["arcs"]["min_confidence"],
-                           track.camera(track.ref_frame), show_detections=args.detections)
+                           track.camera(track.ref_frame), show_detections=args.detections,
+                           trail_px=pipeline["overlay"]["trail_px"])
     people = None
     if args.people:
         from setter_eyes.ball.tracker import Detections
@@ -140,7 +141,8 @@ def main() -> int:
                              keypoints=False)
             if args.rings and tracks is not None:
                 in_rally = rallies is not None and rallies.in_rally(frame.index)
-                draw_rings(img, tracks, frame.index, cam, s, pipeline["track"], in_rally)
+                draw_rings(img, tracks, frame.index, cam, s, pipeline["track"], in_rally,
+                           radius_m=pipeline["overlay"]["ring_radius_m"])
             if ball is not None:
                 extra = ball.draw(img, frame.index, cam, s, ground=args.ground)
                 if rallies is not None:

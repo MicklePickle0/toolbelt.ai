@@ -211,6 +211,10 @@ rally:
 
 # Global review policy: any automated output whose confidence is below its
 # stage threshold is queued for review.
+overlay:                     # drawing sizes in render_overlay.py demos
+  ring_radius_m: 0.55        # green ring under each of our players, court metres
+  trail_px: 3                # ball trail width at 1920 px wide (scaled with the video)
+
 review:
   default_min_confidence: 0.6
 
