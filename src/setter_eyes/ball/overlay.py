@@ -135,9 +135,12 @@ class BallOverlay:
 
     def _x(self, image, c: dict, cam: Camera, s: float, th: int) -> None:
         """An X where the ball changed direction: yellow = us, blue = them, red = floor."""
-        uv_ref = self.path.uv_ref[c["path_index"]]
-        if not np.isfinite(uv_ref).all():
+        k = c["path_index"]
+        near = [j for j in range(max(0, k - 10), min(len(self.path.frames), k + 11))
+                if np.isfinite(self.path.uv_ref[j]).all()]
+        if not near:
             return
+        uv_ref = self.path.uv_ref[min(near, key=lambda j: abs(j - k))]
         u, v = self._to_view(uv_ref[None], cam, s)[0].round().astype(int)
         colour = COLOURS["floor"] if c["kind"] == "floor" else COLOURS[c["team"]]
         r = 9 * th

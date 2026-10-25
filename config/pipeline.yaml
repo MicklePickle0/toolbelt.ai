@@ -165,7 +165,10 @@ contacts:
   # Touches and floor contacts from soft evidence (setter_eyes.contacts.events).
   max_contacts_per_side: 3   # plus a block
   over_limit_penalty: 0.5    # confidence factor for a touch beyond that in a row
-  max_join_gap_samples: 2    # flights further apart than this aren't one event
+  max_join_gap_samples: 2    # flights this close (samples) join at a shared sample
+  max_bridge_s: 0.3          # further apart, up to this long (ball hidden by the toucher):
+  bridge_penalty: 0.8        #   still a candidate, mid-gap, at this confidence factor
+  merge_window_s: 0.12       # candidates closer than this are one event (a split flight)
   min_arc_confidence: 0.4    # both flights at least this confident -> use 3D evidence
   velocity_scale_mps: 4.0    # course change -> evidence: 1 - exp(-dv / scale)
   reach_scale_m: 1.0         # person within reach -> evidence: exp(-distance / scale)
@@ -176,6 +179,16 @@ contacts:
   floor_height_m: 0.35       # ball this low after falling = floor contact
   metres_per_px_at_typical_depth: 0.005   # rough image -> m/s for weak flights (4K, ~15 m)
   min_confidence: 0.15       # weaker candidates are dropped
+  scorer:                    # learned touch scorer, used when its model file exists
+    path: models/contacts/touch_scorer.pkl   # scripts/train_touch_scorer.py writes it
+    threshold: 0.3             # P(touch) to keep a candidate
+    nms_s: 0.35                # one touch per window: the most likely candidate wins
+    match_tolerance_s: 0.25    # training target: the candidate this close to a labelled touch
+    cv_folds: 5                # validation grouped by rally
+    model: {max_iter: 200, learning_rate: 0.05, max_leaf_nodes: 15, min_samples_leaf: 10,
+            l2_regularization: 1.0}
+    team_model: {max_iter: 150, learning_rate: 0.05, max_leaf_nodes: 7, min_samples_leaf: 8,
+                 l2_regularization: 0.0}
 
 serve:
   end_line_y_m: 8.0          # ball at or behind |y| = 8 m (end lines at 9 m)
@@ -200,6 +213,11 @@ rally:
 # stage threshold is queued for review.
 review:
   default_min_confidence: 0.6
+
+evaluate:
+  # scripts/eval_contacts.py: pipeline touches and rallies vs data/labels/<id>/events.csv.
+  match_tolerance_s: 0.25    # a predicted touch this close to a labelled one is the same touch
+  rally_margin_s: 1.0        # predictions this far outside a labelled rally aren't judged
 
 train:
   # RF-DETR fine-tune (scripts/train_detector.py), on the local GPU (RTX 4070 SUPER,

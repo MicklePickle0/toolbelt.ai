@@ -7,6 +7,8 @@ Needs the ball path and arcs (scripts/track_ball.py) and the people tracks and r
   data/cache/<id>/rallies.json    rallies: start (serve) and end (floor / ball lost),
                                   serving team, contacts, net crossings, confidence
 Rallies carry no point winner: that comes from the review UI (CLAUDE.md).
+Touches are chosen by the learned scorer when its model exists (contacts.scorer.path,
+scripts/train_touch_scorer.py), else by the hand-tuned fusion in contacts/events.py.
 Settings: `contacts:`, `serve:` and `rally:` in config/pipeline.yaml.
 Check by eye: render_overlay.py --rallies.
 
@@ -27,6 +29,7 @@ from setter_eyes import config
 from setter_eyes.ball.arcs import Arc
 from setter_eyes.ball.tracker import BallPath
 from setter_eyes.contacts.events import find_contacts
+from setter_eyes.contacts.scorer import TouchScorer, scored_contacts
 from setter_eyes.labels import load_manifest
 from setter_eyes.rally.segment import segment_rallies
 from setter_eyes.track.people import PeopleTracks
@@ -52,7 +55,14 @@ def main() -> int:
     people = PeopleTracks.load(cache / "people_tracks.npz")
     roles = load_roles(cache / "people_roles.json")
 
-    contacts = find_contacts(path, arcs, g, fps, people, roles, cfg)
+    model_path = config.repo_path(cfg["contacts"]["scorer"]["path"])
+    if model_path.exists():
+        scorer = TouchScorer.load(model_path)
+        print(f"touches: learned scorer (trained on {', '.join(scorer.trained_on)})")
+        contacts = scored_contacts(path, arcs, g, fps, people, roles, cfg, scorer)
+    else:
+        print("touches: hand-tuned fusion (no learned scorer yet)")
+        contacts = find_contacts(path, arcs, g, fps, people, roles, cfg)
     rallies = segment_rallies(path, arcs, contacts, g, fps, cfg)
     (cache / "contacts.json").write_text(json.dumps(
         {"video": entry.key, "fps": fps, "contacts": [c.to_dict() for c in contacts]},
