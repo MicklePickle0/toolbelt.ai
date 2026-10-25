@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
+from setter_eyes.classify.outcome import point_outcome
 from setter_eyes.labels.events import RallyLabel
 
 TRACED = -2                     # rallies.json serve_contact when traced back from flight
@@ -36,6 +37,7 @@ class TouchMatch:
     confidence: float | None = None
     source: str = ""            # touch | traced
     rally: int | None = None    # labelled rally number
+    pred_action: str | None = None
 
 
 @dataclass
@@ -48,8 +50,10 @@ class RallyMatch:
     pred_start: float | None = None
     pred_end: float | None = None
     pred_serving: str | None = None
-    serve_how: str = ""         # seen | traced | not found
+    serve_how: str = ""         # seen | traced | inferred | not found
     end_reason: str = ""
+    label_outcome: str | None = None
+    pred_outcome: str | None = None   # from the pipeline's last touch + the true winner
 
 
 @dataclass
@@ -64,6 +68,7 @@ class Evaluation:
         n_pred = sum(m.pred_t is not None for m in self.touches)
         team_ok = [m.label_team == m.pred_team for m in matched]
         dt = [abs(m.pred_t - m.label_t) for m in matched]
+        acted = [m for m in matched if m.pred_action is not None]
         by_action: dict[str, list[int]] = {}
         for m in self.touches:
             if m.label_t is not None:
@@ -80,6 +85,12 @@ class Evaluation:
             "team_accuracy": float(np.mean(team_ok)) if team_ok else None,
             "median_time_error_s": float(np.median(dt)) if dt else None,
             "recall_by_action": {a: f"{h}/{n}" for a, (h, n) in sorted(by_action.items())},
+            "action_accuracy": float(np.mean([m.pred_action == m.action for m in acted]))
+            if acted else None,
+            "action_accuracy_by_label": {
+                a: f"{sum(m.pred_action == a for m in acted if m.action == a)}/"
+                   f"{sum(m.action == a for m in acted)}"
+                for a in sorted({m.action for m in acted if m.action})},
             "rallies_labelled": len(self.rallies),
             "rallies_found": len(found),
             "false_rallies": len(self.false_rallies),
@@ -87,6 +98,9 @@ class Evaluation:
             "serving_team_correct": sum(r.pred_serving == r.label_serving for r in served),
             "median_start_error_s": _median_abs(r.pred_start - r.label_start for r in served),
             "median_end_error_s": _median_abs(r.pred_end - r.label_end for r in found),
+            "outcomes_right": sum(r.pred_outcome == r.label_outcome for r in found
+                                  if r.label_outcome),
+            "outcomes_labelled": sum(bool(r.label_outcome) for r in found),
         }
 
 
@@ -113,11 +127,12 @@ def evaluate(labels: list[RallyLabel], contacts: list[dict], rallies: list[dict]
     lab = [(c.frame / fps, c.team, c.action, r.rally_number)
            for r in labels for c in r.contacts]
     # Predicted side: touches inside the labelled stretch, plus traced serves.
-    pred = [(c["t"], c["team"], c["confidence"], "touch") for c in contacts
+    pred = [(c["t"], c["team"], c["confidence"], "touch", c.get("action")) for c in contacts
             if c["kind"] == "touch" and window_of(c["t"]) is not None]
     for ra in rallies:
         if ra["serve_contact"] == TRACED and window_of(ra["start_t"]) is not None:
-            pred.append((ra["start_t"], ra["serving_team"], ra["confidence"], "traced"))
+            pred.append((ra["start_t"], ra["serving_team"], ra["confidence"], "traced",
+                         "serve"))
 
     out = Evaluation()
     pairs = _match([p[0] for p in pred], [lb[0] for lb in lab], tol)
@@ -125,19 +140,20 @@ def evaluate(labels: list[RallyLabel], contacts: list[dict], rallies: list[dict]
     used_l = {j for _, j in pairs}
     for i, j in pairs:
         p, lb = pred[i], lab[j]
-        out.touches.append(TouchMatch(lb[0], p[0], lb[1], p[1], lb[2], p[2], p[3], lb[3]))
+        out.touches.append(TouchMatch(lb[0], p[0], lb[1], p[1], lb[2], p[2], p[3], lb[3],
+                                      p[4]))
     for j, lb in enumerate(lab):
         if j not in used_l:
             out.touches.append(TouchMatch(lb[0], None, lb[1], None, lb[2], rally=lb[3]))
     for i, p in enumerate(pred):
         if i not in used_p:
             out.touches.append(TouchMatch(None, p[0], None, p[1], None, p[2], p[3],
-                                          window_of(p[0])))
+                                          window_of(p[0]), p[4]))
     out.touches.sort(key=lambda m: m.label_t if m.label_t is not None else m.pred_t)
 
     for r in labels:
         t0, t1 = r.start_frame / fps, r.end_frame / fps
-        m = RallyMatch(r.rally_number, t0, t1, r.serving_team)
+        m = RallyMatch(r.rally_number, t0, t1, r.serving_team, label_outcome=r.outcome)
         best, overlap = None, 0.0
         for ra in rallies:
             ov = min(t1, ra["end_t"]) - max(t0, ra["start_t"])
@@ -147,8 +163,15 @@ def evaluate(labels: list[RallyLabel], contacts: list[dict], rallies: list[dict]
             sc = best["serve_contact"]
             m.pred_index, m.pred_start, m.pred_end = best["index"], best["start_t"], best["end_t"]
             m.pred_serving = best["serving_team"]
-            m.serve_how = "traced" if sc == TRACED else "seen" if sc is not None else "not found"
+            m.serve_how = {TRACED: "traced", -3: "inferred", None: "not found"}.get(sc, "seen")
             m.end_reason = best["end_reason"]
+            touches = [contacts[i] for i in best.get("contacts", [])
+                       if i < len(contacts) and contacts[i]["kind"] == "touch"]
+            last = touches[-1] if touches else {}
+            if r.point_winner:
+                m.pred_outcome = point_outcome(last.get("action"), last.get("team"),
+                                               r.point_winner,
+                                               last.get("action_confidence"))[0]
         out.rallies.append(m)
     if labels:
         lo, hi = labels[0].start_frame / fps, labels[-1].end_frame / fps

@@ -34,3 +34,43 @@ def test_net_crossings_count_confident_flights_only():
     stays = arc(3.0, (4.5, 5.0, 2.0), (0.0, 1.0, 4.0))
     weak = arc(4.0, (4.5, 3.0, 3.0), (0.0, -10.0, 2.0), conf=0.1)
     assert net_crossings([over, back, stays, weak], G, 0.0, 10.0, 0.4) == 2
+
+
+def _touch(t, team, xyz=None):
+    from setter_eyes.contacts.events import Contact
+
+    return Contact(0, int(t * 60), t, "touch", team, -1, xyz, [0.0, 0.0], 3.0, 0.5, 0.8)
+
+
+def _path(t_end=200.0):
+    from setter_eyes.ball.tracker import BallPath
+
+    f = np.arange(0, int(t_end * 60), 2)
+    n = len(f)
+    return BallPath(f, np.zeros(n, int), np.zeros((n, 2)), np.zeros((n, 2)), np.ones(n, bool),
+                    np.ones(n), np.full(n, 20.0))
+
+
+def test_rallies_from_touches():
+    from setter_eyes.rally.segment import SERVE_INFERRED, segment_from_touches
+
+    contacts = [
+        # our server bouncing the ball well before serving: kept apart, dropped
+        _touch(6.0, "us"), _touch(8.0, "us"),
+        # rally 1: our serve, their reply, ours
+        _touch(13.0, "us"),
+        _touch(14.1, "them"), _touch(15.2, "them"), _touch(16.4, "us"),
+        # rally 2: their serve unseen; our receive, set, attack, then their dig
+        _touch(40.0, "us"), _touch(41.0, "us"), _touch(42.0, "us"), _touch(43.2, "them"),
+        # pepper in a timeout: one side, no crossing -> no rally
+        _touch(80.0, "us"), _touch(81.5, "us"), _touch(83.0, "us"),
+        # a ball on the next court (x = 20 m): ignored
+        _touch(120.0, "them", [20.0, 3.0, 2.0]), _touch(121.0, "us", [20.0, 5.0, 2.0]),
+    ]
+    rallies = segment_from_touches(_path(), [], contacts, G, 60.0, CFG)
+    assert len(rallies) == 2
+    r1, r2 = rallies
+    assert (r1.serving_team, r1.start_t) == ("us", 13.0) and contacts[2].serve
+    assert r2.serving_team == "them" and r2.serve_contact == SERVE_INFERRED
+    assert r2.start_t < 40.0
+    assert r2.confidence < CFG["review"]["default_min_confidence"]   # goes to review

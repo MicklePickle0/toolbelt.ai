@@ -17,6 +17,26 @@ Behind our end line (y > 0) we serve, behind theirs they do.
 Rally-state prior (CLAUDE.md): at most 3 touches a side in a row (plus a block); a 4th
 lowers that touch's confidence rather than being dropped.
 
+With the learned touch scorer, rallies are built from touches instead
+(segment_from_touches): touches less than `max_touch_gap_s` apart are one rally (labelled
+footage: <= 2.2 s apart within a rally, >= 14 s between rallies). The serve, in order:
+  - traced back from the first net-crossing flight, when it starts before the first
+    touch seen and from the other side (the hit wasn't seen, the reply was)
+  - the last touch that looks like a serve (at or behind an end line, then over the net)
+    before the ball first changes sides
+  - a single touch followed by the ball changing sides (a serve whose 3D was weak)
+  - otherwise INFERRED: a rally that opens with 2+ touches by one side (receive, set,
+    attack), or only one side's touches and a net crossing, was served by the other side,
+    unseen (hidden by a player or the net tape); placed `serve_flight_s` before the first
+    touch
+    Right about half the time on labelled footage (mostly when a touch's team is wrong;
+    pre-serve bounces within `max_touch_gap_s` of the serve look the same), so these
+    rallies get `inferred_factor` confidence and go to the review queue.
+A group with none of these is dropped (pepper in a timeout, a toss, a ball kicked back).
+Touches with the ball outside our court's airspace belong to another court and are
+ignored. The rally ends at the first floor contact after its last touch, else where the
+ball is lost, at most `end_window_s` after it.
+
 The score is NOT decided here (CLAUDE.md): rallies carry no point winner; that comes from
 the review UI key press, with scoreboard OCR as a sanity check.
 """
@@ -32,6 +52,7 @@ from setter_eyes.ball.tracker import BallPath
 from setter_eyes.contacts.events import Contact
 
 SERVE_FROM_FLIGHT = -2          # Rally.serve_contact when the serve was traced back
+SERVE_INFERRED = -3             # ...when it wasn't seen at all but the rally shows it
 
 
 @dataclass
@@ -123,6 +144,97 @@ def segment_rallies(path: BallPath, arcs: list[Arc], contacts: list[Contact], g:
             round(start_t, 3), round(end_t, 3), serving, start_i,
             "floor" if floors else "ball_lost", members, crossings, round(min(1.0, conf), 3)))
     return rallies
+
+
+def in_airspace(c: Contact, cfg: dict) -> bool:
+    """Over our court (see rally.airspace)? Unknown (no 3D) counts as yes."""
+    if c.ball_xyz is None:
+        return True
+    a = cfg["rally"]["airspace"]
+    x, y, z = c.ball_xyz
+    return a["x_m"][0] <= x <= a["x_m"][1] and a["y_m"][0] <= y <= a["y_m"][1] and \
+        z <= a["max_z_m"]
+
+
+def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact],
+                         g: np.ndarray, fps: float, cfg: dict) -> list[Rally]:
+    r = cfg["rally"]["from_touches"]
+    times = path.frames / fps
+    seen_t = times[np.isfinite(path.uv).all(axis=1)]
+    for c in contacts:
+        c.serve = False
+    touches = [i for i, c in enumerate(contacts) if c.kind == "touch" and in_airspace(c, cfg)]
+    groups: list[list[int]] = []
+    for i in touches:
+        if groups and contacts[i].t - contacts[groups[-1][-1]].t <= r["max_touch_gap_s"]:
+            groups[-1].append(i)
+        else:
+            groups.append([i])
+
+    rallies: list[Rally] = []
+    for grp in groups:
+        teams = [contacts[i].team for i in grp]
+        change = next((j for j in range(len(grp) - 1)
+                       if teams[j] and teams[j + 1] and teams[j] != teams[j + 1]), None)
+        first_run = grp[:change + 1] if change is not None else grp
+        t_first = contacts[grp[0]].t
+        traced = traced_serve(arcs, g, t_first - r["serve_lookback_s"], contacts[grp[-1]].t,
+                              cfg)
+        crosses = net_crossings(arcs, g, t_first, contacts[grp[-1]].t + r["end_window_s"],
+                                cfg["rally"]["min_arc_confidence"]) > 0
+        serve_like = [i for i in first_run if is_serve(contacts[i], arcs, g, cfg)]
+        other = {"us": "them", "them": "us"}.get(teams[0])
+        serve_i: int | None = None
+        if traced is not None and traced[0] < t_first and traced[1] != teams[0]:
+            serve_i = SERVE_FROM_FLIGHT            # the hit wasn't seen; the reply was
+        elif serve_like:
+            serve_i = serve_like[-1]
+        elif len(first_run) == 1 and (change is not None or crosses):
+            serve_i = first_run[0]
+        elif other is not None and (change is not None or crosses):
+            serve_i = SERVE_INFERRED               # receive/set/attack first: theirs served
+        elif traced is not None:
+            serve_i = SERVE_FROM_FLIGHT
+        if serve_i is None:
+            continue                               # no serve, no exchange
+        if serve_i == SERVE_FROM_FLIGHT:
+            start_t, serving = traced[0], traced[1]
+        elif serve_i == SERVE_INFERRED:
+            start_t, serving = t_first - r["serve_flight_s"], other
+        else:
+            start_t, serving = contacts[serve_i].t, contacts[serve_i].team
+            contacts[serve_i].serve = True
+        last = contacts[grp[-1]].t
+        floors = [i for i, c in enumerate(contacts)
+                  if c.kind == "floor" and last < c.t <= last + r["end_window_s"]]
+        if floors:
+            end_t, reason = contacts[floors[0]].t, "floor"
+        else:
+            end_t, reason = _ball_lost_after(seen_t, last, cfg["rally"]["max_ball_gap_s"],
+                                             r["end_window_s"]), "ball_lost"
+        members = [i for i, c in enumerate(contacts) if start_t <= c.t <= end_t]
+        _apply_touch_prior(contacts, members, cfg)
+        inferred = serve_i == SERVE_INFERRED
+        conf = r["base_confidence"] + r["serve_bonus"] * (not inferred) + \
+            r["exchange_bonus"] * (change is not None) + r["floor_bonus"] * bool(floors)
+        if inferred:
+            conf *= r["inferred_factor"]
+        rallies.append(Rally(
+            len(rallies) + 1, int(round(start_t * fps)), int(round(end_t * fps)),
+            round(start_t, 3), round(end_t, 3), serving, serve_i, reason, members,
+            net_crossings(arcs, g, start_t, end_t, cfg["rally"]["min_arc_confidence"]),
+            round(min(1.0, conf), 3)))
+    return rallies
+
+
+def _ball_lost_after(seen_t: np.ndarray, t: float, max_gap: float, cap: float) -> float:
+    """When the ball is lost (no sample for > max_gap) after time t, at most t + cap."""
+    last = t
+    for x in seen_t[(seen_t > t) & (seen_t <= t + cap)]:
+        if x - last > max_gap:
+            break
+        last = float(x)
+    return last
 
 
 def traced_serve(arcs: list[Arc], g: np.ndarray, t0: float, t1: float,

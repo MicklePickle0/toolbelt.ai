@@ -43,12 +43,21 @@ class Contact:
     person_distance: float          # m (3D) or body heights (image), inf if nobody near
     confidence: float
     serve: bool = False
+    action: str | None = None                # classify/rules.py, after the rally is built
+    action_confidence: float | None = None
 
     def to_dict(self) -> dict:
         d = asdict(self)
         d["person_distance"] = None if not np.isfinite(self.person_distance) else \
             round(self.person_distance, 2)
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Contact:
+        d = dict(d)
+        if d.get("person_distance") is None:
+            d["person_distance"] = float("inf")
+        return cls(**d)
 
 
 def _people_at(people: PeopleTracks, frames_index: dict, frame: int) -> np.ndarray:

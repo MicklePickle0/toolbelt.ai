@@ -1,7 +1,7 @@
 """Draw the tracked ball on video frames.
 
 The ball draws its own trail: during a rally, a line behind the ball from its last touch
-(it starts fresh at every touch), and an X at each touch so far in the rally
+(it starts fresh at every touch), and an X at the latest touch (replaced by the next)
 (yellow = us, blue = them, red = floor). Between rallies, a short trail. Trail points are
 kept in the pan-free reference view and redrawn through the current camera, so the line
 stays on the ball's real path while the camera pans. Optional: raw detections, and
@@ -29,7 +29,8 @@ COLOURS = {"detection": (160, 160, 160), "measured": (0, 255, 0), "bridged": (0,
 
 class BallOverlay:
     def __init__(self, cache_dir: Path, min_confidence: float, ref: Camera,
-                 trail_s: float = 1.0, show_detections: bool = False):
+                 trail_s: float = 1.0, show_detections: bool = False,
+                 trail_px: float = 3.0):
         self.path = BallPath.load(cache_dir / "ball_path.npz")
         self.dets = Detections.load(cache_dir / "ball_detections.npz")
         d = json.loads((cache_dir / "ball_arcs.json").read_text(encoding="utf-8"))
@@ -42,6 +43,7 @@ class BallOverlay:
         self.trail = max(1, round(trail_s * self.fps / step))
         self.groups = self.dets.by_frame()
         self.show_detections = show_detections
+        self.trail_px = trail_px
         self.rallies, self.contacts = [], []
         if (cache_dir / "rallies.json").exists() and (cache_dir / "contacts.json").exists():
             self.rallies = json.loads((cache_dir / "rallies.json").read_text())["rallies"]
@@ -90,10 +92,11 @@ class BallOverlay:
             lo = max(0, k - self.trail)
         self._trail(image, lo, k, cam, s, th)
         if rally is not None:
-            for i in rally["contacts"]:
-                c = self.contacts[i]
-                if c["t"] <= t_now:
-                    self._x(image, c, cam, s, th)
+            # Only the latest touch keeps its X; the next touch replaces it.
+            past = [self.contacts[i] for i in rally["contacts"]
+                    if self.contacts[i]["t"] <= t_now]
+            if past:
+                self._x(image, past[-1], cam, s, th)
 
         label = ""
         self.ball_xyz = None
@@ -130,8 +133,9 @@ class BallOverlay:
             runs.append(run)
         for r in runs:
             pts = self._to_view(self.path.uv_ref[r], cam, s)
+            width = max(1, round(self.trail_px * image.shape[1] / 1920))
             cv2.polylines(image, [pts.round().astype(np.int32)], False, COLOURS["trail"],
-                          2 * th, cv2.LINE_AA)
+                          width, cv2.LINE_AA)
 
     def _x(self, image, c: dict, cam: Camera, s: float, th: int) -> None:
         """An X where the ball changed direction: yellow = us, blue = them, red = floor."""

@@ -208,6 +208,48 @@ rally:
   base_confidence: 0.4
   serve_bonus: 0.3
   floor_bonus: 0.3
+  # Rallies built from touches (used with the learned touch scorer):
+  from_touches:
+    max_touch_gap_s: 3.0     # touches closer than this are one rally (labelled: <= 2.2 s
+                             # within a rally, >= 14 s between rallies); tighter keeps
+                             # pre-serve ball handling (throwing it to the server) apart
+    serve_lookback_s: 2.5    # a serve traced back from flight may start this long before
+                             # the first touch seen
+    end_window_s: 3.0        # the rally ends this soon after its last touch at the latest
+    serve_flight_s: 1.07     # a missed serve is placed this long before the first reply
+                             # (labelled serve -> first touch: median 1.07 s, 0.8-1.4)
+    base_confidence: 0.3
+    serve_bonus: 0.2         # a serve seen as a touch or traced back
+    exchange_bonus: 0.3      # the ball changed sides (touches by both teams)
+    floor_bonus: 0.2         # ended on a floor contact
+    inferred_factor: 0.7     # serve inferred, not seen: right about half the time on
+                             # labelled footage, so these go to the review queue
+  # Our court's airspace (court metres): touches with the ball outside it are another
+  # court's (balls on the courts beside ours). Court: x 0-9, y -9..9, net at y = 0.
+  airspace:
+    x_m: [-3.0, 12.0]
+    y_m: [-12.0, 12.0]
+    max_z_m: 10.0
+
+classify:
+  # Stage-1 action rules (setter_eyes.classify.rules): touch order within each side's run.
+  block_zone_m: 1.0          # a block: ball this close to the net plane...
+  block_min_z_m: 2.0         # ...and at least this high (tape at 2.24-2.43 m)
+  rule_confidence:           # per rule; times the touch's own confidence
+    serve: 0.95
+    receive: 0.9
+    set: 0.85
+    attack: 0.8
+    dig: 0.75
+    block: 0.6
+    coverage: 0.6
+    dump: 0.6
+    overpass: 0.6
+    uncertain: 0.4           # a 4th touch in a row, or a reply on the serving side
+
+overlay:                     # drawing sizes in render_overlay.py demos
+  ring_radius_m: 0.55        # green ring under each of our players, court metres
+  trail_px: 3                # ball trail width at 1920 px wide (scaled with the video)
 
 # Global review policy: any automated output whose confidence is below its
 # stage threshold is queued for review.
