@@ -115,6 +115,9 @@ Background and venue variety:
 7. Identity (roster, number voting, rotation).
 8. Pass scoring (0-4) validated on hand-labeled passes.
 9. Stats + DataVolley export + learned classifier from corrections.
+10. Setting arc analysis: per set, release point, apex height, time to the hitter (tempo), landing/contact point relative to the antennas and net, and per-setter consistency by set type (left, right, middle, pipe, back set). Overlay the arc on the video and plot arcs on a side-view court diagram.
+11. Serve-receive by zone: for each first ball after the serve, record the player, the court zone (1-6, near side) and floor point of the contact, and the 0-4 pass score. Per player: a court map of contact points colored by pass score, plus average score and error rate per zone, so it shows who passes best and worst in each position.
+12. Serve placement: where our serves go on the opponent side, by zone (1-6) as percentages. Show a court map with each serve as a dot (colored by outcome: ace, in play, error) and a heatmap toggle. Landing point comes from the ball's 3D arc (floor crossing or the opponent's first contact). This is the ball only, not far-side player tracking, but far-side depth accuracy is weaker, so keep zones coarse, attach a confidence to each landing point and send low-confidence ones to the review queue.
 
 ## Working rules for Claude Code
 - Build one milestone at a time; add a visual verification script (overlay video/images) for each.
