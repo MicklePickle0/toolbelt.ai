@@ -12,7 +12,7 @@ import json
 import random
 import shutil
 import subprocess
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import asdict, dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -160,8 +160,9 @@ def _timestamp(cap: cv2.VideoCapture, index: int, fps: float) -> float:
 
 
 def iter_frames(path: str | Path, start: int = 0, end: int | None = None,
-                step: int = 1) -> Iterator[Frame]:
-    """Yield frames start, start+step, ... up to (not including) end, decoding sequentially."""
+                step: int = 1, keep: Callable[[int], bool] | None = None) -> Iterator[Frame]:
+    """Yield frames start, start+step, ... up to (not including) end, decoding sequentially.
+    With `keep`, only the frames it accepts (the others are skipped cheaply with grab())."""
     if step < 1:
         raise ValueError("step must be >= 1")
     cap = _open(path)
@@ -169,7 +170,7 @@ def iter_frames(path: str | Path, start: int = 0, end: int | None = None,
     try:
         index = 0
         while end is None or index < end:
-            if index < start or (index - start) % step:
+            if index < start or (index - start) % step or (keep is not None and not keep(index)):
                 if not cap.grab():
                     return
             else:

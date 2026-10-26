@@ -96,13 +96,25 @@ python scripts/track_camera.py --video mac-chrome_set1        # pose per frame +
 ## Ball tracking (Milestone 3)
 
 ```bash
-python scripts/detect_ball.py --video titan-rise_set1        # every 2nd frame, ~1.6 h per 4K set
+python scripts/find_play.py --video titan-rise_set1          # play spans: skip time between rallies
+python scripts/detect_ball.py --video titan-rise_set1        # 30 samples/s, play spans only
 python scripts/track_ball.py --video titan-rise_set1         # tracks + 3D flight arcs, ~1 min
 python scripts/render_overlay.py --video titan-rise_set1 --ball --ground --start 60 --seconds 60
 ```
 
+- Footage: 1080p30 up to 4K60. Detection samples at 30 per second whatever the frame rate
+  (`video.sample_hz`), and pixel settings are written for 4K and scale with the video's
+  width (`video.reference_width`), so the same config serves both.
+- Play spans: `find_play.py` scores on-court motion and writes
+  `data/cache/<id>/play_spans.json`; detection skips everything outside it. With labelled
+  rallies it lists any rally not fully covered: check that none are on a new venue.
+  `detect_ball.py --all-frames` ignores the spans.
 - Detection: the tiled RF-DETR ball detector (`models.ball_detector`), fp16, resumable;
-  `data/cache/<id>/ball_detections.npz`.
+  `data/cache/<id>/ball_detections.npz`. While a moving ball is followed, only one
+  tile-sized window around it is detected instead of all 9 tiles; the whole frame is still
+  scanned every 1/3 s, for new balls, and on any frame where the window misses
+  (`detect.ball_follow`; `--no-follow` turns it off). The run ends by printing the model
+  passes per frame.
 - Tracking: detections are re-expressed in the calibrated reference view (camera pan
   removed), joined into tracks with a constant-acceleration Kalman filter, and the
   match ball is the long, confident, moving track (spare balls never move). Short gaps

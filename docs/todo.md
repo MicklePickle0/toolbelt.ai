@@ -12,6 +12,23 @@ Ordered by priority within each section. Scores are from the labelled `titan-ris
 - [ ] **Retrain the touch scorer on train-split sets** once `mac-chrome_set1` is labelled,
       and keep `titan-rise_set1` (test split) only for testing.
 
+## Detection speed (on the desktop, with footage)
+
+- [ ] **Check play spans on the labelled sets**: `find_play.py --video titan-rise_set1`
+      (and `mac-chrome_set1` once labelled). Every labelled rally must be covered; note the
+      share of the video kept. Tune `activity.play:` if a serve is cut.
+- [ ] **Check ball following against full scans** on a labelled minute or two:
+      `detect_ball.py --start 60 --seconds 120 --out A.npz` vs the same with `--no-follow
+      --out B.npz`, then `track_ball.py --detections` on each and `eval_contacts.py`.
+      Touches and rallies should match; note the passes per frame and the time.
+- [ ] **1080p30 test**: scale `titan-rise_set1` down with ffmpeg
+      (`-vf scale=1920:-2 -r 30`), add it to the manifest under a new key (copy the labels,
+      frames scaled by 30/59.94), calibrate, run the pipeline and compare with
+      `eval_contacts.py`. The detector was trained on 4K tiles: if recall drops, fine-tune
+      on the labelled frames scaled to 1080p (no new labelling needed).
+- [ ] People detection still runs on every sample; skipping downtime there too needs
+      `track_people` to end tracks across skipped stretches first (as `track_ball` does).
+
 ## Milestone 4: touches and rallies
 
 - [ ] **Blocks**: 8 of 18 found, and behind most wrong point outcomes. Ball near the net

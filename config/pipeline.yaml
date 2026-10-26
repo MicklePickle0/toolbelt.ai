@@ -14,6 +14,15 @@ paths:
   # Registry of videos + their label files (see config/manifest.example.yaml).
   manifest_path: data/manifest.yaml
 
+video:
+  # Footage from 1080p30 up to 4K60. Pixel settings in this file (keys ending in `_px`
+  # or containing `_px_`) are written for this frame width and scale with the video's
+  # width (config.scale_px), so 1080p uses half of each.
+  reference_width: 3840
+  # Whole-video detection samples frames at this rate (59.94 fps: every 2nd frame, 30 fps:
+  # every frame). Settings counted in samples (tracker misses, arc windows) assume it.
+  sample_hz: 30
+
 ingest:
   # Frames are cached as JPEG. The ball is small: keep quality high.
   jpeg_quality: 95
@@ -63,18 +72,33 @@ detect:
   person_min_confidence: 0.4
   ball_min_confidence: 0.25
   ball_input_resolution: 1280
-  # Whole-video ball detection (scripts/detect_ball.py). Every Nth frame: the tracker
-  # bridges the gaps, and 2 keeps 30 samples per second at 59.94 fps.
-  ball_stride: 2
+  # Whole-video ball detection (scripts/detect_ball.py) samples at video.sample_hz.
+  # Tiles: datasets.tiles at the video's own resolution, so a tile covers the same share
+  # of the frame (and the ball the same share of the model input) at 1080p as at 4K.
   # Stored detections go down to this score; the tracker decides what to trust.
   ball_store_threshold: 0.15
   ball_save_every: 2000      # processed frames between checkpoints (resumable)
+  # Only detect during play: skip the time between rallies (data/cache/<id>/play_spans.json
+  # from scripts/find_play.py; without it every frame is detected). --all-frames turns it off.
+  ball_play_only: true
+  # While a moving ball is followed, detect only a tile-sized window around where it
+  # should be, not all 9 tiles. If the window misses it, the whole frame is scanned.
+  ball_follow:
+    enabled: true
+    full_scan_every_s: 0.33  # scan the whole frame this often anyway (a new ball, a far serve)
+    max_windows: 2           # balls followed at once (the match ball + one more)
+    min_score: 0.5           # detections this confident start or continue a followed ball
+    min_move_px: 60          # ...followed once it has moved this far (spare balls never do)
+    gate_px: 300             # a detection this close to a prediction is that ball
+    confirm_hits: 3          # a new ball gets full scans until seen this often
+    forget_s: 1.0            # a ball not seen this long is forgotten (longer than the
+                             # full-scan interval, so spare balls stay known as static)
+    edge_margin_px: 120      # the prediction must sit this far inside the window
   # Whole-video person detection (scripts/detect_people.py): the COCO-pretrained RF-DETR
   # `person` class on whole frames (players are large; tiles would cut them). 1280 finds
   # slightly more small/far people than the native 576 for ~8 ms more per frame.
   person_model: medium
   person_input_resolution: 1280
-  person_stride: 2
   person_store_threshold: 0.3
 
 track:
@@ -136,13 +160,13 @@ ball:
   static_spread_px: 60       # a track that never moves further is a spare ball / wall mark
   kalman:
     jerk_px_s3: 20000
-    init_sigma: {pos: 5.0, vel: 3000.0, acc: 3000.0}
+    init_sigma_px: {pos: 5.0, vel: 3000.0, acc: 3000.0}
   arcs:
     min_samples: 6           # shortest flight (0.2 s at 30 Hz)
     max_gap_s: 0.15
     window_samples: 5        # touches: one quadratic over +-5 samples vs two separate ones
     break_px: 5.0            # ...splitting cuts the error by more than this (px RMS) = a touch
-    pixel_sigma: 3.0
+    pixel_sigma_px: 3.0
     depth_range_m: [3.0, 40.0]
     depth_steps: 10
     refine_starts: 3
@@ -300,10 +324,10 @@ train:
   prelabel_threshold: 0.3
 
 # Rough play activity (setter_eyes.rally.activity), used to sample labelling frames
-# from live play. Not rally segmentation.
+# from live play and to skip the time between rallies in detection. Not rally segmentation.
 activity:
   width: 480                 # frames are scored at this width
-  step: 6                    # one sample every 6 frames (0.1 s at 59.94 fps)
+  step_s: 0.1                # one sample this often
   court_band: [0.35, 1.0]    # image rows scored (fractions): floor and players, not ceiling
   diff_threshold: 25
   smooth_samples: 10         # 1 s moving average
@@ -312,3 +336,19 @@ activity:
   burst_len: 10
   active_share: 0.8          # the rest come from downtime (still useful negatives)
   active_quantile: 0.6       # samples above this per-video quantile count as active
+  # Play spans (scripts/find_play.py): ball detection runs only inside them. Generous on
+  # purpose: a missed serve costs far more than detecting some downtime. Check with
+  # find_play.py's report against labelled rallies before tightening.
+  play:
+    # Active where the smoothed activity is above low + level x (high - low), with low
+    # and high this video's own quantiles (gyms, cameras and crowds differ).
+    low_quantile: 0.2
+    high_quantile: 0.95      # inside play as long as play is > 5% of the video
+    level: 0.25
+    pad_before_s: 5.0        # the serve comes before the court moves (receivers react ~1 s
+                             # later; the server standing still behind the line scores low)
+    pad_after_s: 3.0         # the last touch and the ball landing
+    min_gap_s: 8.0           # quieter stretches shorter than this stay in (one long rally)
+    min_span_s: 1.0          # less motion than this in a joined span is noise
+    check_lead_s: 1.0        # find_play.py's check: labelled rallies covered from this long
+                             # before their start (the toss) to their end

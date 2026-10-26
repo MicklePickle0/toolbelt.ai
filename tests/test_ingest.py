@@ -86,3 +86,9 @@ def test_iter_frames_scaled_keeps_indices(video):
     assert frames[0].image.shape == (SIZE[1] // 2, SIZE[0] // 2, 3)
     gray = next(iter_frames_scaled(video, SIZE[0], gray=True))
     assert decoded_index(cv2.cvtColor(gray.image, cv2.COLOR_GRAY2BGR)) == 0
+
+
+def test_iter_frames_keep_skips_frames(video):
+    frames = list(iter_frames(video, start=4, end=40, step=3, keep=lambda f: f < 12 or f > 30))
+    assert [f.index for f in frames] == [4, 7, 10, 31, 34, 37]
+    assert all(decoded_index(f.image) == f.index for f in frames)

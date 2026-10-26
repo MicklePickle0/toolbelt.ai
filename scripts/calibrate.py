@@ -79,7 +79,8 @@ def manual(image: np.ndarray, model: CourtModel, cfg: dict, key: str, frame: int
         print(f"  {len(clicks)} points (rms {rms:.1f} px), {n_line} line clicks on "
               f"{len(line_clicks)} lines (rms {line_rms:.1f} px)")
         if confirm(draw_court(image, cam, model, label)):
-            ok = max(rms, line_rms) <= cfg["max_reprojection_error_px"]
+            limit = cfg["max_reprojection_error_px"] * config.pixel_scale(image.shape[1])
+            ok = max(rms, line_rms) <= limit
             return Calibration(video=key, camera=cam, method="manual",
                                confidence=1.0 if ok else 0.5, net_height_m=model.net_height,
                                frame=frame, support=sup.to_dict(), clicks=clicks,

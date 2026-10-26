@@ -39,7 +39,7 @@ def process_noise(dt: float, jerk: float) -> np.ndarray:
 class BallKalman:
     def __init__(self, uv: np.ndarray, t: float, cfg: dict, gravity_px: float):
         self.x = np.array([uv[0], uv[1], 0.0, 0.0, 0.0, gravity_px])
-        p = cfg["init_sigma"]
+        p = cfg["init_sigma_px"]
         self.P = np.diag([p["pos"] ** 2] * 2 + [p["vel"] ** 2] * 2 + [p["acc"] ** 2] * 2)
         self.t = t
         self.jerk = cfg["jerk_px_s3"]

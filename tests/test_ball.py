@@ -108,3 +108,18 @@ def test_flights_are_split_at_the_touch_and_fit_in_3d():
 def test_segment_rejects_noise_shorter_than_a_flight():
     t = np.arange(0, 0.15, 1 / 30)
     assert segment(t, np.zeros((len(t), 2)), CFG["arcs"]) == []
+
+
+def test_tracks_do_not_live_across_skipped_downtime():
+    """Detection skipped 10 s between two rallies: the ball after it is a new track."""
+    cam = VIEWS["centred"]
+    a = 1000 + 2 * np.arange(40)
+    b = a[-1] + 600 + 2 * np.arange(40)
+    frames = np.concatenate([a, b])
+    # One straight path: the ball after the gap continues where the last one stopped.
+    uv = np.stack([600 + 8.0 * np.arange(len(frames)), np.full(len(frames), 500.0)], axis=1)
+    boxes = np.hstack([uv - 6, uv + 6])
+    dets = Detections(frames, frames.copy(), boxes, np.full(len(frames), 0.9), FPS)
+    path = track_ball(dets, lambda f: cam, cam, CFG)
+    ids_a, ids_b = set(path.track_id[:len(a)]), set(path.track_id[len(a):])
+    assert -1 not in ids_a | ids_b and not ids_a & ids_b

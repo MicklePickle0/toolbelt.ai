@@ -1,5 +1,5 @@
-# Full pipeline over several videos, one after another (detection is the slow part:
-# ~1.5-2 h of GPU per 20-minute set). Detection resumes where it stopped, so the run can
+# Full pipeline over several videos, one after another (detection is the slow part).
+# find_play first, so ball detection skips the time between rallies. Detection resumes where it stopped, so the run can
 # be interrupted (Ctrl+C) and started again later. Log: data/outputs/logs/process_videos.log
 #
 # Usage (from the repo root, in PowerShell):
@@ -14,7 +14,7 @@ param([string[]]$Videos = @(
 $py = ".venv\Scripts\python.exe"
 $log = "data\outputs\logs\process_videos.log"
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
-$steps = "detect_ball", "detect_people", "track_ball", "track_people", "find_rallies"
+$steps = "find_play", "detect_ball", "detect_people", "track_ball", "track_people", "find_rallies"
 
 foreach ($v in $Videos) {
     foreach ($step in $steps) {

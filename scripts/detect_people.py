@@ -1,4 +1,4 @@
-"""Detect people on every Nth frame of a whole video (Milestone 2, step 1).
+"""Detect people through a whole video at video.sample_hz (Milestone 2, step 1).
 
 The COCO-pretrained RF-DETR `person` class on whole frames: no labelling needed. Players,
 referees, coaches and spectators are all detected here; telling our near-side players
@@ -31,7 +31,7 @@ def main() -> int:
     ap.add_argument("--video", required=True, help="manifest key")
     ap.add_argument("--checkpoint", type=Path, default=pipeline["models"]["person_detector"],
                     help="default: models.person_detector (null = COCO-pretrained)")
-    ap.add_argument("--stride", type=int, default=det_cfg["person_stride"])
+    ap.add_argument("--stride", type=int, help="every Nth frame (default: from video.sample_hz)")
     ap.add_argument("--threshold", type=float, default=det_cfg["person_store_threshold"])
     ap.add_argument("--start", type=float, default=0.0, help="seconds")
     ap.add_argument("--seconds", type=float, help="only this long (default: to the end)")
@@ -49,11 +49,12 @@ def main() -> int:
     keep = {i: c for i, c in canonical_names(model_ids(model, checkpoint is not None)).items()
             if c == "person"}
 
-    def detect(bgr):
+    def detect(bgr, _index):
         return [(box, score) for _, box, score in
                 predict_full(model, bgr, args.threshold, keep)]
 
-    detect_video(entry.path, out, detect, stride=args.stride, threshold=args.threshold,
+    stride = args.stride or config.sample_stride(info.fps)
+    detect_video(entry.path, out, detect, stride=stride, threshold=args.threshold,
                  fps=info.fps, total_frames=info.frame_count or int(info.duration * info.fps),
                  first=round(args.start * info.fps),
                  last=round((args.start + args.seconds) * info.fps) if args.seconds else None,

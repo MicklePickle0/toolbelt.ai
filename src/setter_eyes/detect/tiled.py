@@ -62,10 +62,18 @@ def predict_tiled(model, bgr: np.ndarray, grid: tuple[int, int], overlap: float,
                   threshold: float, keep: dict[int, str]) -> list[tuple[str, list[float], float]]:
     """-> [(class, [x1, y1, x2, y2], score)] in full-image pixels."""
     h, w = bgr.shape[:2]
-    tiles = tile_boxes(w, h, grid, overlap)
-    origins = [(x, y) for x, y, _, _ in tiles]
+    return predict_windows(model, bgr, tile_boxes(w, h, grid, overlap), threshold, keep)
+
+
+def predict_windows(model, bgr: np.ndarray, windows: list[tuple[int, int, int, int]],
+                    threshold: float,
+                    keep: dict[int, str]) -> list[tuple[str, list[float], float]]:
+    """Detect in each window (x, y, w, h) of the frame in one GPU batch; overlapping
+    windows' detections merged with NMS -> [(class, [x1, y1, x2, y2], score)] in
+    full-image pixels."""
+    origins = [(x, y) for x, y, _, _ in windows]
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-    crops = [np.ascontiguousarray(rgb[y:y + th, x:x + tw]) for x, y, tw, th in tiles]
+    crops = [np.ascontiguousarray(rgb[y:y + th, x:x + tw]) for x, y, tw, th in windows]
     dets = model.predict(crops, threshold=threshold, include_source_image=False)
     dets = dets if isinstance(dets, list) else [dets]
     found: dict[str, list[tuple[list[float], float]]] = {}

@@ -29,7 +29,7 @@ from setter_eyes.labels import load_manifest
 
 def main() -> int:
     pipeline = config.load("pipeline")
-    paths, cfg = pipeline["paths"], pipeline["ball"]
+    paths = pipeline["paths"]
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--video", required=True, help="manifest key")
@@ -49,6 +49,7 @@ def main() -> int:
 
     t0 = time.time()
     ref = cams.camera(cams.ref_frame)
+    cfg = config.scale_px(pipeline["ball"], ref.width)    # pixel settings for this video
     path = track_ball(dets, cams.camera, ref, cfg)
     times = path.frames / dets.fps
     valid = path.measured & np.isfinite(path.uv).all(axis=1)
@@ -67,7 +68,7 @@ def main() -> int:
         "median_size_ratio": float(np.nanmedian([a.size_ratio for a in good])) if good else None,
     }
     (out_dir / "ball_arcs.json").write_text(json.dumps(
-        {"summary": summary, "gravity": cfg["gravity"], "fps": dets.fps,
+        {"summary": summary, "gravity": cfg["gravity"], "fps": dets.fps, "width": ref.width,
          "arcs": [a.to_dict() for a in arcs]}, indent=1), encoding="utf-8")
     print(json.dumps(summary, indent=1))
     print(f"took {time.time() - t0:.0f} s -> {out_dir / 'ball_path.npz'}, "

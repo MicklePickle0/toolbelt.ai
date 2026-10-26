@@ -130,7 +130,7 @@ def fit_arc(t: np.ndarray, uv: np.ndarray, cameras: list[Camera], g: np.ndarray,
         pts = p0 + v0 * t[:, None] + 0.5 * g * t[:, None] ** 2
         uv_hat, z = proj(pts)
         r = np.where((z > 0.1)[:, None], uv_hat - uv, 1e3)
-        return r.ravel() / cfg["pixel_sigma"]
+        return r.ravel() / cfg["pixel_sigma_px"]
 
     depths = np.linspace(*cfg["depth_range_m"], cfg["depth_steps"])
     starts = []
@@ -157,7 +157,7 @@ def fit_arc(t: np.ndarray, uv: np.ndarray, cameras: list[Camera], g: np.ndarray,
     good = [x for c, x in fits if c <= fits[0][0] * 1.5 + 1.0]
     spread = float(np.ptp([np.linalg.norm(x[:3] - c_first) for x in good])) if good else 0.0
     rms = float(np.sqrt((residuals(best) ** 2).reshape(-1, 2).sum(axis=1).mean())
-                * cfg["pixel_sigma"])
+                * cfg["pixel_sigma_px"])
     return best[:3].tolist(), best[3:].tolist(), rms, spread
 
 

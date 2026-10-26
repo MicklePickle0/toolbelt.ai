@@ -46,6 +46,7 @@ def main() -> int:
         raise SystemExit(f"no camera track at {track_path}; run scripts/track_camera.py")
     cams = PoseTrack.load(track_path)
     d = np.load(cache / "person_detections.npz")
+    cfg = config.scale_px(cfg, cams.base.width)          # pixel settings for this video
 
     t0 = time.time()
     tracks = track_people(d["frames"], d["det_frame"], d["det_box"], d["det_score"],

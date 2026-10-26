@@ -73,6 +73,7 @@ def video_dataset(entry, manifest, cfg: dict, paths: dict, reviewed_db=None) -> 
     path = BallPath.load(d / "ball_path.npz")
     ad = json.loads((d / "ball_arcs.json").read_text(encoding="utf-8"))
     fps = float(ad["fps"])
+    cfg = config.for_video(cfg, int(ad.get("width", 3840)))   # pixel settings for this video
     g = np.array([0.0, 0.0, -float(ad["gravity"])])
     people = PeopleTracks.load(d / "people_tracks.npz")
     roles = load_roles(d / "people_roles.json")

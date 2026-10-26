@@ -117,9 +117,17 @@ def track_ball(dets: Detections, camera_at, ref: Camera, cfg: dict) -> BallPath:
     tracks: list[Track] = []
     finished: list[Track] = []
     next_id = 0
+    # Detection may skip the time between rallies (play spans): no track lives across a
+    # skipped stretch longer than a track may go unseen.
+    step = int(np.median(np.diff(dets.frames))) if len(dets.frames) > 1 else 1
+    prev_f = None
     for f in dets.frames:
         f = int(f)
         t = f / fps
+        if prev_f is not None and (f - prev_f) / step - 1 > cfg["max_misses"]:
+            finished += tracks
+            tracks = []
+        prev_f = f
         idx = groups.get(f, np.array([], int))
         # Gate every (track, detection) pair; greedy assignment by normalised distance.
         pairs = []

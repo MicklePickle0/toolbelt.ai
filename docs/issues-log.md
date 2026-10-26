@@ -15,6 +15,7 @@ scores come from the hand-labelled `titan-rise_set1` (42 rallies, 223 touches).
 |---|---|---|---|
 | Niagara RTW set 2 would not decode cleanly | Corrupt VP9 packets from about 6:18 on | Normalised once to `data/videos/niagara-rtw_set2.mp4`; the manifest points at that file, and it is labelled from that file | `scripts/normalize_video.py`, `data/manifest.yaml` |
 | Whole-video passes were very slow | 4K AV1 decodes at about 20 fps on the CPU, and copying full 4K frames off the GPU costs about 40 ms each | GPU decode: OpenCV hardware acceleration for full frames, and ffmpeg `-hwaccel cuda` with `scale_cuda` (shrink on the GPU) for passes that don't need full resolution | `ingest/video.py` (`iter_frames_scaled`), `ingest.hw_decode` |
+| Resumed detection could crash on its first save (Windows) | `np.load` keeps the previous `.npz` open, and Windows can't replace an open file | Read the previous run inside `with np.load(...)` | `detect/video.py` |
 | Frame numbers could differ between tools | Variable frame rate or rotation flags in some containers | Probe every video; files that need it are normalised, and the label check warns | `ingest/video.py` (`probe`), `labels/loader.py` |
 
 ## 2. Labelling (detector boxes)

@@ -19,6 +19,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from setter_eyes import config
 from setter_eyes.calibration.camera import Camera, to_cv
 
 
@@ -66,7 +67,7 @@ def transfer_calibration(cam: Camera, image_ref: np.ndarray, image_new: np.ndarr
     P, uv = floor[on], ub[on]
     dist = np.array([cam.k1, 0.0, 0.0, 0.0])
     ok, rvec, tvec, inl = cv2.solvePnPRansac(
-        to_cv(P), uv, cam.K, dist, reprojectionError=t["ransac_px"],
+        to_cv(P), uv, cam.K, dist, reprojectionError=t["ransac_px"] * config.pixel_scale(cam.width),
         iterationsCount=t["iterations"], flags=cv2.SOLVEPNP_ITERATIVE)
     if not ok or inl is None or len(inl) < t["min_inliers"]:
         return None

@@ -64,6 +64,8 @@ def main() -> int:
     arcs_doc = json.loads((cache / "ball_arcs.json").read_text(encoding="utf-8"))
     arcs = [Arc(**a) for a in arcs_doc["arcs"]]
     fps = float(arcs_doc["fps"])
+    # Pixel settings for this video (ball_arcs.json from before 1080p support: 4K).
+    cfg = config.for_video(cfg, int(arcs_doc.get("width", 3840)))
     g = np.array([0.0, 0.0, -float(arcs_doc["gravity"])])
     people = PeopleTracks.load(cache / "people_tracks.npz")
     roles = load_roles(cache / "people_roles.json")

@@ -26,6 +26,7 @@ from dataclasses import asdict, dataclass, field
 import cv2
 import numpy as np
 
+from setter_eyes import config
 from setter_eyes.calibration.store import Calibration
 from setter_eyes.calibration.track import PoseTrack, _Tracker
 
@@ -126,7 +127,9 @@ def check_alignment(video_path, cal: Calibration, track: PoseTrack, cfg: dict,
             report.samples.append(probe.measure(f))
             if progress:
                 progress(report.samples[-1])
-        moved = a["moved_px"]
+        # Offsets are full-resolution pixels; the limits are written for 4K.
+        s = config.pixel_scale(int(probe.cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
+        moved = a["moved_px"] * s
         good = [s for s in report.samples if s.offset_px is not None]
         for s0, s1 in zip(good, good[1:], strict=False):
             if s0.offset_px < moved <= s1.offset_px:
@@ -137,7 +140,7 @@ def check_alignment(video_path, cal: Calibration, track: PoseTrack, cfg: dict,
             report.verdict = "unknown"
         elif (offs >= moved).mean() > 0:
             report.verdict = "moved"
-        elif np.percentile(offs, 90) >= a["drifting_px"]:
+        elif np.percentile(offs, 90) >= a["drifting_px"] * s:
             report.verdict = "drifting"
         else:
             report.verdict = "ok"
