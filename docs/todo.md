@@ -103,8 +103,10 @@ Ball detection is ~2 h of a ~2.4 h set (9 tiles x every 2nd 4K frame).
       a ball, with backfill when it returns. Both labelled sets: **~2.6-2.7x fewer detector
       runs**, touches unchanged, rallies 39 -> 38/42 (titan-rise) and 37/39 unchanged
       (mac-chrome). Settings barely matter: the limit is the ~40% of frames with no ball.
-- [ ] Use it in `detect_ball.py` (`--roi`), then confirm on one video with the GPU that the
-      crop finds what the tiles found (the simulation assumes it).
+- [x] `detect_ball.py --roi` uses it. Real check, 40 s of titan-rise: 5.3 -> 12.7
+      frames/s (**2.4x**); of 894 frames where the full search was sure of the ball, the
+      near-the-ball search found it in 886 (99%), at the same spot in 97%.
+- [ ] Make `--roi` the default for new footage (one full-video comparison first).
 - [x] Play windows from player movement: **not worth it.** Keeping every labelled rally
       kept 85-96% of the video (players walk, rotate and celebrate between points).
 - [ ] Efficient inference: TensorRT / fp16 compile, a smaller ball model if accuracy

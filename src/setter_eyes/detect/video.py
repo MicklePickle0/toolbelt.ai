@@ -6,6 +6,11 @@ Writes an .npz with
 plus `meta` (stride, threshold, ...). Saved every `save_every` frames: a rerun continues
 after the last saved frame unless `restart`. Frames are decoded on a background thread
 so the GPU never waits for the next one.
+
+With a `planner` (detect/roi.py) each frame is searched as planned: everywhere
+(`detect`), in one crop around the ball (`detect_crop`), or skipped while idle; skipped
+frames are kept in memory for `backfill_s` and searched when the ball turns up again.
+Skipped frames still count as processed (with no detection), as in the simulation.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ import numpy as np
 from setter_eyes.ingest import iter_frames
 
 DetectFn = Callable[[np.ndarray], list[tuple[list[float], float]]]   # BGR -> [(box, score)]
+CropFn = Callable[[np.ndarray, tuple[int, int, int, int]], list[tuple[list[float], float]]]
 
 
 def _save(path: Path, frames, det_frame, det_box, det_score, meta: dict) -> None:
@@ -35,7 +41,8 @@ def _save(path: Path, frames, det_frame, det_box, det_score, meta: dict) -> None
 def detect_video(video: Path, out: Path, detect: DetectFn, *, stride: int, threshold: float,
                  fps: float, total_frames: int, first: int = 0, last: int | None = None,
                  save_every: int = 2000, restart: bool = False, meta: dict | None = None,
-                 log: Callable[[str], None] = print) -> int:
+                 log: Callable[[str], None] = print, planner=None,
+                 detect_crop: CropFn | None = None) -> int:
     """-> number of frames processed in this run."""
     out.parent.mkdir(parents=True, exist_ok=True)
     frames, det_frame, det_box, det_score = [], [], [], []
@@ -60,11 +67,44 @@ def detect_video(video: Path, out: Path, detect: DetectFn, *, stride: int, thres
     threading.Thread(target=reader, daemon=True).start()
     t0, n = time.time(), 0
     todo = max(1, ((last or total_frames) - first) // stride)
-    while (frame := q.get()) is not None:
-        for box, score in detect(frame.image):
-            det_frame.append(frame.index)
+    runs = {"full": 0, "crop": 0, "skip": 0}
+    skipped: list = []                     # (frame) images kept for backfill while idle
+
+    def add(index: int, found) -> None:
+        for box, score in found:
+            det_frame.append(index)
             det_box.append(box)
             det_score.append(score)
+
+    while (frame := q.get()) is not None:
+        t = frame.index / fps
+        if planner is None:
+            add(frame.index, detect(frame.image))
+        else:
+            was_idle = planner.idle(t)
+            mode, crop = planner.plan(t)
+            runs[mode] += 1
+            if mode == "skip":
+                skipped.append(frame)
+            else:
+                found = detect(frame.image) if mode == "full" else \
+                    detect_crop(frame.image, crop)
+                add(frame.index, found)
+                planner.update(t, np.array([b for b, _ in found]).reshape(-1, 4),
+                               np.array([s for _, s in found]))
+                if was_idle and not planner.idle(t):      # back: search what was skipped
+                    backfilled = False
+                    for old in skipped:
+                        if t - old.index / fps <= planner.cfg["backfill_s"]:
+                            add(old.index, detect(old.image))
+                            backfilled = True
+                    skipped = []
+                    if backfilled:                    # those came late: back in order
+                        order = np.argsort(det_frame, kind="stable")
+                        det_frame = [det_frame[i] for i in order]
+                        det_box = [det_box[i] for i in order]
+                        det_score = [det_score[i] for i in order]
+            skipped = [s for s in skipped if t - s.index / fps <= planner.cfg["backfill_s"]]
         frames.append(frame.index)
         n += 1
         if n % save_every == 0:
@@ -75,4 +115,7 @@ def detect_video(video: Path, out: Path, detect: DetectFn, *, stride: int, thres
     _save(out, frames, det_frame, det_box, det_score, meta)
     log(f"done: {len(frames)} frames, {len(det_frame)} detections "
         f"({n / max(1e-9, time.time() - t0):.1f} frames/s) -> {out}")
+    if planner is not None:
+        log("near-the-ball search, frames: " + ", ".join(
+            f"{k} {v / max(1, n):.0%}" for k, v in runs.items()))
     return n

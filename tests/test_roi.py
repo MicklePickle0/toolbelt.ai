@@ -36,3 +36,54 @@ def test_plan_falls_back_to_full_when_lost():
     p.update(0.0, np.array([[1000.0, 1000, 1030, 1030]]), np.array([0.9]))
     assert p.plan(0.033)[0] == CROP
     assert p.plan(1.0)[0] == FULL                     # lost for too long
+
+
+def test_detect_video_with_the_planner(tmp_path):
+    import cv2
+
+    from setter_eyes.detect.video import detect_video
+
+    w, h, fps = 960, 540, 30.0
+    video = tmp_path / "v.mp4"
+    out = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+    for _ in range(90):
+        out.write(np.zeros((h, w, 3), np.uint8))
+    out.release()
+
+    def ball_at(i):                          # frame index from the image: drawn below
+        return 100 + 2 * i, 270
+
+    seen = {"full": 0, "crop": 0}
+
+    def found(bgr):
+        x, y = ball_at(int(bgr[0, 0, 0]))
+        return [([x - 5, y - 5, x + 5, y + 5], 0.9)]
+
+    def detect(bgr):
+        seen["full"] += 1
+        return found(bgr)
+
+    def detect_crop(bgr, crop):
+        seen["crop"] += 1
+        return [(b, s) for b, s in found(bgr) if crop[0] <= b[0] and b[2] <= crop[0] + crop[2]]
+
+    import setter_eyes.detect.video as dv
+    real = dv.iter_frames
+
+    def numbered(path, start=0, end=None, step=1):      # stamp the index into each frame
+        for f in real(path, start=start, end=end, step=step):
+            f.image[0, 0, 0] = f.index
+            yield f
+
+    dv.iter_frames = numbered
+    try:
+        planner = RoiPlanner(w, h, (3, 3), 0.15, {**CFG, "max_speed_px_s": 2000,
+                                                    "margin_px": 30})
+        n = detect_video(video, tmp_path / "d.npz", detect, stride=1, threshold=0.1, fps=fps,
+                         total_frames=90, planner=planner, detect_crop=detect_crop,
+                         log=lambda s: None)
+    finally:
+        dv.iter_frames = real
+    d = np.load(tmp_path / "d.npz")
+    assert n == 90 and len(d["frames"]) == 90 and len(d["det_frame"]) == 90
+    assert seen["crop"] > seen["full"] > 0
