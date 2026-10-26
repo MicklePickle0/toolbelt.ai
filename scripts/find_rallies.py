@@ -127,7 +127,8 @@ def main() -> int:
         w = write_video(conn, manifest, entry, fps, [r.to_dict() for r in rallies],
                         [c.to_dict() for c in contacts])
         conn.close()
-        print(f"event DB: {w.rallies} rallies, {w.contacts} touches -> {paths['db_path']}")
+        print(f"event DB: {w.rallies} rallies, {w.contacts} touches written, {w.kept_reviewed} "
+              f"reviewed rallies kept -> {paths['db_path']}")
     return 0
 
 

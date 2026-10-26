@@ -4,7 +4,11 @@ The pipeline DB (paths.db_path) has the same schema as the labels DB, so stats q
 and evaluation work on either. Everything written here is automated: rows are
 unreviewed and carry their confidences; point_winner and outcome stay empty until the
 review UI sets the winner (CLAUDE.md: the pipeline never decides the score).
-Re-writing a video replaces everything previously written for it.
+
+Re-writing a video replaces its UNREVIEWED rallies only. Rallies saved in the review UI
+(reviewed = 1) are human work: they and their touches are kept as they are, and pipeline
+rallies overlapping one are dropped (also for a rally reviewed as `not_a_rally`, so a
+false rally the reviewer dismissed doesn't come back). Rally numbers then follow time order again.
 
 A video is one set (set 1 unless the manifest's lineups say otherwise).
 """
@@ -15,15 +19,41 @@ import json
 import sqlite3
 from dataclasses import dataclass
 
-from setter_eyes.labels.importer import delete_game, upsert_roster
+from setter_eyes.labels.importer import upsert_roster
 from setter_eyes.labels.manifest import Manifest, VideoEntry
 
 
 @dataclass(frozen=True)
 class WriteSummary:
     game_id: int
-    rallies: int
+    rallies: int            # pipeline rallies written
     contacts: int
+    kept_reviewed: int      # reviewed rallies left untouched
+
+
+def _game(conn, team_id: int, entry: VideoEntry, fps: float, calibration) -> int:
+    values = (team_id, entry.opponent, entry.played_on, entry.venue, entry.net_height_m,
+              entry.net_height_preset, entry.ball, str(entry.path), fps,
+              json.dumps(calibration) if calibration else None)
+    row = conn.execute("SELECT id FROM games WHERE video_key = ?", (entry.key,)).fetchone()
+    if row is not None:
+        conn.execute("UPDATE games SET team_id = ?, opponent = ?, played_on = ?, venue = ?, "
+                     "net_height_m = ?, net_height_preset = ?, ball = ?, video_path = ?, "
+                     "fps = ?, calibration = ? WHERE id = ?", (*values, row[0]))
+        return row[0]
+    return conn.execute(
+        "INSERT INTO games (team_id, opponent, played_on, venue, net_height_m, "
+        "net_height_preset, ball, video_path, fps, calibration, video_key) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (*values, entry.key)).lastrowid
+
+
+def renumber(conn: sqlite3.Connection, set_id: int) -> None:
+    """Rally numbers 1..n in time order (two steps: (set_id, rally_number) is unique)."""
+    ids = [r[0] for r in conn.execute(
+        "SELECT id FROM rallies WHERE set_id = ? ORDER BY start_t", (set_id,))]
+    for n, rid in enumerate(ids, start=1):
+        conn.execute("UPDATE rallies SET rally_number = ? WHERE id = ?", (-n, rid))
+    conn.execute("UPDATE rallies SET rally_number = -rally_number WHERE set_id = ?", (set_id,))
 
 
 def write_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry, fps: float,
@@ -32,31 +62,37 @@ def write_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry,
     """rallies / contacts: the rallies.json / contacts.json lists from find_rallies.py."""
     with conn:
         team_id = upsert_roster(conn, manifest)
-        delete_game(conn, entry.key)
-        game_id = conn.execute(
-            "INSERT INTO games (team_id, video_key, opponent, played_on, venue, net_height_m, "
-            "net_height_preset, ball, video_path, fps, calibration) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (team_id, entry.key, entry.opponent, entry.played_on, entry.venue,
-             entry.net_height_m, entry.net_height_preset, entry.ball, str(entry.path), fps,
-             json.dumps(calibration) if calibration else None),
-        ).lastrowid
+        game_id = _game(conn, team_id, entry, fps, calibration)
         set_number = min(entry.lineups) if entry.lineups else 1
         lineup = entry.lineups.get(set_number)
-        set_id = conn.execute(
-            "INSERT INTO sets (game_id, set_number, starting_lineup, start_frame, end_frame) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (game_id, set_number, json.dumps(lineup) if lineup else None,
-             min((r["start_frame"] for r in rallies), default=None),
-             max((r["end_frame"] for r in rallies), default=None)),
-        ).lastrowid
-        n_contacts = 0
+        row = conn.execute("SELECT id FROM sets WHERE game_id = ? AND set_number = ?",
+                           (game_id, set_number)).fetchone()
+        set_id = row[0] if row else conn.execute(
+            "INSERT INTO sets (game_id, set_number) VALUES (?, ?)",
+            (game_id, set_number)).lastrowid
+        conn.execute("UPDATE sets SET starting_lineup = ?, start_frame = ?, end_frame = ? "
+                     "WHERE id = ?",
+                     (json.dumps(lineup) if lineup else None,
+                      min((r["start_frame"] for r in rallies), default=None),
+                      max((r["end_frame"] for r in rallies), default=None), set_id))
+
+        # Drop the previous automated rallies; keep the reviewed ones.
+        old = "SELECT id FROM rallies WHERE set_id = ? AND reviewed = 0"
+        conn.execute(f"DELETE FROM contacts WHERE rally_id IN ({old})", (set_id,))
+        conn.execute(f"DELETE FROM rallies WHERE id IN ({old})", (set_id,))
+        kept = [(r[0], r[1]) for r in conn.execute(
+            "SELECT start_t, end_t FROM rallies WHERE set_id = ?", (set_id,))]
+
+        n_rallies = n_contacts = 0
         for r in rallies:
+            if any(min(r["end_t"], b) > max(r["start_t"], a) for a, b in kept):
+                continue                          # a reviewed rally already covers it
+            n_rallies += 1
             rally_id = conn.execute(
                 "INSERT INTO rallies (set_id, rally_number, start_frame, end_frame, start_t, "
                 "end_t, segment_confidence, serving_team, reviewed) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)",
-                (set_id, r["index"], r["start_frame"], r["end_frame"], r["start_t"],
+                (set_id, 100_000 + n_rallies, r["start_frame"], r["end_frame"], r["start_t"],
                  r["end_t"], r["confidence"], r["serving_team"]),
             ).lastrowid
             for i in r["contacts"]:
@@ -72,4 +108,5 @@ def write_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry,
                      c.get("action"), c.get("action_confidence"), x, y, z),
                 )
                 n_contacts += 1
-    return WriteSummary(game_id, len(rallies), n_contacts)
+        renumber(conn, set_id)
+    return WriteSummary(game_id, n_rallies, n_contacts, len(kept))
