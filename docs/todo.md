@@ -20,8 +20,12 @@ Ordered by priority within each section. Scores are from the labelled `titan-ris
       given the wrong team (team right 90%).
 - [ ] **Serve-only rallies from our off-screen server** (aces, service errors): 3 of 42
       missed.
-- [ ] **Dead-ball touches after the whistle (live-ball check).** Build this into the rally
-      end / game logic.
+- [x] **Live-ball check, first version** (`rally/live.py`): a trailing touch > 2 s after the
+      previous one while near-side players have slowed ends the rally before it. Both
+      labelled sets: 5/13 dead touches caught, 0/76 real last touches cut.
+- [ ] **Dead-ball touches after the whistle: the rest of the live-ball check.** Add signals 1
+      (ball leaves slowly / caught) and 3 (net shake) below; the first version uses only a
+      long gap plus players slowing.
       - *Problem:* the pipeline keeps adding touches after a rally has ended: the ball is
         caught, held or tossed back after the whistle. Seen on `titan-rise_set1`: 5 of 42
         rallies, extra touch 0.5-1.8 s after the end, after kills, a ball-handling error and

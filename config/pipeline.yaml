@@ -224,6 +224,14 @@ rally:
     floor_bonus: 0.2         # ended on a floor contact
     inferred_factor: 0.7     # serve inferred, not seen: right about half the time on
                              # labelled footage, so these go to the review queue
+  # Live-ball check (setter_eyes.rally.live): a trailing touch after the whistle (ball
+  # caught or tossed back, e.g. after a net touch) ends the rally before it when BOTH:
+  live_ball:
+    max_gap_s: 2.0           # it comes this long after the previous touch, and
+    window_s: 1.0            # near-side players' speed over this window before it is
+    motion_ratio: 0.9        # below this share of their speed over the rally so far.
+                             # Labelled: 5/13 dead touches caught, 0/76 real last cut.
+    trimmed_factor: 0.9      # rally confidence factor when trimmed (worth a look)
   # Our court's airspace (court metres): touches with the ball outside it are another
   # court's (balls on the courts beside ours). Court: x 0-9, y -9..9, net at y = 0.
   airspace:

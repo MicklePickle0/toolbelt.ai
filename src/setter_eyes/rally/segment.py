@@ -50,6 +50,7 @@ import numpy as np
 from setter_eyes.ball.arcs import Arc
 from setter_eyes.ball.tracker import BallPath
 from setter_eyes.contacts.events import Contact
+from setter_eyes.rally.live import PlayerMotion, dead_from
 
 SERVE_FROM_FLIGHT = -2          # Rally.serve_contact when the serve was traced back
 SERVE_INFERRED = -3             # ...when it wasn't seen at all but the rally shows it
@@ -157,7 +158,10 @@ def in_airspace(c: Contact, cfg: dict) -> bool:
 
 
 def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact],
-                         g: np.ndarray, fps: float, cfg: dict) -> list[Rally]:
+                         g: np.ndarray, fps: float, cfg: dict,
+                         motion: PlayerMotion | None = None) -> list[Rally]:
+    """motion: near-side player movement, for the live-ball check (rally/live.py) that
+    ends a rally before touches made after the whistle."""
     r = cfg["rally"]["from_touches"]
     times = path.frames / fps
     seen_t = times[np.isfinite(path.uv).all(axis=1)]
@@ -204,14 +208,21 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
         else:
             start_t, serving = contacts[serve_i].t, contacts[serve_i].team
             contacts[serve_i].serve = True
-        last = contacts[grp[-1]].t
+        play = [i for i in grp if contacts[i].t >= start_t]
+        cut = dead_from([contacts[i].t for i in play], start_t, motion,
+                        cfg["rally"]["live_ball"])
+        dead_t = contacts[play[cut]].t if cut < len(play) else None
+        last = contacts[play[cut - 1]].t if play[:cut] else contacts[grp[-1]].t
+        stop = min(last + r["end_window_s"], dead_t if dead_t is not None else np.inf)
         floors = [i for i, c in enumerate(contacts)
-                  if c.kind == "floor" and last < c.t <= last + r["end_window_s"]]
+                  if c.kind == "floor" and last < c.t <= stop]
         if floors:
             end_t, reason = contacts[floors[0]].t, "floor"
         else:
             end_t, reason = _ball_lost_after(seen_t, last, cfg["rally"]["max_ball_gap_s"],
                                              r["end_window_s"]), "ball_lost"
+            if dead_t is not None and end_t >= dead_t:
+                end_t, reason = last + 0.5 * (dead_t - last), "dead_ball"
         members = [i for i, c in enumerate(contacts) if start_t <= c.t <= end_t]
         _apply_touch_prior(contacts, members, cfg)
         inferred = serve_i == SERVE_INFERRED
@@ -219,6 +230,8 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
             r["exchange_bonus"] * (change is not None) + r["floor_bonus"] * bool(floors)
         if inferred:
             conf *= r["inferred_factor"]
+        if dead_t is not None:
+            conf *= cfg["rally"]["live_ball"]["trimmed_factor"]
         rallies.append(Rally(
             len(rallies) + 1, int(round(start_t * fps)), int(round(end_t * fps)),
             round(start_t, 3), round(end_t, 3), serving, serve_i, reason, members,

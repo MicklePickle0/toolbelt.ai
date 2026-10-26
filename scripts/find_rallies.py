@@ -39,6 +39,7 @@ from setter_eyes.contacts.events import Contact, find_contacts
 from setter_eyes.contacts.scorer import TouchScorer, scored_contacts
 from setter_eyes.db.pipeline import write_video
 from setter_eyes.labels import load_manifest
+from setter_eyes.rally.live import PlayerMotion
 from setter_eyes.rally.segment import segment_from_touches, segment_rallies
 from setter_eyes.track.people import PeopleTracks
 from setter_eyes.track.roles import load_roles
@@ -81,8 +82,11 @@ def main() -> int:
         print("touches: hand-tuned fusion (no learned scorer yet)")
         contacts = find_contacts(path, arcs, g, fps, people, roles, cfg)
     learned = args.oof or model_path.exists()
-    rallies = (segment_from_touches if learned else segment_rallies)(
-        path, arcs, contacts, g, fps, cfg)
+    if learned:
+        rallies = segment_from_touches(path, arcs, contacts, g, fps, cfg,
+                                       PlayerMotion(people, fps))
+    else:
+        rallies = segment_rallies(path, arcs, contacts, g, fps, cfg)
     for r in rallies:                                  # actions, once the rally is known
         touches = [contacts[i] for i in r.contacts if contacts[i].kind == "touch"]
         serve = contacts[r.serve_contact] if r.serve_contact is not None and \
@@ -113,6 +117,8 @@ def main() -> int:
           f"flight, {inferred} inferred from the rally)"
           f" (us {serve_team.get('us', 0)}, them {serve_team.get('them', 0)}); "
           f"ended on the floor: {sum(r.end_reason == 'floor' for r in rallies)}")
+    print(f"ended by the live-ball check (touches after the whistle dropped): "
+          f"{sum(r.end_reason == 'dead_ball' for r in rallies)}")
     print(f"rally length s: median {np.median(lengths):.1f}, max {lengths.max():.1f}; "
           f"below review confidence {review}: {sum(r.confidence < review for r in rallies)}")
     print(f"-> {cache / f'contacts{suffix}.json'}, {cache / f'rallies{suffix}.json'}")
