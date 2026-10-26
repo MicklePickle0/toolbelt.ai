@@ -59,6 +59,12 @@ def import_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry
     """Replace this video's labels in the DB in one transaction."""
     with conn:
         team_id = upsert_roster(conn, manifest)
+        # Jerseys labelled but not on the roster become players named by number, so
+        # per-player stats work before the roster is entered (it fills in the names).
+        for n in sorted({c.jersey for r in rallies for c in r.contacts
+                         if c.team == "us" and c.jersey is not None}):
+            conn.execute("INSERT OR IGNORE INTO players (team_id, jersey_number, name) "
+                         "VALUES (?, ?, ?)", (team_id, n, f"#{n}"))
         players = {
             r["jersey_number"]: r["id"]
             for r in conn.execute("SELECT id, jersey_number FROM players WHERE team_id = ?",
