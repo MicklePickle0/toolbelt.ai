@@ -1,24 +1,45 @@
 # To do
 
 Ordered by priority within each section. Scores are from the labelled `titan-rise_set1`
-(touches from models that never saw the rally scored). Last updated 2026-10-25.
+(touches from models that never saw the rally scored). Last updated 2026-10-26, merging
+the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
 
 ## Now
 
-- [ ] **Label `mac-chrome_set1`** (owner). A train-split set on a different court: improves
-      touches, actions and outcomes, and gives a fair test on footage the scorer never saw.
+- [x] **Label `mac-chrome_set1`** (owner): done, 39 rallies, 246 touches, 20 pass scores.
+      Two labelled sets plateau the touch scorer (~80% found, 88-92% real, team 90%);
+      more full Humber sets add little. Next labels: ~10-15 rallies from a NEW venue (the
+      honest test, since both labelled sets are now in training), and targeted rare events
+      (blocks, free balls, dumps, replays). Then corrections from the review UI.
 - [ ] **Run the remaining 10 videos** (owner): `.\scripts\process_videos.ps1`. Resumes if
       stopped, and runs `find_play` first so ball detection skips the time between rallies.
       Was ~1.6 h of ball detection per set before play spans and ball following; the new
       time is still to be measured (see "Detection speed" below).
-- [ ] **Retrain the touch scorer on train-split sets** once `mac-chrome_set1` is labelled,
-      and keep `titan-rise_set1` (test split) only for testing.
+- [x] Touch scorer retrained on both labelled sets (`titan-rise_set1` + `mac-chrome_set1`).
+      Cross-court: trained on one, tested on the other: 70-83% of touches found, 86%
+      real, team 83-85%. `titan-rise_set1` is the manifest's test split, so the next honest
+      test is a labelled set from a new venue.
 
 ## Detection speed (on the desktop, with footage)
 
 - [ ] **Check play spans on the labelled sets**: `find_play.py --video titan-rise_set1`
-      (and `mac-chrome_set1` once labelled). Every labelled rally must be covered; note the
+      and `--video mac-chrome_set1`. Every labelled rally must be covered; note the
       share of the video kept. Tune `activity.play:` if a serve is cut.
+      *Expect a small saving:* on the desktop (2026-10-26), play windows from motion
+      kept 85-96% of the video (players' speed) or 89% (the frame activity score, its 50th
+      percentile) before any labelled rally was cut: players walk, rotate and celebrate
+      between points about as much as they move in play. Rally time itself is only ~28% of
+      a set. If `find_play` also keeps ~90%, it may not be worth its risk.
+- [ ] **Two versions of the same idea exist; keep one.** Ball following here
+      (`detect/follow.py`, laptop) and the near-the-ball crop on branch `gpu-play-windows`
+      (`detect/roi.py`, `detect_ball.py --roi`, desktop). The crop was measured on the
+      desktop: simulated on both labelled sets with `scripts/simulate_roi.py` (replays saved
+      full-search detections, no GPU), ~2.6-2.7x fewer detector passes with touches and
+      rallies unchanged (titan-rise 39 -> 38/42 rallies); and with the real detector on 40 s
+      of titan-rise: 5.3 -> 12.7 frames/s (2.4x), and of 894 frames where the full search
+      was sure of the ball, the crop found it in 886 (99%), 97% at the same spot. The limit
+      is the ~40% of frames with no ball (full scan). Compare `follow.py` on the same 40 s
+      and keep the better one.
 - [ ] **Check ball following against full scans** on a labelled minute or two:
       `detect_ball.py --start 60 --seconds 120 --out A.npz` vs the same with `--no-follow
       --out B.npz`, then `track_ball.py --detections` on each and `eval_contacts.py`.
@@ -37,8 +58,20 @@ Ordered by priority within each section. Scores are from the labelled `titan-ris
       tape, deflection is small and often hidden.
 - [ ] **Inferred serves**: right about half the time (sent to review). Mostly from touches
       given the wrong team (team right 90%).
+- [x] **Rallies built from touches** (`rally/segment.py`, `segment_from_touches`), with a
+      missed opponent serve inferred from the rally (2+ touches by one side first), groups
+      with no serve or exchange dropped, and other courts' balls (outside our airspace)
+      ignored. Out-of-fold on titan-rise: rallies 32 -> 39/42, false rallies 8 -> 0,
+      serving team 20 -> 34. Inferred serves are right only ~half the time (lower
+      confidence: review queue).
+- [ ] **Our serve from how the ball enters the frame** (branch `our-serve-entry`, not
+      merged): our server stands behind the camera, so the ball appears big at the top of
+      the frame. Big ball at the top, after 3 s without a touch, far away within 2 s: 28 of
+      33 of our serves, 4 false alarms over both sets (today's touches: 22/33). Rallies
+      found 39 -> 42/42 (titan-rise) and 37 -> 39/39 (mac-chrome). Depends on the camera
+      being behind our end line (check on new angles). Their serves are fine (44/48).
 - [ ] **Serve-only rallies from our off-screen server** (aces, service errors): 3 of 42
-      missed.
+      missed (the `our-serve-entry` branch addresses these).
 - [x] **Live-ball check, first version** (`rally/live.py`): a trailing touch > 2 s after the
       previous one while near-side players have slowed ends the rally before it. Both
       labelled sets: 5/13 dead touches caught, 0/76 real last touches cut.
@@ -92,8 +125,10 @@ Ordered by priority within each section. Scores are from the labelled `titan-ris
       replay / not a rally, suggested outcome, serving team, rally start and end,
       a wider clip for points cut short, merging a point the pipeline split in two. Saves to the event
       DB, logs every change in `corrections`; re-running the pipeline keeps reviewed rallies.
-- [ ] Use reviewed rallies as training data: export them like `events.csv` and train the
-      touch scorer and action rules on them too.
+- [x] Reviewed rallies as training data: `train_touch_scorer.py --reviewed` (rallies with
+      every touch confirmed; "not a rally" ones as negatives).
+- [x] Millisecond player with frame stepping, three-decimal times; rally start editable,
+      wider clip, merge with the neighbouring rally.
 - [ ] Keyboard shortcuts (Streamlit has none built in), and the clip with the overlay drawn.
 - [ ] Fix the player on a touch (needs identity, Milestone 7); one fix relabels the
       whole track.
@@ -105,13 +140,36 @@ Ordered by priority within each section. Scores are from the labelled `titan-ris
 
 ## Milestone 8: pass scoring
 
-- [ ] Serve-receive pass 0-4 from where the pass goes, checked against the owner's pass
-      scores (20 labelled so far). Thresholds in `config/pass_scale.yaml` still to confirm.
+- [ ] **Pass 0-4 from the setter's feet** (branch `pass-scoring`, not merged): the ball's
+      3D depth is too weak (perfect passes came out 8 m from the net); the feet of the
+      player who plays the pass track the owner's scores (median distance from the target
+      0.9 / 1.9 / 3.1 / 4.6 m for 4 / 3 / 2 / 1; 40 labelled passes). Draft config grades:
+      51% exact, 90% within 1. Distance-only limits tuned leave-one-out: 69% / 95%
+      (4 up to 1.5 m, 3 up to 1.75 m, 2 up to 5.25 m): the owner decides the thresholds.
+      `scripts/eval_passes.py`.
 
 ## Milestone 9: stats and export
 
-- [ ] Stat queries (per player, combos like setter-to-hitter kill %), DataVolley export.
+- [x] Stat sheet, team and per player (`scripts/stat_sheet.py`): credits follow the
+      rally outcome and the owner's counting rules.
+- [ ] **Clips per stat** (branch `clip-export`, on `stat-sheet`, not merged):
+      `scripts/clips.py --stat kills [--player 13]` cuts clips plus a highlight reel.
+- [ ] Combos (setter-to-hitter kill %), DataVolley export.
 - [ ] Before the stats export: confirm how scrappy non-setter 2nd touches are counted.
+
+## Milestones 10-12 (added to CLAUDE.md 2026-10-26)
+
+- [ ] 10. Setting arc analysis (release, apex, tempo, landing vs antennas; per setter and
+      set type; overlay and side-view diagram).
+- [ ] 11. Serve-receive by zone (per player: contact point, zone 1-6, pass score map).
+- [ ] 12. Serve placement on the opponent side (zones, landing points with confidence).
+
+## Branches not merged yet (all pass their tests)
+
+Built on the desktop on 2026-10-26 off `live-ball-review`; this branch already contains
+`live-ball-review`, `stat-sheet` and `review-training`. Still separate: `our-serve-entry`,
+`gpu-play-windows` (see "Detection speed": one of it and `follow.py` to keep),
+`clip-export` (on `stat-sheet`), `pass-scoring`. Merge the ones the owner wants.
 
 ## Smaller known issues
 

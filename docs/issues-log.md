@@ -118,6 +118,22 @@ Labelling conventions decided along the way (also in `docs/labelling.md`, "Judge
 - **Uncontrolled dig:** a dig that ends the rally as a ball-handling error counts as an error, not a dig.
 - **Timeouts:** not labelled; label rallies in an unbroken run so fake rallies can be counted.
 
+## 9b. Rallies, review UI and later work (desktop, 2026-10-25/26)
+
+| Problem | Cause | Fix | Where |
+|---|---|---|---|
+| Rallies 32/42 found, 8 false, serve found in 22 | Rallies came from ball visibility | Built from touches: touch groups < 3 s apart, serve before the first change of side, groups with no serve or exchange dropped | `rally/segment.py` (`segment_from_touches`) |
+| Their unseen serve made our attack "the serve" | The serve hidden by a player or the tape | A rally opening with 2+ touches by one side was served by the other (inferred, lower confidence) | `rally/segment.py` |
+| Free balls labelled as attacks | Rules counted touch order only | An "attack" launched upward > 4 m/s is a free ball | `classify/rules.py` |
+| Replayed points had no label | `point_winner` was required | Outcome `replay`, no winner, left out of stats (labeller key `e` `r`) | `labels/events.py`, `labels/event_editor.py` |
+| Review UI crashed on the second click | A cached SQLite connection used from another thread | A fresh connection per run | `ui/review_app.py` |
+| After a merge, saving cut the rally back | Widgets kept the values typed before the merge | Widget keys include the rally's span and touch count | `ui/review_app.py` |
+| Unchanged times logged as corrections | Times shown rounded | Untouched values keep their exact time | `ui/review_app.py` |
+| Browser player showed whole seconds | HTML5 default controls | Own player: ms readout, frame stepping | `ui/player.py` |
+| Re-running the pipeline would wipe reviews | The DB was rewritten per video | Reviewed rallies are kept; overlapping pipeline rallies dropped | `db/pipeline.py` |
+| Play windows from motion saved little | Players move between points nearly as much as in play | Measured, not adopted (85-96% kept); see `docs/todo.md` | - |
+| Pass position from the ball was wrong in depth | Depth is the weak axis from behind the end line | The setter's feet instead (branch `pass-scoring`) | `stats/pass_score.py` |
+
 ## 10. Tooling and process
 
 | Problem | Fix |
@@ -130,13 +146,17 @@ Labelling conventions decided along the way (also in `docs/labelling.md`, "Judge
 
 ## Still open
 
-- **Rally detection is the weakest step:** 32 of 42 rallies found, 8 false rallies, serve found in 22. It still relies mostly on ball visibility; next step is to build rallies from the (now reliable) touches.
-- **Touches after the whistle:** caught or tossed balls after a rally ends (e.g. a net
-  touch, which is only a whistle) are kept as touches: 5 of 42 rallies, and they make the
-  point outcome wrong. Planned fix: a live-ball check (ball speed, players stopping, net
-  shaking); see `docs/todo.md`.
+- **Rallies** (rebuilt from touches, out-of-fold): 39/42 found on titan-rise, 37/39 on
+  mac-chrome; false rallies 0-9; inferred serves right ~half the time. Our own serve is
+  the hard one (hit off-screen): 22/33 found; branch `our-serve-entry` gets 28/33.
+- **Touches after the whistle:** the live-ball check (`rally/live.py`) catches 5 of 13
+  with no real last touch cut; the ball-speed and net-shake signals are still to add
+  (`docs/todo.md`).
+- **Point outcome on pipeline touches:** ~half right (the rule itself is 39/42 on labelled
+  touches); limited by the last touch's action, mostly blocks.
 - **Blocks:** 7 of 18 found; a quick deflection at the net, often hidden by the tape.
-- **The touch scorer is tested within one set only.** A second labelled set (`mac-chrome_set1` is fully processed) is needed to show it works on a different court.
+- **The touch scorer** is trained on both labelled sets; cross-court it finds 70-83% of
+  touches. The honest next test is a labelled set from a new venue.
 - **Camera:** a second jump in the last ~25 s of `mac-chrome_set2` can't be fixed (no saved frame after it). `mac-iron_set1` and `reach-apex_set2` keep a small offset (20-40 px in 4K).
 - **People:** a line judge on our sideline can get a ring; track ids break between points (player identity, Milestone 7, will re-link them).
 - **Depth:** far-side and floor contacts have larger position errors.

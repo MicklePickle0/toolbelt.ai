@@ -119,6 +119,18 @@ Background and venue variety:
 11. Serve-receive by zone: for each first ball after the serve, record the player, the court zone (1-6, near side) and floor point of the contact, and the 0-4 pass score. Per player: a court map of contact points colored by pass score, plus average score and error rate per zone, so it shows who passes best and worst in each position.
 12. Serve placement: where our serves go on the opponent side, by zone (1-6) as percentages. Show a court map with each serve as a dot (colored by outcome: ace, in play, error) and a heatmap toggle. Landing point comes from the ball's 3D arc (floor crossing or the opponent's first contact). This is the ball only, not far-side player tracking, but far-side depth accuracy is weaker, so keep zones coarse, attach a confidence to each landing point and send low-confidence ones to the review queue.
 
+## Working across machines and conversations
+Work happens on a desktop (footage, GPU, `data/`) and a laptop, in separate Claude Code
+conversations that don't see each other. The shared state is the repo, so:
+- Start by pulling, and read `docs/todo.md` (plan, measured results, unmerged branches),
+  `docs/issues-log.md` (what broke and how it was fixed) and `docs/labelling.md`
+  (labelling rules, including the owner's judgement calls).
+- End by updating those docs with any decision or measured result, committing and pushing.
+  Anything left only in a conversation or in Claude's local memory is lost to the other
+  machine.
+- `data/` and `models/` are not in git: the laptop has code, not footage. Work that needs
+  footage or the GPU is marked "on the desktop" in `docs/todo.md`.
+
 ## Working rules for Claude Code
 - Build one milestone at a time; add a visual verification script (overlay video/images) for each.
 - Split train/val/test BY VIDEO, never by frame.
