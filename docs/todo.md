@@ -94,6 +94,22 @@ Ordered by priority within each section. Scores are from the labelled `titan-ris
 - [ ] Stat queries (per player, combos like setter-to-hitter kill %), DataVolley export.
 - [ ] Before the stats export: confirm how scrappy non-setter 2nd touches are counted.
 
+## Speed (GPU)
+
+Ball detection is ~2 h of a ~2.4 h set (9 tiles x every 2nd 4K frame).
+- [x] **Near-the-ball search, simulated** (`detect/roi.py`, `scripts/simulate_roi.py`, no
+      GPU needed): one tile-sized crop around the ball while it is followed, all 9 tiles
+      when it is lost and once a second; idle mode (4 searches a second) after 2 s without
+      a ball, with backfill when it returns. Both labelled sets: **~2.6-2.7x fewer detector
+      runs**, touches unchanged, rallies 39 -> 38/42 (titan-rise) and 37/39 unchanged
+      (mac-chrome). Settings barely matter: the limit is the ~40% of frames with no ball.
+- [ ] Use it in `detect_ball.py` (`--roi`), then confirm on one video with the GPU that the
+      crop finds what the tiles found (the simulation assumes it).
+- [x] Play windows from player movement: **not worth it.** Keeping every labelled rally
+      kept 85-96% of the video (players walk, rotate and celebrate between points).
+- [ ] Efficient inference: TensorRT / fp16 compile, a smaller ball model if accuracy
+      holds; 1080p input; for the product, parallel cloud GPUs and on-device downscaling.
+
 ## Smaller known issues
 
 - [ ] `mac-chrome_set2`: a camera jump in the last ~25 s can't be fixed (no saved frame

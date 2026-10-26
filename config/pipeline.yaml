@@ -69,6 +69,17 @@ detect:
   # Stored detections go down to this score; the tracker decides what to trust.
   ball_store_threshold: 0.15
   ball_save_every: 2000      # processed frames between checkpoints (resumable)
+  # Near-the-ball search (setter_eyes.detect.roi; not used by detect_ball.py yet: check it
+  # first with scripts/simulate_roi.py, which needs no GPU).
+  roi:
+    min_score: 0.5           # a detection this sure is the ball to follow
+    max_speed_px_s: 6000     # how far it can move (4K px/s; a hard attack ~5000 at 15 m)
+    margin_px: 100           # plus this (the ball box itself)
+    lost_after_s: 0.2        # no sure ball for this long: search everywhere
+    full_every_s: 1.0        # and everywhere this often anyway (serves, a second ball)
+    idle_after_s: 2.0        # no sure ball this long (dead time): idle mode,
+    idle_every_s: 0.25       #   search only this often,
+    backfill_s: 0.5          #   and when the ball is back, the skipped frames this far back
   # Whole-video person detection (scripts/detect_people.py): the COCO-pretrained RF-DETR
   # `person` class on whole frames (players are large; tiles would cut them). 1280 finds
   # slightly more small/far people than the native 576 for ~8 ms more per frame.
