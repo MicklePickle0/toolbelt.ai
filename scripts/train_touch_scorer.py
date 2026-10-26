@@ -14,6 +14,11 @@ eval_contacts.py --oof test the rally logic on those, so it isn't flattered eith
 The validation is within the training videos. The honest test is a labelled video it
 was NOT trained on: scripts/eval_contacts.py warns when you score a training video.
 
+--reviewed adds rallies reviewed in the review UI (event DB, paths.db_path) as labels:
+those with every touch confirmed, and those dismissed as not a rally (their pipeline
+touches are false ones). Where events.csv also covers a rally, events.csv wins. A video
+with reviews but no events.csv can be trained on this way.
+
 Usage:
   python scripts/train_touch_scorer.py --video titan-rise_set1 [--video mac-chrome_set1]
   python scripts/train_touch_scorer.py --video titan-rise_set1 --no-save   # report only
@@ -29,23 +34,41 @@ from pathlib import Path
 import numpy as np
 from sklearn.model_selection import GroupKFold
 
-from setter_eyes import config
+from setter_eyes import config, db
 from setter_eyes.ball.arcs import Arc
 from setter_eyes.ball.tracker import BallPath
 from setter_eyes.contacts.evaluate import evaluate
 from setter_eyes.contacts.events import _merge
 from setter_eyes.contacts.features import NAMES, candidate_features
 from setter_eyes.contacts.scorer import TouchScorer, decode, raw_candidates, touch_targets
+from setter_eyes.db.read import reviewed_for_training
 from setter_eyes.labels import load_manifest
 from setter_eyes.labels.loader import load_video_labels
 from setter_eyes.track.people import PeopleTracks
 from setter_eyes.track.roles import load_roles
 
 
-def video_dataset(entry, manifest, cfg: dict, paths: dict) -> dict:
-    vl = load_video_labels(manifest, entry)
-    if not vl.ok:
-        raise SystemExit(f"{entry.key}: label errors; run ingest_labels.py --check")
+def training_rallies(entry, manifest, reviewed_db) -> list:
+    """events.csv rallies, plus reviewed rallies (if `reviewed_db`) not already labelled."""
+    rallies = []
+    if entry.events is not None:
+        vl = load_video_labels(manifest, entry)
+        if not vl.ok:
+            raise SystemExit(f"{entry.key}: label errors; run ingest_labels.py --check")
+        rallies = list(vl.rallies)
+    if reviewed_db is not None:
+        extra = [r for r in reviewed_for_training(reviewed_db, entry.key)
+                 if not any(min(r.end_frame, x.end_frame) > max(r.start_frame, x.start_frame)
+                            for x in rallies)]
+        print(f"  {entry.key}: {len(rallies)} labelled rallies + {len(extra)} reviewed")
+        rallies += extra
+    if not rallies:
+        raise SystemExit(f"{entry.key}: no labels (events.csv) and no reviewed rallies")
+    return sorted(rallies, key=lambda r: r.start_frame)
+
+
+def video_dataset(entry, manifest, cfg: dict, paths: dict, reviewed_db=None) -> dict:
+    rallies = training_rallies(entry, manifest, reviewed_db)
     d = config.repo_path(paths["cache_dir"]) / entry.key
     path = BallPath.load(d / "ball_path.npz")
     ad = json.loads((d / "ball_arcs.json").read_text(encoding="utf-8"))
@@ -60,15 +83,15 @@ def video_dataset(entry, manifest, cfg: dict, paths: dict) -> dict:
     cands = [x for x in every if x.kind == "touch"]
     X = candidate_features(cands, path, people, fps, cfg["contacts"]["overhead_reach_bodies"])
     t = np.array([c.t for c in cands])
-    windows = [(r.start_frame / fps - 1, r.end_frame / fps + 1) for r in vl.rallies]
+    windows = [(r.start_frame / fps - 1, r.end_frame / fps + 1) for r in rallies]
     rally = np.array([next((j for j, (a, b) in enumerate(windows) if a <= x <= b), -1)
                       for x in t])
-    labels = [c for r in vl.rallies for c in r.contacts]
+    labels = [c for r in rallies for c in r.contacts]
     y, which = touch_targets(t, np.array([c.frame / fps for c in labels]),
                              cfg["contacts"]["scorer"]["match_tolerance_s"])
     ours = np.array([int(labels[w].team == "us") if w >= 0 else -1 for w in which])
     keep = rally >= 0
-    return {"key": entry.key, "fps": fps, "labels": vl.rallies, "cands": np.array(cands)[keep],
+    return {"key": entry.key, "fps": fps, "labels": rallies, "cands": np.array(cands)[keep],
             "X": X[keep], "t": t[keep], "y": y[keep], "ours": ours[keep], "rally": rally[keep],
             "outside": {"cands": np.array(cands)[~keep], "X": X[~keep], "t": t[~keep]},
             "floors": floors, "cache": d}
@@ -93,11 +116,15 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--video", action="append", required=True, help="labelled manifest key")
     ap.add_argument("--no-save", action="store_true", help="validate only")
+    ap.add_argument("--reviewed", action="store_true",
+                    help="also learn from rallies reviewed in the review UI")
     ap.add_argument("--manifest", type=Path, default=config.repo_path(paths["manifest_path"]))
     args = ap.parse_args()
 
     manifest = load_manifest(args.manifest)
-    data = [video_dataset(manifest.video(k), manifest, cfg, paths) for k in args.video]
+    reviewed_db = db.connect(config.repo_path(paths["db_path"])) if args.reviewed else None
+    data = [video_dataset(manifest.video(k), manifest, cfg, paths, reviewed_db)
+            for k in args.video]
     X = np.vstack([d["X"] for d in data])
     y = np.concatenate([d["y"] for d in data])
     ours = np.concatenate([d["ours"] for d in data])

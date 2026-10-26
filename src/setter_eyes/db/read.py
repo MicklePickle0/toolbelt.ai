@@ -35,5 +35,31 @@ def load_rallies(conn: sqlite3.Connection, video_key: str,
     return out
 
 
+def reviewed_for_training(conn: sqlite3.Connection, video_key: str) -> list[RallyLabel]:
+    """Reviewed rallies usable as touch labels: every touch confirmed in the review UI
+    ("all touches are right"), or the rally dismissed as not a rally (then it has no
+    touches: whatever the pipeline saw there is a false touch, a useful negative)."""
+    q = """SELECT r.id, s.set_number, r.rally_number, r.start_frame, r.end_frame,
+                  r.point_winner, r.outcome
+           FROM rallies r JOIN sets s ON r.set_id = s.id JOIN games g ON s.game_id = g.id
+           WHERE g.video_key = ? AND r.reviewed = 1 ORDER BY r.start_t"""
+    out = []
+    for r in conn.execute(q, (video_key,)).fetchall():
+        rows = conn.execute(
+            "SELECT c.frame, c.team, c.action, c.pass_score, c.reviewed, p.jersey_number "
+            "FROM contacts c LEFT JOIN players p ON c.player_id = p.id "
+            "WHERE c.rally_id = ? ORDER BY c.t", (r["id"],)).fetchall()
+        if r["outcome"] == "not_a_rally":
+            contacts = []
+        elif rows and all(c["reviewed"] for c in rows):
+            contacts = [ContactLabel(c["frame"], c["team"], c["action"], c["jersey_number"],
+                                     c["pass_score"]) for c in rows]
+        else:
+            continue                              # winner set, touches not confirmed
+        out.append(RallyLabel(r["set_number"], r["rally_number"], r["start_frame"],
+                              r["end_frame"], r["point_winner"], r["outcome"], contacts))
+    return out
+
+
 def video_keys(conn: sqlite3.Connection) -> list[str]:
     return [r[0] for r in conn.execute("SELECT video_key FROM games ORDER BY video_key")]

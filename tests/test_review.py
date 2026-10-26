@@ -102,3 +102,20 @@ def test_a_split_point_is_merged_and_its_start_moved(tmp_path):
     assert [x["action"] for x in rv.touches(conn, r["id"])][0] == "serve"
     fields = {c["field"] for c in conn.execute("SELECT field FROM corrections")}
     assert {"merge", "start_t", "insert"} <= fields
+
+
+def test_reviewed_rallies_become_training_labels(tmp_path):
+    from setter_eyes.db.read import reviewed_for_training
+
+    conn, g, rally = _db(tmp_path)
+    edits = [rv.TouchEdit(x["id"], x["t"], x["team"], x["action"])
+             for x in rv.touches(conn, rally["id"])]
+    assert reviewed_for_training(conn, "v1") == []                    # nothing reviewed yet
+    rv.save_review(conn, rally["id"], 60.0, "us", "kill", "them", 16.5, edits, False)
+    assert reviewed_for_training(conn, "v1") == []                    # touches not confirmed
+    rv.save_review(conn, rally["id"], 60.0, "us", "kill", "them", 16.5, edits, True)
+    (r,) = reviewed_for_training(conn, "v1")
+    assert len(r.contacts) == 5 and r.point_winner == "us"
+    rv.save_review(conn, rally["id"], 60.0, rv.NOT_A_RALLY, None, None, 16.5, edits, False)
+    (r,) = reviewed_for_training(conn, "v1")
+    assert r.contacts == []                                           # all false touches
