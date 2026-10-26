@@ -12,7 +12,7 @@ An automated alternative to Hudl / DataVolley / VolleyStation. Input: a match or
 - Camera angle varies per game (different diagonals, low to the ground). Do not assume a fixed viewpoint across games.
 
 ## Pipeline (build in this order, verify each visually before moving on)
-1. **Ingest**: read video (OpenCV/ffmpeg), keep original fps + timestamps, cache frames/crops.
+1. **Ingest**: read video (OpenCV/ffmpeg), keep original fps + timestamps, cache frames/crops. Footage from 1080p30 up to 4K60: whole-video passes sample at 30 Hz (`video.sample_hz`) and pixel settings are written for 4K and scale with the video's width (`video.reference_width`).
 2. **Court calibration**: automatic line fitting first (net tape, sidelines, end line, attack line). Output a confidence score. If confidence is low, or the user asks, fall back to a manual-click UI (6-8 known points). Solve camera pose with `cv2.solvePnP` (not just a floor homography). If the camera drifts, track from the initialization with feature tracking / optical flow. Expect better lateral than depth accuracy.
 3. **Person detection + tracking**: RF-DETR (class: person), tracker with camera-motion compensation (BoT-SORT/ByteTrack via `supervision` as a starting point). Filter to near-side players by court position and jersey color. Floor position from the feet.
 4. **Ball detection + tracking**: RF-DETR fine-tuned on our own footage at high input resolution (1280+) with class `ball`. Hand-written Kalman filter with gravity. Fit ballistic arcs per flight segment between contacts.
@@ -89,7 +89,7 @@ Detector labels (`ball`, `person`): about 700-900 frames in total, NOT every fra
 - Workflow: label ~200 frames, train a rough detector, use it to pre-label the rest, correct by hand, then prioritize frames the model is least sure about.
 - Sample by venue, not by video, so one gym with many games does not dominate. Record the venue for every video in the `games` table.
 - Contact/action labels are per touch (not per frame) and come from correcting pipeline proposals in the review UI.
-- Videos are ~20 min per set. Run detection/tracking over the full video, store rally start/end times in the DB, and cut short clips with ffmpeg on demand. Do not physically split videos up front.
+- Videos are ~20 min per set. Run detection/tracking over the full video, store rally start/end times in the DB, and cut short clips with ffmpeg on demand. Do not physically split videos up front. Ball detection skips the time between rallies (play spans from a cheap motion score, `scripts/find_play.py`) and, while it follows a moving ball, detects only a window around it; both are checked against labelled rallies, never trusted blind.
 
 Labeling tools (check current features and pricing before committing):
 - Roboflow: dataset management, auto-labeling, click-assisted labeling (used by the original project).

@@ -7,8 +7,10 @@ Ordered by priority within each section. Scores are from the labelled `titan-ris
 
 - [ ] **Label `mac-chrome_set1`** (owner). A train-split set on a different court: improves
       touches, actions and outcomes, and gives a fair test on footage the scorer never saw.
-- [ ] **Run the remaining 10 videos** (owner): `.\scripts\process_videos.ps1`. About 15-20 h
-      of GPU in total; resumes if stopped.
+- [ ] **Run the remaining 10 videos** (owner): `.\scripts\process_videos.ps1`. Resumes if
+      stopped, and runs `find_play` first so ball detection skips the time between rallies.
+      Was ~1.6 h of ball detection per set before play spans and ball following; the new
+      time is still to be measured (see "Detection speed" below).
 - [ ] **Retrain the touch scorer on train-split sets** once `mac-chrome_set1` is labelled,
       and keep `titan-rise_set1` (test split) only for testing.
 

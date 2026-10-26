@@ -146,8 +146,8 @@ track:
       chase_margin_m: 1.5     # further out only during a rally, for near-player tracks
 
 ball:
-  # Ball tracking (setter_eyes.ball, scripts/track_ball.py). Pixels are 4K, in the
-  # pan-free reference view of the calibrated frame.
+  # Ball tracking (setter_eyes.ball, scripts/track_ball.py). Pixels are in the pan-free
+  # reference view of the calibrated frame, written for 4K (scaled with the video's width).
   gravity: 9.81
   typical_depth_m: 15        # sets the starting image-space pull of gravity
   gate_px: 150               # a touch can move the ball ~150 px off the prediction

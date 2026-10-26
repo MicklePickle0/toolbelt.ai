@@ -13,6 +13,9 @@ data/
     events.csv             rallies, contacts, actions, pass scores, point winners
     boxes.coco.json        ball/person boxes exported from the labelling tool
   cache/<video-id>/frames/ sampled frames (scripts/extract_frames.py) for image-based labelling
+  cache/<video-id>/        pipeline caches: activity.npz + play_spans.json (find_play.py),
+                           ball/person detections, ball path and arcs, people tracks,
+                           contacts and rallies
   outputs/                 preview videos and stills
   datasets/detection/      RF-DETR dataset built by scripts/build_detection_dataset.py
   labels.db                imported ground truth (scripts/ingest_labels.py)

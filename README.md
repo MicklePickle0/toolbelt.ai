@@ -5,6 +5,11 @@ Output: per-player stats for the near-side team, a ball-path overlay, and an edi
 
 Design, constraints and milestones: see [CLAUDE.md](CLAUDE.md).
 
+Footage: 1080p at 30 fps is enough; anything up to 4K at 60 fps works too. The pipeline
+samples 30 times a second either way, so higher settings mostly cost decoding time and disk
+space, not extra detection passes. To run the whole pipeline over several videos (play
+spans, ball and people detection, tracking, rallies), use `.\scripts\process_videos.ps1`.
+
 ## Setup
 
 Requirements: Python 3.11 or 3.12, git, ffmpeg on `PATH`.
