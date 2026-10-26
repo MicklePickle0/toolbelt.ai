@@ -6,7 +6,8 @@ Events are rows of events.csv (docs/labelling.md). Keys, at the current frame:
                touches the jersey (digits + Enter, Enter alone skips), and for our
                receive the pass score (0-4, Enter skips)
   e            rally_end, then the point winner (u / t), then the outcome
-               (OUTCOME_KEYS, Enter skips)
+               (OUTCOME_KEYS, Enter skips); or r instead of a winner: the point is
+               replayed (a ball rolled on, a referee decision), nobody scores
   Esc          cancels a half-entered event
   z            undo the last event added;  x  delete the event at this frame
 Every change is saved straight away.
@@ -49,6 +50,8 @@ class Event:
             score = f" ({f['pass_score']})" if f.get("pass_score") else ""
             return f"{who} {f.get('action', '?')}{score}"
         if self.type == "rally_end":
+            if f.get("outcome") == "replay":
+                return "END: replayed, no point"
             how = f" {f['outcome']}" if f.get("outcome") else ""
             return f"END: point {f.get('point_winner', '?')}{how}"
         return "RALLY START"
@@ -138,7 +141,7 @@ class EventEditor:
         if p["step"] == "pass":
             return "pass score 0-4   (Enter skips)"
         if p["step"] == "winner":
-            return "point winner: u = us, t = them   (Esc cancels)"
+            return "point winner: u = us, t = them, r = replayed (no point)   (Esc cancels)"
         keys = " ".join(f"{k}={v}" for k, v in OUTCOME_KEYS.items())
         return f"outcome: {keys}   (Enter skips)"
 
@@ -197,6 +200,9 @@ class EventEditor:
         elif step == "pass" and (ch in "01234" or ch == ENTER):
             p["pass_score"] = "" if ch == ENTER else ch
             self._finish_contact()
+        elif step == "winner" and ch == "r":
+            self.pending = None
+            self._add(Event(p["frame"], "rally_end", {"outcome": "replay"}))
         elif step == "winner" and ch in TEAM_KEYS:
             p["winner"], p["step"] = TEAM_KEYS[ch], "outcome"
         elif step == "outcome" and (ch in OUTCOME_KEYS or ch == ENTER):

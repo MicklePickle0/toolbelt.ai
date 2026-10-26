@@ -99,8 +99,9 @@ class Evaluation:
             "median_start_error_s": _median_abs(r.pred_start - r.label_start for r in served),
             "median_end_error_s": _median_abs(r.pred_end - r.label_end for r in found),
             "outcomes_right": sum(r.pred_outcome == r.label_outcome for r in found
-                                  if r.label_outcome),
-            "outcomes_labelled": sum(bool(r.label_outcome) for r in found),
+                                  if r.label_outcome and r.label_outcome != "replay"),
+            "outcomes_labelled": sum(bool(r.label_outcome) and r.label_outcome != "replay"
+                                     for r in found),
         }
 
 

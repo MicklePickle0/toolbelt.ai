@@ -26,6 +26,8 @@ outcomes:
   - block_point
   - ball_handling_error   # double, lift, net touch, block error ...
   - other
+  - replay                # point replayed (a ball rolled onto the court, a referee
+                          # decision): no point_winner, no rotation, left out of stats
 
 # Bounding-box classes. Keys are our canonical names, values are the names a
 # labelling tool might export (matched case-insensitively).

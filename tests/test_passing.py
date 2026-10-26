@@ -36,3 +36,11 @@ def test_a_dig_after_their_attack_is_not_a_reception():
                    ("us", "set", 1, None), ("us", "free_ball", 4, None),
                    ("them", "attack", None, None), ("us", "dig", 7, None)], "us")
     assert [(x.jersey, x.score) for x in receptions([r], SCALE)] == [(7, 2)]
+
+
+def test_a_replayed_rally_counts_for_nothing():
+    from setter_eyes.stats.actions import counts
+
+    replay = _rally(1, [("them", "serve", None, None), ("us", "receive", 7, 1)], None, "replay")
+    assert receptions([replay], SCALE) == []
+    assert counts([replay]) == {}

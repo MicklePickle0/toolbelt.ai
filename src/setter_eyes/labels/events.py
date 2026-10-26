@@ -21,6 +21,7 @@ from setter_eyes.labels.issues import Issues
 
 EVENT_TYPES = ("rally_start", "contact", "rally_end")
 TEAMS = ("us", "them")
+REPLAY = "replay"           # outcome of a replayed point: no winner, left out of stats
 _TIME_RE = re.compile(r"^(?:(\d+):)?(?:(\d+):)?(\d+(?:\.\d*)?)$")
 
 
@@ -45,6 +46,10 @@ class RallyLabel:
     outcome: str | None = None
     contacts: list[ContactLabel] = field(default_factory=list)
     line: int | None = None
+
+    @property
+    def replayed(self) -> bool:
+        return self.outcome == REPLAY
 
     @property
     def serving_team(self) -> str | None:
@@ -133,12 +138,18 @@ def parse_events(path: str | Path, fps: float, frame_count: int | None = None,
         else:  # rally_end
             current.end_frame = row.frame
             winner = f.get("point_winner", "").lower() or None
-            if winner not in TEAMS:
-                issues.error(f"rally_end needs point_winner us|them, got {winner!r}", row.line)
-            current.point_winner = winner if winner in TEAMS else None
             outcome = f.get("outcome", "").lower() or None
             if outcome is not None and outcome not in outcomes:
                 issues.error(f"unknown outcome {outcome!r} (config/labels.yaml)", row.line)
+            if outcome == REPLAY:
+                if winner is not None:
+                    issues.warning("point_winner ignored on a replay (nobody gets the point)",
+                                   row.line)
+                winner = None
+            elif winner not in TEAMS:
+                issues.error(f"rally_end needs point_winner us|them (or outcome {REPLAY}), "
+                             f"got {winner!r}", row.line)
+            current.point_winner = winner if winner in TEAMS else None
             current.outcome = outcome
             _check_rally(current, max_contacts_per_side, issues)
             rallies.append(current)

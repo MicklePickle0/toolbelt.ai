@@ -8,6 +8,7 @@ defence). Its score, by what happened (config/pass_scale.yaml):
   - no touch of ours and the rally ended in an ace: `ace_score` (0), passer unknown
     (counts in the team average only)
   - `receive` without a score: a reception, but unscored (left out of averages)
+A replayed rally (outcome `replay`) is wiped: no receptions from it count.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ class Reception:
 def receptions(rallies: Iterable[RallyLabel], scale: dict) -> list[Reception]:
     out = []
     for r in rallies:
-        if r.serving_team != "them":
+        if r.serving_team != "them" or r.replayed:
             continue
         serve_seen = False
         ours = None

@@ -149,6 +149,10 @@ The quickest way to write `events.csv` is the keyboard labeller,
 - **Passing a free ball:** label it `dig`, after their `free_ball` or `overpass`. The stats count it as a free-ball pass, not a dig.
 - **Our serve receive goes straight back over:** label it `overpass` (no pass score). It counts as a 0 pass in the passer's average.
 - **A dig called for a ball-handling error:** label the `dig`, then end the rally with outcome `ball_handling_error`. It counts as an error, not a dig. If the dig was clean and the next touch was called, the dig still counts.
+- **A replayed point** (a ball rolls onto the court, a referee decision): end the rally as
+  usual at the whistle, but press `r` instead of a winner (`e` `r`). In the CSV:
+  `outcome` = `replay`, `point_winner` blank. Nobody scores, the server doesn't change,
+  and the rally is left out of all stats.
 - **Timeouts:** no labels. Label rallies in an unbroken run, so the scorer can count fake rallies between them.
 
 ## Box labels (`boxes.coco.json`)

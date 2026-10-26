@@ -21,7 +21,8 @@ Labelling (at the frame shown):
                  1 serve 2 receive 3 set 4 attack 5 block 6 dig 7 free_ball 8 dump
                  9 overpass 0 coverage;  ours: then jersey digits + Enter (Enter = unknown);
                  our receive: then pass score 0-4 (Enter skips)
-  e              rally end, then winner (u / t), then outcome (Enter skips):
+  e              rally end, then winner (u / t; or r: point replayed, nobody scores),
+                 then outcome (Enter skips):
                  k kill  a attack_error  r reception_error  c ace  v service_error
                  b block_point  h ball_handling_error  o other
   z              undo the last label          x  delete the label on this frame
@@ -51,7 +52,7 @@ from setter_eyes.labels.events import parse_time
 LEFT, UP, RIGHT, DOWN = 2424832, 2490368, 2555904, 2621440
 WIDTH = 1280
 HELP = ("Space play  <- -> frame  , . 10f  [ ] 1s  { } 5s  - slowmo  p/n prev/next label  "
-        "g goto | s start  u/t touch  e end  z undo  x delete  Esc quit")
+        "g goto | s start  u/t touch  e end (r = replay)  z undo  x delete  Esc quit")
 
 
 def make_proxy(src: Path, dst: Path) -> None:
