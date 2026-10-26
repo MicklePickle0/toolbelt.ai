@@ -243,6 +243,8 @@ rally:
     away_within_s: 2.0       # ...within this long: it was hit away, not caught
     merge_s: 1.0             # big sightings this close together are one appearance
     match_touch_s: 0.5       # a pipeline touch this close is the serve touch
+    toss_max_s: 1.2          # follow a rising toss this long to find the hit
+    rise_slack: 0.001        # still rising: up the frame by more than this share (2 px)
     confidence: 0.8
   # Our court's airspace (court metres): touches with the ball outside it are another
   # court's (balls on the courts beside ours). Court: x 0-9, y -9..9, net at y = 0.

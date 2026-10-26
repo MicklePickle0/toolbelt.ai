@@ -12,6 +12,12 @@ the TOP of the frame, very BIG (a metre or two from the lens; 100-200 px in 4K a
 Labelled (titan-rise_set1 + mac-chrome_set1, 33 of our serves): today's touches found 22;
 this finds 28, with 4 false alarms over both sets; timing ~0.3 s from the labelled hit.
 Their serve isn't needed here: its toss and hit are in view (44 of 48 found).
+
+The moment returned is the HIT, not the first sighting: the ball is often first seen
+during the toss, rising up the frame at a steady size; the hit is where it stops rising
+(then it shrinks away). Labelled: the first sighting was 0.4-0.8 s early on 10 of 29
+serves; the stop-rising moment on none, and within 0.25 s of the hit on 62%. A ball
+first seen after the hit (already coming down) can't be placed earlier.
 Depends on the camera standing behind our end line (all Humber footage).
 """
 
@@ -20,6 +26,18 @@ from __future__ import annotations
 import numpy as np
 
 from setter_eyes.ball.tracker import BallPath
+
+
+def _hit_time(path: BallPath, idx: np.ndarray, t: np.ndarray, k: int, image_height: int,
+              cfg: dict) -> float:
+    """Follow the ball from sighting k while it rises up the frame (the toss): the hit is
+    where it stops rising."""
+    follow = idx[(t[idx] >= t[k]) & (t[idx] <= t[k] + cfg["toss_max_s"])]
+    slack = cfg["rise_slack"] * image_height
+    j = 0
+    while j + 1 < len(follow) and path.uv[follow[j + 1], 1] < path.uv[follow[j], 1] - slack:
+        j += 1
+    return float(t[follow[j]]) if len(follow) else float(t[k])
 
 
 def find_our_serves(path: BallPath, fps: float, touch_t: np.ndarray, image_height: int,
@@ -45,5 +63,5 @@ def find_our_serves(path: BallPath, fps: float, touch_t: np.ndarray, image_heigh
         after = idx[(t[idx] > t[k]) & (t[idx] <= t[k] + cfg["away_within_s"])]
         if not len(after) or not np.nanmin(size[after]) <= cfg["away_size"]:
             continue                                  # stayed close: caught, not served
-        out.append(float(t[k]))
+        out.append(_hit_time(path, idx, t, k, image_height, cfg))
     return out
