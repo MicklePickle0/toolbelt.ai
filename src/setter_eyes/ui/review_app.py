@@ -16,7 +16,7 @@ from setter_eyes.labels.event_editor import clock
 from setter_eyes.labels.events import parse_time
 from setter_eyes.ui import review as rv
 
-PAD_BEFORE, PAD_AFTER = 2.0, 2.0          # clip margin around the rally, seconds
+PAD = 2.0                                 # default clip margin around the rally, seconds
 WINNERS = {"Us": "us", "Them": "them", "Replay (no point)": rv.REPLAY,
            "Not a rally": rv.NOT_A_RALLY}
 
@@ -73,8 +73,14 @@ with st.sidebar:
 # ---- main: clip and touches ----------------------------------------------------------------
 entry = manifest().video(g["video_key"])
 fps = g["fps"]
-t0 = max(0.0, rally["start_t"] - PAD_BEFORE)
-t1 = rally["end_t"] + PAD_AFTER
+with st.sidebar:
+    st.markdown("**See more of the video** (a rally that starts or ends mid-point)")
+    more_before = st.number_input("seconds before the rally", 0.0, 60.0, PAD, 1.0,
+                                  key=f"before_{rally['id']}")
+    more_after = st.number_input("seconds after the rally", 0.0, 60.0, PAD, 1.0,
+                                 key=f"after_{rally['id']}")
+t0 = max(0.0, rally["start_t"] - more_before)
+t1 = rally["end_t"] + more_after
 proxy = config.repo_path(paths["cache_dir"]) / entry.key / "proxy.mp4"
 src = proxy if proxy.exists() else entry.path
 clip_file = config.repo_path(paths["cache_dir"]) / entry.key / "clips" / \
@@ -89,18 +95,39 @@ with left:
             st.video(str(rv.rally_clip(src, clip_file, t0, t1)))
     except Exception as e:                       # noqa: BLE001 - show, don't crash the UI
         st.error(f"could not cut the clip: {e}")
-    st.caption(f"The clip starts at {clock(t0)} (2 s before the rally). Times in the table "
-               "are seconds into the clip, as the player shows them.")
+    st.caption(f"The clip starts at {clock(t0)} ({rally['start_t'] - t0:.0f} s before the "
+               "rally). Times in the table are seconds into the clip, as the player shows "
+               "them. A point cut short? Widen the clip in the sidebar, move the start / end "
+               "below, add the missed touches - or merge with the neighbouring rally if the "
+               "pipeline split the point in two.")
+    prev, nxt = rv.neighbours(rows, rally["id"])
+    m1, m2 = st.columns(2)
+    if prev is not None:
+        gap = rally["start_t"] - prev["end_t"]
+        if m1.button(f"Merge with previous rally #{prev['rally_number']} "
+                     f"(ends {gap:.1f} s before this one)", use_container_width=True):
+            rv.merge_rallies(conn, rally["id"], prev["id"])
+            st.rerun()
+    if nxt is not None:
+        gap = nxt["start_t"] - rally["end_t"]
+        if m2.button(f"Merge with next rally #{nxt['rally_number']} "
+                     f"(starts {gap:.1f} s after this one)", use_container_width=True):
+            rv.merge_rallies(conn, rally["id"], nxt["id"])
+            st.rerun()
+
+# Widget keys carry the rally's span and touch count, so a merge (or any change to the
+# rally) shows fresh values instead of the ones typed before it.
+tlist = rv.touches(conn, rally["id"])
+wkey = f"{rally['id']}_{rally['start_t']:.3f}_{rally['end_t']:.3f}_{len(tlist)}"
 
 with right:
     st.markdown("**Touches** (edit team or action, delete rows, add rows for missed touches)")
-    tlist = rv.touches(conn, rally["id"])
     table = pd.DataFrame([{"id": x["id"], "clip_s": round(x["t"] - t0, 2), "team": x["team"],
                            "action": x["action"],
                            "sure": round(x["action_confidence"] or 0.0, 2)} for x in tlist],
                          columns=["id", "clip_s", "team", "action", "sure"])
     edited = st.data_editor(
-        table, num_rows="dynamic", hide_index=True, key=f"touches_{rally['id']}",
+        table, num_rows="dynamic", hide_index=True, key=f"touches_{wkey}",
         column_config={
             "id": None,
             "clip_s": st.column_config.NumberColumn("time in clip (s)", step=0.01,
@@ -111,21 +138,40 @@ with right:
             "sure": st.column_config.NumberColumn("pipeline sure", disabled=True),
         })
     kept_ids = {int(i) for i in edited["id"].dropna()}
-    edits = [rv.TouchEdit(None if pd.isna(r.id) else int(r.id), float(r.clip_s) + t0,
-                          r.team, None if pd.isna(r.action) else r.action)
+    shown_t = {x["id"]: (round(x["t"] - t0, 2), x["t"]) for x in tlist}
+
+    def _t(r) -> float:
+        """The touch's time; an untouched (rounded) one keeps its exact value."""
+        if not pd.isna(r.id) and int(r.id) in shown_t:
+            shown, exact = shown_t[int(r.id)]
+            if abs(float(r.clip_s) - shown) < 1e-6:
+                return exact
+        return float(r.clip_s) + t0
+
+    edits = [rv.TouchEdit(None if pd.isna(r.id) else int(r.id), _t(r), r.team,
+                          None if pd.isna(r.action) else r.action)
              for r in edited.itertuples() if not pd.isna(r.clip_s)]
     edits += [rv.TouchEdit(x["id"], x["t"], x["team"], x["action"], delete=True)
               for x in tlist if x["id"] not in kept_ids]
 
-    end_text = st.text_input("Rally ended at (m:ss.ss; touches after it are removed, e.g. "
-                             "after a net touch or a caught ball)", clock(rally["end_t"]),
-                             key=f"end_{rally['id']}")
-    try:                                         # untouched: keep the exact time
-        end_t: float | None = rally["end_t"] if end_text == clock(rally["end_t"]) else \
-            parse_time(end_text)
-    except ValueError:
-        end_t = None
-        st.warning(f"Rally end {end_text!r} isn't a time like 1:02.25.")
+    s1, s2 = st.columns(2)
+    start_text = s1.text_input("Rally started at (the serve, m:ss.ss)", clock(rally["start_t"]),
+                               key=f"start_{wkey}")
+    end_text = s2.text_input("Rally ended at (touches after it are removed, e.g. after a "
+                             "net touch or a caught ball)", clock(rally["end_t"]),
+                             key=f"end_{wkey}")
+
+    def _time(text: str, current: float, what: str) -> float | None:
+        if text == clock(current):               # untouched: keep the exact time
+            return current
+        try:
+            return parse_time(text)
+        except ValueError:
+            st.warning(f"Rally {what} {text!r} isn't a time like 1:02.25.")
+            return None
+
+    start_t = _time(start_text, rally["start_t"], "start")
+    end_t = _time(end_text, rally["end_t"], "end")
 
     st.markdown("**Point**")
     current = {v: k for k, v in WINNERS.items()}.get(
@@ -133,7 +179,7 @@ with right:
                                   (rv.REPLAY, rv.NOT_A_RALLY) else None))
     choice = st.radio("Who won the point?", list(WINNERS), horizontal=True,
                       index=list(WINNERS).index(current) if current else None,
-                      key=f"winner_{rally['id']}")
+                      key=f"winner_{wkey}")
     winner = WINNERS.get(choice) if choice else None
     suggested = rv.suggest_outcome(edits, winner, end_t)
     outcome = None
@@ -142,23 +188,26 @@ with right:
         outcome = st.selectbox(f"How (suggested from the last touch: {suggested})",
                                [o for o in OUTCOMES if o != rv.REPLAY],
                                index=[o for o in OUTCOMES if o != rv.REPLAY].index(default)
-                               if default in OUTCOMES else 0, key=f"outcome_{rally['id']}")
+                               if default in OUTCOMES else 0, key=f"outcome_{wkey}")
     serving = st.radio("Serving team", ["us", "them"], horizontal=True,
                        index=["us", "them"].index(rally["serving_team"])
                        if rally["serving_team"] in ("us", "them") else None,
-                       key=f"serve_{rally['id']}")
+                       key=f"serve_{wkey}")
     checked = st.checkbox("All touches above are right (use them as training data)",
-                          value=True, key=f"checked_{rally['id']}",
+                          value=True, key=f"checked_{wkey}",
                           disabled=winner == rv.NOT_A_RALLY)
 
     def save() -> bool:
         if winner is None:
             st.warning("Set who won the point first.")
             return False
-        if end_t is None:
+        if end_t is None or start_t is None:
+            return False
+        if end_t <= start_t:
+            st.warning("The rally has to end after it starts.")
             return False
         rv.save_review(conn, rally["id"], fps, winner, outcome, serving, end_t, edits,
-                       checked)
+                       checked, start_t=start_t)
         return True
 
     a, b = st.columns(2)

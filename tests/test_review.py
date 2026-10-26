@@ -63,3 +63,42 @@ def test_a_false_rally_is_dismissed_and_stays_dismissed(tmp_path):
     r = rv.rallies(conn, g["set_id"])[0]
     assert (r["point_winner"], r["outcome"], r["reviewed"]) == (None, rv.NOT_A_RALLY, 1)
     assert rv.score(rv.rallies(conn, g["set_id"])) == (0, 0)
+
+
+def test_a_split_point_is_merged_and_its_start_moved(tmp_path):
+    conn = db.connect(":memory:")
+    manifest = Manifest(tmp_path / "manifest.yaml", "Venom", [], [])
+    entry = VideoEntry("v1", tmp_path / "v1.mp4", venue="Humber", ball="mikasa")
+
+    def touch(t, team, action):
+        return {"kind": "touch", "t": t, "frame": int(t * 60), "confidence": 0.6, "team": team,
+                "ball_xyz": None, "action": action, "action_confidence": 0.5}
+
+    contacts = [touch(11.0, "us", "receive"), touch(12.0, "us", "set"),
+                touch(14.5, "them", "dig"), touch(15.5, "them", "set")]
+
+    def rally(i, t0, t1, members):
+        return {"index": i, "start_frame": int(t0 * 60), "end_frame": int(t1 * 60),
+                "start_t": t0, "end_t": t1, "confidence": 0.4, "serving_team": "them",
+                "contacts": members}
+
+    write_video(conn, manifest, entry, 60.0,
+                [rally(1, 10.9, 12.5, [0, 1]), rally(2, 14.4, 16.0, [2, 3])], contacts)
+    g = rv.games(conn)[0]
+    first, second = rv.rallies(conn, g["set_id"])
+    assert rv.neighbours(rv.rallies(conn, g["set_id"]), first["id"]) == (None, second)
+    rv.merge_rallies(conn, first["id"], second["id"])
+    (merged,) = rv.rallies(conn, g["set_id"])
+    assert (merged["start_t"], merged["end_t"]) == (10.9, 16.0)
+    assert len(rv.touches(conn, merged["id"])) == 4
+    # The serve wasn't detected: move the start back to it and add the serve.
+    edits = [rv.TouchEdit(x["id"], x["t"], x["team"], x["action"])
+             for x in rv.touches(conn, merged["id"])]
+    edits.append(rv.TouchEdit(None, 10.0, "them", "serve"))
+    rv.save_review(conn, merged["id"], 60.0, "them", None, "them", 16.0, edits, True,
+                   start_t=10.0)
+    r = rv.rallies(conn, g["set_id"])[0]
+    assert r["start_t"] == 10.0
+    assert [x["action"] for x in rv.touches(conn, r["id"])][0] == "serve"
+    fields = {c["field"] for c in conn.execute("SELECT field FROM corrections")}
+    assert {"merge", "start_t", "insert"} <= fields

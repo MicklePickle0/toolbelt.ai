@@ -70,7 +70,8 @@ Ordered by priority within each section. Scores are from the labelled `titan-ris
 
 - [x] First version (`python scripts/review.py`, Streamlit): review queue (least confident
       first), rally clip, editable touches (team, action, add, delete), point winner /
-      replay / not a rally, suggested outcome, serving team, rally end. Saves to the event
+      replay / not a rally, suggested outcome, serving team, rally start and end,
+      a wider clip for points cut short, merging a point the pipeline split in two. Saves to the event
       DB, logs every change in `corrections`; re-running the pipeline keeps reviewed rallies.
 - [ ] Use reviewed rallies as training data: export them like `events.csv` and train the
       touch scorer and action rules on them too.
