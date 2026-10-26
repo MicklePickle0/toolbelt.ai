@@ -193,6 +193,8 @@ contacts:
   max_bridge_s: 0.3          # further apart, up to this long (ball hidden by the toucher):
   bridge_penalty: 0.8        #   still a candidate, mid-gap, at this confidence factor
   merge_window_s: 0.12       # candidates closer than this are one event (a split flight)
+  snap_window_s: 0.15        # move a candidate to the sharpest change of course within
+                             # this (the flight split can be off by a few samples); 0: off
   min_arc_confidence: 0.4    # both flights at least this confident -> use 3D evidence
   velocity_scale_mps: 4.0    # course change -> evidence: 1 - exp(-dv / scale)
   reach_scale_m: 1.0         # person within reach -> evidence: exp(-distance / scale)

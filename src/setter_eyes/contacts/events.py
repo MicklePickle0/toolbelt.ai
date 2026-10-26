@@ -78,9 +78,13 @@ def find_contacts(path: BallPath, arcs: list[Arc], g: np.ndarray, fps: float,
         if bridged and times[nxt.first] - times[prev.last] > c["max_bridge_s"]:
             continue                                      # ball lost too long: not one event
         k = (prev.last + nxt.first) // 2 if bridged else prev.last
+        # The flight split can land a sample or few off the touch (a frame the ball was
+        # only bridged throws it): the touch is where the ball's course changes most.
+        k = _sharpest_turn(path, k, fps, c["snap_window_s"])
         f = int(path.frames[k])
         t = float(times[k])
-        uv = path.uv[k] if not bridged else (path.uv[prev.last] + path.uv[nxt.first]) / 2
+        uv = path.uv[k] if np.isfinite(path.uv[k]).all() else \
+            (path.uv[prev.last] + path.uv[nxt.first]) / 2
         strong = prev.confidence >= c["min_arc_confidence"] and \
             nxt.confidence >= c["min_arc_confidence"]
         xyz = None
@@ -175,6 +179,27 @@ def _nearest_person(people: PeopleTracks, rows: np.ndarray, xyz, uv,
         if d < best_d:
             best, best_d, best_xy = int(people.track_id[r]), d, people.court_xy_smooth[r]
     return best, best_d, best_xy
+
+
+def _sharpest_turn(path: BallPath, k: int, fps: float, window_s: float, lag: int = 2) -> int:
+    """The sample within `window_s` of k where the ball's image velocity changes most
+    (|velocity out - velocity in| over `lag` samples each side, pan-free view); k if
+    none can be measured."""
+    if window_s <= 0:
+        return k
+    t = path.frames / fps
+    uv = path.uv_ref
+    ok = np.isfinite(uv).all(axis=1)
+    best, best_d = k, -1.0
+    for j in range(max(lag, k - 40), min(len(t) - lag, k + 41)):
+        if abs(t[j] - t[k]) > window_s or not (ok[j] and ok[j - lag] and ok[j + lag]):
+            continue
+        v_in = (uv[j] - uv[j - lag]) / max(1e-6, t[j] - t[j - lag])
+        v_out = (uv[j + lag] - uv[j]) / max(1e-6, t[j + lag] - t[j])
+        d = float(np.linalg.norm(v_out - v_in))
+        if d > best_d:
+            best, best_d = j, d
+    return best
 
 
 def _image_velocity_change(path: BallPath, k_end: int, k_start: int, fps: float,

@@ -54,6 +54,16 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
 
 ## Milestone 4: touches and rallies
 
+- [x] **Touch timing: snap to the sharpest change of course** (`contacts.snap_window_s`,
+      2026-10-26, from the owner spotting an attack marked while the ball was still
+      dropping). Every touch was placed ~5 frames early: at the last sample of the flight
+      before it, not where the course changes (a frame where the ball was only bridged made
+      it worse). Out-of-fold, both labelled sets: timing error median 0.083 -> 0.017 s,
+      within 0.05 s 8% -> 90%; touches found 79/81% -> 87/85%, real 92/88% -> 95/92%;
+      actions 66/56% -> 73/79%; point outcome 15/39 -> 23/41 and 20/37 -> 23/36; serving
+      team 33 -> 40 (titan-rise); false rallies 2 -> 0 and 9 -> 5; rallies found 39 -> 41
+      and 37 -> 36. Touch scorer retrained with it.
+
 - [ ] **Blocks**: 8 of 18 found, and behind most wrong point outcomes. Ball near the net
       tape, deflection is small and often hidden.
 - [ ] **Inferred serves**: right about half the time (sent to review). Mostly from touches
@@ -70,6 +80,8 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
       33 of our serves, 4 false alarms over both sets (today's touches: 22/33). Rallies
       found 39 -> 42/42 (titan-rise) and 37 -> 39/39 (mac-chrome). Depends on the camera
       being behind our end line (check on new angles). Their serves are fine (44/48).
+      Placed at the hit, not the toss (where the ball stops rising): none of 29 now 0.4 s+
+      early (was 10); the hit touch is no longer an extra "dig".
 - [ ] **Serve-only rallies from our off-screen server** (aces, service errors): 3 of 42
       missed (the `our-serve-entry` branch addresses these).
 - [x] **Live-ball check, first version** (`rally/live.py`): a trailing touch > 2 s after the

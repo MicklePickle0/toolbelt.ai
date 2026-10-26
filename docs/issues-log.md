@@ -124,6 +124,8 @@ Labelling conventions decided along the way (also in `docs/labelling.md`, "Judge
 |---|---|---|---|
 | Rallies 32/42 found, 8 false, serve found in 22 | Rallies came from ball visibility | Built from touches: touch groups < 3 s apart, serve before the first change of side, groups with no serve or exchange dropped | `rally/segment.py` (`segment_from_touches`) |
 | Their unseen serve made our attack "the serve" | The serve hidden by a player or the tape | A rally opening with 2+ touches by one side was served by the other (inferred, lower confidence) | `rally/segment.py` |
+| Touches marked ~5 frames early (an attack shown while the ball was still dropping) | A touch was placed at the last sample of the flight before it; a frame with the ball only bridged moved the flight split further off | Snap each candidate to the sharpest change of the ball's image velocity within 0.15 s. Timing 0.083 -> 0.017 s; touches found and real, actions and outcomes all up | `contacts/events.py` (`_sharpest_turn`), `contacts.snap_window_s` |
+| Our serve placed at the toss (0.5-0.8 s early) and the hit counted as a "dig" | The ball is first seen big during the toss | The hit is where the ball stops rising (branch `our-serve-entry`) | `rally/serve_entry.py` |
 | Free balls labelled as attacks | Rules counted touch order only | An "attack" launched upward > 4 m/s is a free ball | `classify/rules.py` |
 | Replayed points had no label | `point_winner` was required | Outcome `replay`, no winner, left out of stats (labeller key `e` `r`) | `labels/events.py`, `labels/event_editor.py` |
 | Review UI crashed on the second click | A cached SQLite connection used from another thread | A fresh connection per run | `ui/review_app.py` |
