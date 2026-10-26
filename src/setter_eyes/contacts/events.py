@@ -44,6 +44,7 @@ class Contact:
     confidence: float
     serve: bool = False
     action: str | None = None                # classify/rules.py, after the rally is built
+    entry_serve: bool = False                # our serve, from how the ball entered the frame
     action_confidence: float | None = None
 
     def to_dict(self) -> dict:
