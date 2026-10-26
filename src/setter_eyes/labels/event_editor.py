@@ -33,8 +33,9 @@ ENTER, ESC, BACKSPACE = "\r", "\x1b", "\b"
 
 
 def clock(t: float) -> str:
+    """m:ss.sss (to the millisecond)."""
     m, s = divmod(t, 60)
-    return f"{int(m)}:{s:05.2f}"
+    return f"{int(m)}:{s:06.3f}"
 
 
 @dataclass

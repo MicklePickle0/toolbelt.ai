@@ -15,6 +15,7 @@ from setter_eyes.labels import load_manifest
 from setter_eyes.labels.event_editor import clock
 from setter_eyes.labels.events import parse_time
 from setter_eyes.ui import review as rv
+from setter_eyes.ui.player import player
 
 PAD = 2.0                                 # default clip margin around the rally, seconds
 WINNERS = {"Us": "us", "Them": "them", "Replay (no point)": rv.REPLAY,
@@ -92,12 +93,12 @@ left, right = st.columns([3, 2])
 with left:
     try:
         with st.spinner("cutting the clip..."):
-            st.video(str(rv.rally_clip(src, clip_file, t0, t1)))
+            player(rv.rally_clip(src, clip_file, t0, t1), t0, fps)
     except Exception as e:                       # noqa: BLE001 - show, don't crash the UI
         st.error(f"could not cut the clip: {e}")
     st.caption(f"The clip starts at {clock(t0)} ({rally['start_t'] - t0:.0f} s before the "
-               "rally). Times in the table are seconds into the clip, as the player shows "
-               "them. A point cut short? Widen the clip in the sidebar, move the start / end "
+               "rally). Times in the table are seconds into the clip: the \"clip\" time under the "
+               "video. A point cut short? Widen the clip in the sidebar, move the start / end "
                "below, add the missed touches - or merge with the neighbouring rally if the "
                "pipeline split the point in two.")
     prev, nxt = rv.neighbours(rows, rally["id"])
@@ -122,7 +123,7 @@ wkey = f"{rally['id']}_{rally['start_t']:.3f}_{rally['end_t']:.3f}_{len(tlist)}"
 
 with right:
     st.markdown("**Touches** (edit team or action, delete rows, add rows for missed touches)")
-    table = pd.DataFrame([{"id": x["id"], "clip_s": round(x["t"] - t0, 2), "team": x["team"],
+    table = pd.DataFrame([{"id": x["id"], "clip_s": round(x["t"] - t0, 3), "team": x["team"],
                            "action": x["action"],
                            "sure": round(x["action_confidence"] or 0.0, 2)} for x in tlist],
                          columns=["id", "clip_s", "team", "action", "sure"])
@@ -130,15 +131,15 @@ with right:
         table, num_rows="dynamic", hide_index=True, key=f"touches_{wkey}",
         column_config={
             "id": None,
-            "clip_s": st.column_config.NumberColumn("time in clip (s)", step=0.01,
-                                                    format="%.2f", required=True),
+            "clip_s": st.column_config.NumberColumn("time in clip (s)", step=0.001,
+                                                    format="%.3f", required=True),
             "team": st.column_config.SelectboxColumn("team", options=["us", "them"],
                                                      required=True),
             "action": st.column_config.SelectboxColumn("action", options=ACTIONS),
             "sure": st.column_config.NumberColumn("pipeline sure", disabled=True),
         })
     kept_ids = {int(i) for i in edited["id"].dropna()}
-    shown_t = {x["id"]: (round(x["t"] - t0, 2), x["t"]) for x in tlist}
+    shown_t = {x["id"]: (round(x["t"] - t0, 3), x["t"]) for x in tlist}
 
     def _t(r) -> float:
         """The touch's time; an untouched (rounded) one keeps its exact value."""
@@ -155,7 +156,7 @@ with right:
               for x in tlist if x["id"] not in kept_ids]
 
     s1, s2 = st.columns(2)
-    start_text = s1.text_input("Rally started at (the serve, m:ss.ss)", clock(rally["start_t"]),
+    start_text = s1.text_input("Rally started at (the serve, m:ss.sss)", clock(rally["start_t"]),
                                key=f"start_{wkey}")
     end_text = s2.text_input("Rally ended at (touches after it are removed, e.g. after a "
                              "net touch or a caught ball)", clock(rally["end_t"]),
@@ -167,7 +168,7 @@ with right:
         try:
             return parse_time(text)
         except ValueError:
-            st.warning(f"Rally {what} {text!r} isn't a time like 1:02.25.")
+            st.warning(f"Rally {what} {text!r} isn't a time like 1:02.250.")
             return None
 
     start_t = _time(start_text, rally["start_t"], "start")
