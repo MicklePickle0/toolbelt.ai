@@ -1,11 +1,18 @@
 """Serve-receive pass quality 0-4 from where the pass is played (Milestone 8, first version).
 
 Where the pass goes is taken from the player who plays it next (normally the setter):
-their feet on the floor, at the moment of that touch. Feet on the floor are much better
-placed than the ball in the air: from behind the end line, the ball's 3D depth is the
-weak axis (several perfect passes came out 8 m from the net), while the setter's
-position follows the owner's scores closely (labelled: median distance from the target
-0.9 m for a 4, 1.9 m for a 3, 3.1 m for a 2, 4.6 m for a 1).
+their feet on the floor, at the moment of that touch (`pass_spot`). That player is found
+  - by the ball's 3D position when a confident flight gives it: the player on our side
+    whose feet are nearest the point under the ball;
+  - else in the image: the player whose hands are at the ball (the ball level with the
+    top of their box and inside it sideways), not merely the nearest box. A back-row
+    player close to the camera has a big box that "reaches" a ball the setter is playing
+    at the net, and can hide the setter (owner's example: the libero in front of the
+    setter): picking by nearest box turned 6 of 8 big mismatches into wrong players.
+The pass's spot is the feet, not the ball in the air: from behind the end line, the
+ball's 3D depth is the weak axis (several perfect passes came out 8 m from the net),
+while the setter's position follows the owner's scores closely (labelled: median
+distance from the target 0.9 m for a 4, 1.9 m for a 3, 3.1 m for a 2, 4.6 m for a 1).
 
 The score follows config/pass_scale.yaml: distance from `target` laterally and in depth,
 graded by the first matching entry of `grades`. A pass the other side plays next went
@@ -18,7 +25,10 @@ from __future__ import annotations
 
 import numpy as np
 
+from setter_eyes.ball.tracker import BallPath
 from setter_eyes.track.people import PeopleTracks
+
+OUR_SIDE_Y = 0.2          # feet at least this far on our side of the net (court metres)
 
 
 def player_position(people: PeopleTracks, track_id: int, frame: int,
@@ -29,6 +39,46 @@ def player_position(people: PeopleTracks, track_id: int, frame: int,
         return None
     xy = people.court_xy_smooth[sel[np.argmin(np.abs(people.frame[sel] - frame))]]
     return xy if np.isfinite(xy).all() else None
+
+
+def _h(box: np.ndarray) -> float:
+    return max(1.0, float(box[3] - box[1]))
+
+
+def pass_spot(path: BallPath, people: PeopleTracks, frame: int,
+              xyz: np.ndarray | None = None, max_reach_m: float = 2.5,
+              hands_bodies: float = 0.25) -> np.ndarray | None:
+    """Court (x, y) of the feet of the player who plays the ball at `frame`, or None."""
+    rows = [r for r in np.flatnonzero(np.abs(people.frame - frame) <= 2)
+            if np.isfinite(people.court_xy_smooth[r]).all()
+            and people.court_xy_smooth[r][1] >= OUR_SIDE_Y]
+    if not rows:
+        return None
+    k = int(np.argmin(np.abs(path.frames - frame)))
+    u, v = path.uv[k]
+    if xyz is not None and np.isfinite(xyz).all():
+        # Only players plausibly under the ball in the image too: a flight fitted badly at
+        # this moment must not pick someone on the other side of the picture.
+        if np.isfinite([u, v]).all():
+            seen = [r for r in rows if people.box[r][0] - 0.5 * _h(people.box[r]) <= u
+                    <= people.box[r][2] + 0.5 * _h(people.box[r])]
+        else:
+            seen = rows
+        d = [float(np.linalg.norm(people.court_xy_smooth[r] - xyz[:2])) for r in seen]
+        if d and min(d) <= max_reach_m:
+            return people.court_xy_smooth[seen[int(np.argmin(d))]]
+    if not np.isfinite([u, v]).all():
+        return None
+    best, best_gap = None, np.inf
+    for r in rows:
+        x1, y1, x2, y2 = people.box[r]
+        h = max(1.0, y2 - y1)
+        if not x1 - hands_bodies * h <= u <= x2 + hands_bodies * h:
+            continue                                   # not under the ball sideways
+        gap = abs(v - y1) / h                          # ball level with the top of the box
+        if gap < best_gap:
+            best, best_gap = people.court_xy_smooth[r], gap
+    return best if best_gap <= hands_bodies * 2 else None
 
 
 def grade(xy: np.ndarray, scale: dict) -> int:

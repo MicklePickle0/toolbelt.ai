@@ -1,8 +1,9 @@
 """Compare computed serve-receive pass scores (0-4) with the owner's labelled ones.
 
 For each labelled pass of ours (a `receive` with a pass_score in events.csv), the pass is
-located at the feet of the player who touches it next (stats/pass_score.py: the person
-nearest the ball at that touch) and graded with config/pass_scale.yaml. Prints how often
+located at the feet of the player who touches it next (stats/pass_score.py `pass_spot`:
+by the ball's 3D position when known, else the player whose hands are at the ball) and
+graded with config/pass_scale.yaml. Prints how often
 the computed score matches (exactly and within 1), a confusion table, and distance
 thresholds tuned on the other passes (leave-one-out) as a suggestion: the owner decides
 the boundaries (CLAUDE.md).
@@ -14,35 +15,39 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 from collections import Counter
+from pathlib import Path
 
 import numpy as np
 
 from setter_eyes import config
+from setter_eyes.ball.arcs import Arc
 from setter_eyes.ball.tracker import BallPath
 from setter_eyes.labels import load_manifest
 from setter_eyes.labels.loader import load_video_labels
-from setter_eyes.stats.pass_score import grade
+from setter_eyes.stats.pass_score import grade, pass_spot
 from setter_eyes.track.people import PeopleTracks
 
 
-def toucher_xy(path: BallPath, people: PeopleTracks, frame: int) -> np.ndarray | None:
-    """Feet (court x, y) of the person on our side nearest the ball at `frame`."""
-    k = int(np.argmin(np.abs(path.frames - frame)))
-    uv = path.uv[k]
-    sel = np.flatnonzero(np.abs(people.frame - frame) <= 2)
-    if not np.isfinite(uv).all() or not len(sel):
-        return None
-    best, best_d = None, np.inf
-    for j in sel:
-        x1, y1, x2, y2 = people.box[j]
-        h = max(1.0, y2 - y1)
-        d = np.hypot(max(x1 - uv[0], 0.0, uv[0] - x2),
-                     max(y1 - 0.8 * h - uv[1], 0.0, uv[1] - y2)) / h   # reach above the head
-        xy = people.court_xy_smooth[j]
-        if d < best_d and np.isfinite(xy).all() and xy[1] > -0.5:
-            best, best_d = xy, d
-    return best if best_d < 0.5 else None
+def load_arcs(cache: Path) -> tuple[list[Arc], np.ndarray]:
+    d = json.loads((cache / "ball_arcs.json").read_text(encoding="utf-8"))
+    return [Arc(**a) for a in d["arcs"]], np.array([0.0, 0.0, -float(d["gravity"])])
+
+
+def ball_xyz(arcs: list[Arc], g: np.ndarray, t: float, min_conf: float = 0.4,
+             slack_s: float = 0.1) -> np.ndarray | None:
+    """The ball's court position at t from a confident flight around it, or None."""
+    for a in arcs:
+        if a.confidence >= min_conf and a.t0 - slack_s <= t <= a.t0 + a.duration_s + slack_s:
+            return a.position(np.array([min(max(t, a.t0), a.t0 + a.duration_s)]), g)[0]
+    return None
+
+
+def toucher_xy(path: BallPath, people: PeopleTracks, frame: int, arcs: list[Arc],
+               g: np.ndarray, fps: float) -> np.ndarray | None:
+    """Feet (court x, y) of the player who plays the ball at `frame`."""
+    return pass_spot(path, people, frame, ball_xyz(arcs, g, frame / fps))
 
 
 def suggest(dist: np.ndarray, scores: np.ndarray) -> tuple[float, float, float]:
@@ -73,6 +78,7 @@ def main() -> int:
         cache = config.repo_path(paths["cache_dir"]) / key
         path = BallPath.load(cache / "ball_path.npz")
         people = PeopleTracks.load(cache / "people_tracks.npz")
+        arcs, g = load_arcs(cache)
         for r in vl.rallies:
             for i, c in enumerate(r.contacts):
                 if c.action != "receive" or c.team != "us" or c.pass_score is None:
@@ -83,7 +89,7 @@ def main() -> int:
                     computed.append(scale["overpass_score"] if nxt is not None else None)
                     dist.append(np.nan)
                     continue
-                xy = toucher_xy(path, people, nxt.frame)
+                xy = toucher_xy(path, people, nxt.frame, arcs, g, vl.info.fps)
                 labelled.append(c.pass_score)
                 computed.append(grade(xy, scale) if xy is not None else None)
                 dist.append(np.hypot(xy[0] - scale["target"]["x"], xy[1] - scale["target"]["y"])

@@ -1,7 +1,7 @@
 """Picture the serve-receive pass scores (Milestone 8 visual check).
 
 For every labelled pass of ours (a `receive` with a pass_score in events.csv), where it was
-played (the feet of the player who touched it next: stats/pass_score.py) is drawn on a
+played (the feet of the player who touched it next: stats/pass_score.py `pass_spot`) is drawn on a
 map of our half: dot colour = the owner's score, number = the computed score (ringed in
 red when they differ), with the target and the draft grade zones from
 config/pass_scale.yaml. Also a few video frames with the spot marked.
@@ -30,7 +30,7 @@ from setter_eyes.stats.pass_score import grade
 from setter_eyes.track.people import PeopleTracks
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from eval_passes import toucher_xy  # noqa: E402
+from eval_passes import load_arcs, toucher_xy  # noqa: E402
 
 PX, MARGIN = 70, 60                                   # map pixels per metre, border
 SCORE_BGR = {4: (60, 190, 60), 3: (60, 200, 180), 2: (40, 150, 240), 1: (50, 50, 220),
@@ -93,6 +93,7 @@ def main() -> int:
         cache = config.repo_path(paths["cache_dir"]) / key
         path = BallPath.load(cache / "ball_path.npz")
         people = PeopleTracks.load(cache / "people_tracks.npz")
+        arcs, g = load_arcs(cache)
         for r in vl.rallies:
             for i, c in enumerate(r.contacts):
                 if c.action != "receive" or c.team != "us" or c.pass_score is None:
@@ -100,7 +101,7 @@ def main() -> int:
                 nxt = r.contacts[i + 1] if i + 1 < len(r.contacts) else None
                 if nxt is None or nxt.team != "us":
                     continue                       # overpass / ace: no setter touch
-                xy = toucher_xy(path, people, nxt.frame)
+                xy = toucher_xy(path, people, nxt.frame, arcs, g, fps)
                 if xy is not None:
                     passes.append({"video": key, "frame": nxt.frame, "t": nxt.frame / fps,
                                    "xy": xy, "label": c.pass_score,
