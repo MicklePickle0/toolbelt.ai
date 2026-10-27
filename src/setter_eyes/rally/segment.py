@@ -170,7 +170,10 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
     touches = [i for i, c in enumerate(contacts) if c.kind == "touch" and in_airspace(c, cfg)]
     groups: list[list[int]] = []
     for i in touches:
-        if groups and contacts[i].t - contacts[groups[-1][-1]].t <= r["max_touch_gap_s"]:
+        # Our serve seen entering the frame always starts a rally (pre-serve bounces and
+        # tosses stay with the dead time before it).
+        if groups and not contacts[i].entry_serve and \
+                contacts[i].t - contacts[groups[-1][-1]].t <= r["max_touch_gap_s"]:
             groups[-1].append(i)
         else:
             groups.append([i])
@@ -188,8 +191,11 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
                                 cfg["rally"]["min_arc_confidence"]) > 0
         serve_like = [i for i in first_run if is_serve(contacts[i], arcs, g, cfg)]
         other = {"us": "them", "them": "us"}.get(teams[0])
+        entry = [i for i in first_run if contacts[i].entry_serve]
         serve_i: int | None = None
-        if traced is not None and traced[0] < t_first and traced[1] != teams[0]:
+        if entry:
+            serve_i = entry[-1]                    # our serve, seen entering the frame
+        elif traced is not None and traced[0] < t_first and traced[1] != teams[0]:
             serve_i = SERVE_FROM_FLIGHT            # the hit wasn't seen; the reply was
         elif serve_like:
             serve_i = serve_like[-1]

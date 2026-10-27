@@ -34,6 +34,7 @@ import numpy as np
 from setter_eyes import config, db
 from setter_eyes.ball.arcs import Arc
 from setter_eyes.ball.tracker import BallPath
+from setter_eyes.calibration import load as load_calibration
 from setter_eyes.classify.rules import classify_rally, launch_up
 from setter_eyes.contacts.events import Contact, find_contacts
 from setter_eyes.contacts.scorer import TouchScorer, scored_contacts
@@ -41,8 +42,36 @@ from setter_eyes.db.pipeline import write_video
 from setter_eyes.labels import load_manifest
 from setter_eyes.rally.live import PlayerMotion
 from setter_eyes.rally.segment import segment_from_touches, segment_rallies
+from setter_eyes.rally.serve_entry import find_our_serves
 from setter_eyes.track.people import PeopleTracks
 from setter_eyes.track.roles import load_roles
+
+
+def mark_our_serves(contacts: list, path, fps: float, key: str, cfg: dict,
+                    paths: dict) -> None:
+    """Our serves seen entering the frame (rally/serve_entry.py): the pipeline touch at
+    that moment becomes the serve, or a serve touch is added when there was none."""
+    cal = load_calibration(key, config.repo_path(paths["calibration_dir"]))
+    if cal is None:
+        return
+    s = cfg["rally"]["our_serve"]
+    touch_t = np.array([c.t for c in contacts if c.kind == "touch"])
+    added = marked = 0
+    for t in find_our_serves(path, fps, touch_t, cal.camera.height, s):
+        near = [c for c in contacts if c.kind == "touch" and abs(c.t - t) <= s["match_touch_s"]]
+        if near:
+            c = min(near, key=lambda c: abs(c.t - t))
+            c.entry_serve, c.team = True, "us"
+            marked += 1
+            continue
+        k = int(np.clip(np.searchsorted(path.frames / fps, t), 0, len(path.frames) - 1))
+        contacts.append(Contact(k, int(path.frames[k]), round(t, 3), "touch", "us", -1, None,
+                                [round(float(v), 1) for v in path.uv[k]], 0.0,
+                                float("inf"), s["confidence"], entry_serve=True))
+        added += 1
+    contacts.sort(key=lambda c: c.t)
+    print(f"our serves from the ball entering the frame: {marked + added} "
+          f"({marked} on a touch already found, {added} added)")
 
 
 def main() -> int:
@@ -85,6 +114,7 @@ def main() -> int:
         contacts = find_contacts(path, arcs, g, fps, people, roles, cfg)
     learned = args.oof or model_path.exists()
     if learned:
+        mark_our_serves(contacts, path, fps, entry.key, cfg, paths)
         rallies = segment_from_touches(path, arcs, contacts, g, fps, cfg,
                                        PlayerMotion(people, fps))
     else:

@@ -25,8 +25,10 @@ class RallyOverlay:
         for ra in self.rallies:
             if ra["start_t"] - 0.5 <= t <= ra["end_t"] + 1.0:
                 serve = ra["serving_team"] or "?"
-                how = {-2: "traced", -3: "inferred", None: "not found"}.get(
-                    ra["serve_contact"], "seen")
+                sc = ra["serve_contact"]
+                how = {-2: "traced", -3: "inferred", None: "not found"}.get(sc, "seen")
+                if sc is not None and sc >= 0 and self.contacts[sc].get("entry_serve"):
+                    how = "ball entered the frame"
                 state = "" if t <= ra["end_t"] else f" - ended ({ra['end_reason']})"
                 return (f"RALLY {ra['index']}  serve: {serve} ({how})  "
                         f"conf {ra['confidence']:.2f}{state}")
