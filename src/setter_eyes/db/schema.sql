@@ -91,6 +91,9 @@ CREATE TABLE IF NOT EXISTS contacts (
     contact_confidence  REAL,
     team                TEXT CHECK (team IN ('us', 'them')),
     player_id           INTEGER REFERENCES players(id),
+    -- How sure player_id is: 1.0 from labels or the review UI; for our serves, the
+    -- rotation's confidence (identity/rotation.py); later number reading and tracks.
+    player_confidence   REAL,
     track_id            INTEGER REFERENCES tracks(id),
     action              TEXT,                 -- serve, receive, set, attack, block, dig, dump, free_ball, coverage, ...
     action_confidence   REAL,

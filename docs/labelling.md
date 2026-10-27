@@ -71,7 +71,7 @@ See [config/manifest.example.yaml](../config/manifest.example.yaml). Each video 
 - `net_height` (required): a preset from `net.height_presets` in [config/court.yaml](../config/court.yaml) (`boys_17_18u` 2.43 m, `boys_15_16u` 2.35 m, `boys_13_14u` 2.24 m, `women` 2.24 m) or a custom height in metres (e.g. `2.30`). Stored in `games.net_height_m`; calibration scale, block check and ball height all read it.
 - `split` (optional): pins the video to `train`, `valid` or `test`. With venue splits this pins the whole venue; pinning two videos of one venue to different splits is an error.
 - `labels.events` and `labels.boxes` (both optional; default `labels/<id>/events.csv` and `labels/<id>/boxes.coco.json` when those files exist).
-- `lineups` (optional): six jerseys per set, in rotation order.
+- `lineups` (optional): six jerseys per set, in rotation order: the player starting in position 1 (who serves first when we serve first) first, then positions 2-6. Leave the libero out. With a lineup, each rally gets its rotation and our serves their server (`db/rotation.py`). For a labelled set, `python scripts/check_rotation.py --video <id>` suggests the lineup from who served.
 
 Splits are never by frame. `datasets.split_by` in `config/pipeline.yaml` chooses the grouping:
 

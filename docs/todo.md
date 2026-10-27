@@ -28,11 +28,24 @@ Works from code, the event DB and the labels in git. Laptop env synced 2026-10-2
 (scikit-learn, trackers; extra OpenCV builds removed): 138 tests pass.
 
 - [ ] **Player identity groundwork (Milestone 7)**, start here:
-      - [ ] Roster entry: team, then players by jersey number and name (`players` is empty).
-      - [ ] Lineup entry per set: six numbers in rotation order, plus the libero.
-      - [ ] Rotation state machine (`src/identity/`): six slots, rotate on each side-out,
-            each player at most once, libero swaps apart. Drive it from the serving-team
-            sequence in the DB; check against the labelled sets.
+      - [ ] Roster and lineups (owner): the manifest already takes `roster:` and `lineups:`
+            (`docs/labelling.md`); both are empty. Suggested from labelled servers:
+            `titan-rise_set1` [18, 12, 14, 1, 13, 5], `mac-chrome_set1` [1, 10, 23, 14,
+            13, 5]; #6 never serves, probably the libero. To confirm.
+      - [x] Rotation state machine (2026-10-27, `identity/rotation.py`, `db/rotation.py`,
+            `scripts/check_rotation.py`): rotates when we win the serve back; a known server
+            anchors it (substitution into the slot, or resync). Writes `rallies.rotation`
+            and the server on our unreviewed serves with `contacts.player_confidence`
+            (schema v5). Labelled serving sequence alone: 32/33 servers (the miss is #10 in
+            for #14 on titan-rise). Pipeline serving sequence (in-fold DB): titan-rise
+            17/18, mac-chrome 8/14 (its 6 false rallies shift the rotation); confidence
+            falls per uncertain side-out but doesn't separate right/wrong well yet. One
+            confirmed server in the review UI re-anchors everything after it.
+      - [ ] Owner: rotation numbering. Now 1 = the starting lineup; coaches and DataVolley
+            usually name a rotation by the setter's position (needs the setter per set).
+      - [ ] Libero swaps (back-row middle replaced; needs tracks: on the desktop).
+      - [ ] Review UI: show the server and rotation; fixing the server re-runs
+            `apply_rotation` so later rallies follow.
       - [ ] Number voting and track binding as pure logic, tested on synthetic reads (OCR and
             the appearance gallery need crops: on the desktop).
 - [ ] **DataVolley export (Milestone 9)**: `.dvw` from `rallies` + `contacts` (scout line per

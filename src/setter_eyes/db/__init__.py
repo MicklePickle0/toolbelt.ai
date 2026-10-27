@@ -8,7 +8,7 @@ from pathlib import Path
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 # Bump when schema.sql changes in a way CREATE ... IF NOT EXISTS can't apply
 # to an existing file. Stored in PRAGMA user_version.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _OLD_SOURCE = "CHECK (point_winner_source IN ('user', 'ocr'))"
 _NEW_SOURCE = "CHECK (point_winner_source IN ('user', 'ocr', 'next_serve'))"
@@ -34,6 +34,13 @@ def _migrate_3_to_4(conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA user_version = 4")
 
 
+def _migrate_4_to_5(conn: sqlite3.Connection) -> None:
+    """v5 adds contacts.player_confidence (how sure player_id is); existing rows keep NULL."""
+    with conn:
+        conn.execute("ALTER TABLE contacts ADD COLUMN player_confidence REAL")
+        conn.execute("PRAGMA user_version = 5")
+
+
 def connect(db_path: str | Path) -> sqlite3.Connection:
     """Open (and create if needed) the event DB, applying the schema."""
     if str(db_path) != ":memory:":
@@ -46,6 +53,9 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     if has_tables and version == 3:
         _migrate_3_to_4(conn)
         version = 4
+    if has_tables and version == 4:
+        _migrate_4_to_5(conn)
+        version = 5
     if has_tables and version != SCHEMA_VERSION:
         conn.close()
         raise SchemaVersionError(

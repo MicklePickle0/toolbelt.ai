@@ -184,6 +184,8 @@ ball:
 identity:
   number_vote_bind_threshold: 0.8
   min_crop_height_px: 80
+  rotation:                  # identity/rotation.py
+    unknown_serve_factor: 0.5  # rotation confidence factor for a rally with no serving team
 
 contacts:
   # Touches and floor contacts from soft evidence (setter_eyes.contacts.events).
