@@ -89,3 +89,16 @@ def test_an_entry_serve_with_no_flight_is_not_a_rally():
     held.entry_serve = ace.entry_serve = True
     rallies = segment_from_touches(path, [], [held, ace], G, 60.0, CFG)
     assert [r.start_t for r in rallies] == [50.0]
+
+
+def test_touches_after_the_ball_lands_are_dead():
+    from setter_eyes.contacts.events import Contact
+    from setter_eyes.rally.segment import segment_from_touches
+
+    floor = Contact(0, int(15.0 * 60), 15.0, "floor", None, -1, [4.0, -5.0, 0.0], [0.0, 0.0],
+                    0.0, 0.0, 0.7)
+    contacts = [_touch(13.0, "us"), _touch(14.1, "them"), floor,
+                _touch(15.6, "them"), _touch(16.5, "them")]   # picked up after the kill
+    (r,) = segment_from_touches(_path(), [], contacts, G, 60.0, CFG)
+    assert (r.end_t, r.end_reason) == (15.0, "floor")
+    assert 3 not in r.contacts and 4 not in r.contacts

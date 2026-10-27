@@ -119,6 +119,23 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
         the whistle (as done so far) to get more examples.
       - *Backstop:* a one-key "rally ended here" in the review UI (Milestone 6), next to the
         point-winner key; corrections become training data.
+      - *2026-10-27, measured on both labelled sets (16 dead trailing touches, 50 real last
+        touches):*
+        - Done: a touch after a floor contact is dead (the ball can't bounce in play): 3
+          dead + 1 false touch came after one, no real touch. mac-chrome outcomes 24 -> 25/38.
+        - Signal 1 (ball goes dead) does not separate on this footage: ball travel/speed
+          after dead touches is lower (median 645 vs 1007 px/s) but overlaps; with the
+          players' slowdown added, every rule that caught 2-5 of 16 dead touches also cut
+          1-7 real last touches. Players barely slow right at a dead touch (median 0.85x
+          the rally's pace vs 0.95x at real last touches). Not adopted.
+        - Signal 3 (net shake) not tried: needs frames decoded around each rally end, and
+          there are only ~2 labelled net touches to check it against.
+        - Owner (2026-10-27): often nothing visible ends a point (a small net touch, a bad
+          call); play just stops and a team gets the serve. So an end with no landing seen
+          is normal: those rallies get no floor bonus (lower confidence, review queue), and
+          their outcome can be `other`. The next rally's serving team says who won the
+          point; the pipeline doesn't decide the score (CLAUDE.md), but the review UI could
+          pre-fill the winner from it (to discuss with the owner).
 - [ ] **Ball-size check for other courts' balls** (a ball behind our court looks too
       small for where it seems to be). Only the airspace check is used so far.
 

@@ -37,7 +37,10 @@ so is an entry serve alone whose ball is lost at once (no serve flight: a ball h
 front of the camera).
 Touches with the ball outside our court's airspace belong to another court and are
 ignored. The rally ends at the first floor contact after its last touch, else where the
-ball is lost, at most `end_window_s` after it.
+ball is lost, at most `end_window_s` after it. Touches after the ball touched the floor are
+dead (picked up after the point), as are trailing touches that fail the live-ball check
+(rally/live.py). Often nothing visible ends a point (a net touch, a call): then the rally
+just stops, without a floor contact, at lower confidence, and goes to review.
 
 The score is NOT decided here (CLAUDE.md): rallies carry no point winner; that comes from
 the review UI key press, with scoreboard OCR as a sanity check.
@@ -220,6 +223,9 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
         cut = dead_from([contacts[i].t for i in play], start_t, motion,
                         cfg["rally"]["live_ball"])
         dead_t = contacts[play[cut]].t if cut < len(play) else None
+        landed = _landed_before(contacts, play)            # the ball can't bounce in play
+        if landed < cut:
+            cut, dead_t = landed, None
         last = contacts[play[cut - 1]].t if play[:cut] else contacts[grp[-1]].t
         stop = min(last + r["end_window_s"], dead_t if dead_t is not None else np.inf)
         floors = [i for i, c in enumerate(contacts)
@@ -249,6 +255,18 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
             round(start_t, 3), round(end_t, 3), serving, serve_i, reason, members, crossed,
             round(min(1.0, conf), 3)))
     return rallies
+
+
+def _landed_before(contacts: list[Contact], play: list[int]) -> int:
+    """Index into `play` of the first touch made after the ball touched the floor (len(play)
+    if none): it was picked up after the point. Labelled: 3 dead touches and 1 false one
+    came after a floor contact, no real touch did."""
+    floor_t = [c.t for c in contacts if c.kind == "floor"]
+    for n in range(1, len(play)):
+        t0, t1 = contacts[play[n - 1]].t, contacts[play[n]].t
+        if any(t0 < f < t1 for f in floor_t):
+            return n
+    return len(play)
 
 
 def _ball_lost_after(seen_t: np.ndarray, t: float, max_gap: float, cap: float) -> float:
