@@ -284,6 +284,10 @@ rally:
     toss_max_s: 1.2          # follow a rising toss this long to find the hit
     rise_slack: 0.001        # still rising: up the frame by more than this share (2 px)
     confidence: 0.8
+    min_flight_s: 0.6        # a serve-only rally from it (no other touch, no floor, no net
+                             # crossing) needs the ball followed this long after the serve.
+                             # Labelled: real aces/service errors 1.3-3.4 s; the 2 false
+                             # ones 0.30-0.33 s (the ball lost at once: no serve flight)
   # Our court's airspace (court metres): touches with the ball outside it are another
   # court's (balls on the courts beside ours). Court: x 0-9, y -9..9, net at y = 0.
   airspace:

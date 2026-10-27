@@ -74,3 +74,18 @@ def test_rallies_from_touches():
     assert r2.serving_team == "them" and r2.serve_contact == SERVE_INFERRED
     assert r2.start_t < 40.0
     assert r2.confidence < CFG["review"]["default_min_confidence"]   # goes to review
+
+
+def test_an_entry_serve_with_no_flight_is_not_a_rally():
+    from setter_eyes.ball.tracker import BallPath
+    from setter_eyes.rally.segment import segment_from_touches
+
+    # Ball seen 9.8-10.2 s (lost at once) and 49.8-52 s (an ace: the serve flight followed).
+    f = np.concatenate([np.arange(588, 612, 2), np.arange(2988, 3120, 2)])
+    n = len(f)
+    path = BallPath(f, np.zeros(n, int), np.zeros((n, 2)), np.zeros((n, 2)), np.ones(n, bool),
+                    np.ones(n), np.full(n, 20.0))
+    held, ace = _touch(10.0, "us"), _touch(50.0, "us")
+    held.entry_serve = ace.entry_serve = True
+    rallies = segment_from_touches(path, [], [held, ace], G, 60.0, CFG)
+    assert [r.start_t for r in rallies] == [50.0]

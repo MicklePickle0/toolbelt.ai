@@ -87,7 +87,9 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
       Merged 2026-10-26. Out-of-fold with it: titan-rise 41/42 rallies, 0 false, outcomes
       23 -> 22/41; mac-chrome 36 -> 38/39 rallies but 5 -> 7 false, outcomes 23/36 -> 24/38.
       The 2 new false rallies (5:37.0, 13:39.9) are 0.3 s, one touch: an entry serve with
-      nothing after it. Next: drop an entry-serve rally with no following touch.
+      nothing after it. Fixed: an entry serve alone with the ball followed < 0.6 s
+      (`rally.our_serve.min_flight_s`) is dropped; real aces/service errors are followed
+      1.3-3.4 s. mac-chrome false rallies 7 -> 5, nothing real lost.
 - [ ] **Serve-only rallies from our off-screen server** (aces, service errors): 3 of 42
       missed (the `our-serve-entry` branch addresses these).
 - [x] **Live-ball check, first version** (`rally/live.py`): a trailing touch > 2 s after the

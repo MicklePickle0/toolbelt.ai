@@ -32,7 +32,9 @@ footage: <= 2.2 s apart within a rally, >= 14 s between rallies). The serve, in 
     Right about half the time on labelled footage (mostly when a touch's team is wrong;
     pre-serve bounces within `max_touch_gap_s` of the serve look the same), so these
     rallies get `inferred_factor` confidence and go to the review queue.
-A group with none of these is dropped (pepper in a timeout, a toss, a ball kicked back).
+A group with none of these is dropped (pepper in a timeout, a toss, a ball kicked back), and
+so is an entry serve alone whose ball is lost at once (no serve flight: a ball held up in
+front of the camera).
 Touches with the ball outside our court's airspace belong to another court and are
 ignored. The rally ends at the first floor contact after its last touch, else where the
 ball is lost, at most `end_window_s` after it.
@@ -229,6 +231,10 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
                                              r["end_window_s"]), "ball_lost"
             if dead_t is not None and end_t >= dead_t:
                 end_t, reason = last + 0.5 * (dead_t - last), "dead_ball"
+        crossed = net_crossings(arcs, g, start_t, end_t, cfg["rally"]["min_arc_confidence"])
+        if entry and len(play[:cut]) == 1 and not floors and not crossed and \
+                end_t - start_t < cfg["rally"]["our_serve"]["min_flight_s"]:
+            continue                               # big ball at the top, then no flight
         members = [i for i, c in enumerate(contacts) if start_t <= c.t <= end_t]
         _apply_touch_prior(contacts, members, cfg)
         inferred = serve_i == SERVE_INFERRED
@@ -240,8 +246,7 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
             conf *= cfg["rally"]["live_ball"]["trimmed_factor"]
         rallies.append(Rally(
             len(rallies) + 1, int(round(start_t * fps)), int(round(end_t * fps)),
-            round(start_t, 3), round(end_t, 3), serving, serve_i, reason, members,
-            net_crossings(arcs, g, start_t, end_t, cfg["rally"]["min_arc_confidence"]),
+            round(start_t, 3), round(end_t, 3), serving, serve_i, reason, members, crossed,
             round(min(1.0, conf), 3)))
     return rallies
 
