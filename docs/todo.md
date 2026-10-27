@@ -155,10 +155,13 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
 - [ ] **Pass 0-4 from the setter's feet** (branch `pass-scoring`, not merged): the ball's
       3D depth is too weak (perfect passes came out 8 m from the net); the feet of the
       player who plays the pass track the owner's scores (median distance from the target
-      0.9 / 1.9 / 3.1 / 4.6 m for 4 / 3 / 2 / 1; 40 labelled passes). Draft config grades:
-      51% exact, 90% within 1. Distance-only limits tuned leave-one-out: 69% / 95%
-      (4 up to 1.5 m, 3 up to 1.75 m, 2 up to 5.25 m): the owner decides the thresholds.
-      `scripts/eval_passes.py`.
+      0.9 / 1.9 / 3.1 / 4.6 m for 4 / 3 / 2 / 1; 40 labelled passes). The owner keeps the
+      draft thresholds and treats the labels as ground truth: big gaps (1 vs 2-4) mean
+      the wrong player was found. Fixed 2026-10-26: the setter is found by the ball's 3D
+      position among players under the ball in the image, else by hands at the ball (a
+      back-row player near the camera, e.g. the libero in front of the setter, was being
+      picked). Scores 2+ apart: 9 -> 2; exact 51 -> 63%, within 1 90 -> 97%.
+      `scripts/eval_passes.py`, `scripts/plot_passes.py` (map + frames).
 
 ## Milestone 9: stats and export
 
