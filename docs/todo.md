@@ -31,8 +31,8 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
       between points about as much as they move in play. Rally time itself is only ~28% of
       a set. If `find_play` also keeps ~90%, it may not be worth its risk.
 - [ ] **Two versions of the same idea exist; keep one.** Ball following here
-      (`detect/follow.py`, laptop) and the near-the-ball crop on branch `gpu-play-windows`
-      (`detect/roi.py`, `detect_ball.py --roi`, desktop). The crop was measured on the
+      (`detect/follow.py`, laptop) and the near-the-ball crop (`detect/roi.py`,
+      `detect_ball.py --roi`, desktop). The crop was measured on the
       desktop: simulated on both labelled sets with `scripts/simulate_roi.py` (replays saved
       full-search detections, no GPU), ~2.6-2.7x fewer detector passes with touches and
       rallies unchanged (titan-rise 39 -> 38/42 rallies); and with the real detector on 40 s
@@ -74,8 +74,8 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
       ignored. Out-of-fold on titan-rise: rallies 32 -> 39/42, false rallies 8 -> 0,
       serving team 20 -> 34. Inferred serves are right only ~half the time (lower
       confidence: review queue).
-- [ ] **Our serve from how the ball enters the frame** (branch `our-serve-entry`, not
-      merged): our server stands behind the camera, so the ball appears big at the top of
+- [ ] **Our serve from how the ball enters the frame**:
+      our server stands behind the camera, so the ball appears big at the top of
       the frame. Big ball at the top, after 3 s without a touch, far away within 2 s: 28 of
       33 of our serves, 4 false alarms over both sets (today's touches: 22/33). Rallies
       found 39 -> 42/42 (titan-rise) and 37 -> 39/39 (mac-chrome). Depends on the camera
@@ -152,7 +152,7 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
 
 ## Milestone 8: pass scoring
 
-- [ ] **Pass 0-4 from the setter's feet** (branch `pass-scoring`, not merged): the ball's
+- [ ] **Pass 0-4 from the setter's feet**: the ball's
       3D depth is too weak (perfect passes came out 8 m from the net); the feet of the
       player who plays the pass track the owner's scores (median distance from the target
       0.9 / 1.9 / 3.1 / 4.6 m for 4 / 3 / 2 / 1; 40 labelled passes). The owner keeps the
@@ -167,7 +167,7 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
 
 - [x] Stat sheet, team and per player (`scripts/stat_sheet.py`): credits follow the
       rally outcome and the owner's counting rules.
-- [ ] **Clips per stat** (branch `clip-export`, on `stat-sheet`, not merged):
+- [ ] **Clips per stat**:
       `scripts/clips.py --stat kills [--player 13]` cuts clips plus a highlight reel.
 - [ ] Combos (setter-to-hitter kill %), DataVolley export.
 - [ ] Before the stats export: confirm how scrappy non-setter 2nd touches are counted.
@@ -179,12 +179,30 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
 - [ ] 11. Serve-receive by zone (per player: contact point, zone 1-6, pass score map).
 - [ ] 12. Serve placement on the opponent side (zones, landing points with confidence).
 
-## Branches not merged yet (all pass their tests)
+## Branches
 
-Built on the desktop on 2026-10-26 off `live-ball-review`; this branch already contains
-`live-ball-review`, `stat-sheet` and `review-training`. Still separate: `our-serve-entry`,
-`gpu-play-windows` (see "Detection speed": one of it and `follow.py` to keep),
-`clip-export` (on `stat-sheet`), `pass-scoring`. Merge the ones the owner wants.
+All desktop branches were merged into `live-ball-review` on 2026-10-26: `detect-speedups`
+(laptop work), `stat-sheet`, `review-training`, `our-serve-entry`, `clip-export`,
+`pass-scoring` and `gpu-play-windows`. Work continues from `live-ball-review`.
+
+## Speed (GPU): the desktop's measurements
+
+Ball detection is ~2 h of a ~2.4 h set (9 tiles x every 2nd 4K frame).
+- [x] **Near-the-ball search, simulated** (`detect/roi.py`, `scripts/simulate_roi.py`, no
+      GPU needed): one tile-sized crop around the ball while it is followed, all 9 tiles
+      when it is lost and once a second; idle mode (4 searches a second) after 2 s without
+      a ball, with backfill when it returns. Both labelled sets: **~2.6-2.7x fewer detector
+      runs**, touches unchanged, rallies 39 -> 38/42 (titan-rise) and 37/39 unchanged
+      (mac-chrome). Settings barely matter: the limit is the ~40% of frames with no ball.
+- [x] `detect_ball.py --roi` uses it. Real check, 40 s of titan-rise: 5.3 -> 12.7
+      frames/s (**2.4x**); of 894 frames where the full search was sure of the ball, the
+      near-the-ball search found it in 886 (99%), at the same spot in 97%.
+- [ ] Make `--roi` or ball following (`follow.py`) the default for new footage, after
+      comparing them on the same clip (see "Detection speed" above).
+- [x] Play windows from player movement: **not worth it.** Keeping every labelled rally
+      kept 85-96% of the video (players walk, rotate and celebrate between points).
+- [ ] Efficient inference: TensorRT / fp16 compile, a smaller ball model if accuracy
+      holds; 1080p input; for the product, parallel cloud GPUs and on-device downscaling.
 
 ## Smaller known issues
 

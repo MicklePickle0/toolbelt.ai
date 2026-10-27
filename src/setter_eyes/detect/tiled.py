@@ -91,6 +91,18 @@ def predict_windows(model, bgr: np.ndarray, windows: list[tuple[int, int, int, i
     return out
 
 
+def predict_crop(model, bgr: np.ndarray, crop: tuple[int, int, int, int], threshold: float,
+                 keep: dict[int, str]) -> list[tuple[str, list[float], float]]:
+    """One tile-sized crop (x, y, w, h), e.g. around the ball (detect/roi.py)
+    -> [(class, [x1, y1, x2, y2], score)] in full-image pixels."""
+    x0, y0, w, h = crop
+    rgb = cv2.cvtColor(np.ascontiguousarray(bgr[y0:y0 + h, x0:x0 + w]), cv2.COLOR_BGR2RGB)
+    d = model.predict(rgb, threshold=threshold, include_source_image=False)
+    return [(keep[int(c)], [float(x1 + x0), float(y1 + y0), float(x2 + x0), float(y2 + y0)],
+             float(s)) for (x1, y1, x2, y2), c, s in zip(d.xyxy, d.class_id, d.confidence,
+                                                         strict=True) if int(c) in keep]
+
+
 def predict_full(model, bgr: np.ndarray, threshold: float,
                  keep: dict[int, str]) -> list[tuple[str, list[float], float]]:
     """Whole frame at the model's resolution (for people: large, and tiles would cut them)
