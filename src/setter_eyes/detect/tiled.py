@@ -93,7 +93,7 @@ def predict_windows(model, bgr: np.ndarray, windows: list[tuple[int, int, int, i
 
 def predict_crop(model, bgr: np.ndarray, crop: tuple[int, int, int, int], threshold: float,
                  keep: dict[int, str]) -> list[tuple[str, list[float], float]]:
-    """One tile-sized crop (x, y, w, h), e.g. around the ball (detect/roi.py)
+    """One tile-sized crop (x, y, w, h), e.g. around the ball
     -> [(class, [x1, y1, x2, y2], score)] in full-image pixels."""
     x0, y0, w, h = crop
     rgb = cv2.cvtColor(np.ascontiguousarray(bgr[y0:y0 + h, x0:x0 + w]), cv2.COLOR_BGR2RGB)

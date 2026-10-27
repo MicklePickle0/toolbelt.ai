@@ -32,16 +32,13 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
       percentile) before any labelled rally was cut: players walk, rotate and celebrate
       between points about as much as they move in play. Rally time itself is only ~28% of
       a set. If `find_play` also keeps ~90%, it may not be worth its risk.
-- [ ] **Two versions of the same idea exist; keep one.** Ball following here
-      (`detect/follow.py`, laptop) and the near-the-ball crop (`detect/roi.py`,
-      `detect_ball.py --roi`, desktop). The crop was measured on the
-      desktop: simulated on both labelled sets with `scripts/simulate_roi.py` (replays saved
-      full-search detections, no GPU), ~2.6-2.7x fewer detector passes with touches and
-      rallies unchanged (titan-rise 39 -> 38/42 rallies); and with the real detector on 40 s
-      of titan-rise: 5.3 -> 12.7 frames/s (2.4x), and of 894 frames where the full search
-      was sure of the ball, the crop found it in 886 (99%), 97% at the same spot. The limit
-      is the ~40% of frames with no ball (full scan). Compare `follow.py` on the same 40 s
-      and keep the better one.
+- [x] **Two versions of the same idea; kept ball following** (2026-10-27). Same 40 s of
+      titan-rise, every 2nd frame, against a full search (5.3 frames/s): ball following
+      (`detect/follow.py`) 10.5 frames/s (2.0x), the match ball kept in 877/894 frames
+      (98.1%), 63 of 1047 sure detections missed; the near-the-ball crop (`--roi`) 12.9
+      frames/s (2.4x) but 862/894 (96.4%), 96 missed. All misses were moving balls (no
+      spare balls). `--roi`, `detect/roi.py` and `simulate_roi.py` were removed (in git
+      history); `predict_crop` stays.
 - [ ] **Check ball following against full scans** on a labelled minute or two:
       `detect_ball.py --start 60 --seconds 120 --out A.npz` vs the same with `--no-follow
       --out B.npz`, then `track_ball.py --detections` on each and `eval_contacts.py`.
@@ -205,8 +202,8 @@ Ball detection is ~2 h of a ~2.4 h set (9 tiles x every 2nd 4K frame).
 - [x] `detect_ball.py --roi` uses it. Real check, 40 s of titan-rise: 5.3 -> 12.7
       frames/s (**2.4x**); of 894 frames where the full search was sure of the ball, the
       near-the-ball search found it in 886 (99%), at the same spot in 97%.
-- [ ] Make `--roi` or ball following (`follow.py`) the default for new footage, after
-      comparing them on the same clip (see "Detection speed" above).
+- [x] Ball following (`follow.py`) is the default; `--roi` measured and removed (see
+      "Detection speed" above).
 - [x] Play windows from player movement: **not worth it.** Keeping every labelled rally
       kept 85-96% of the video (players walk, rotate and celebrate between points).
 - [ ] Efficient inference: TensorRT / fp16 compile, a smaller ball model if accuracy

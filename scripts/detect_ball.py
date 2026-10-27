@@ -7,11 +7,10 @@ to 4K. Two savings, both on by default:
   - ball following: while a moving ball is followed, only a tile-sized window around it
     is detected, not every tile (setter_eyes.detect.follow; --no-follow: every tile).
 
---roi is the desktop's version of the second saving, used instead of ball following
-(detect/roi.py): one crop around the last sure ball, every tile when it is lost and once
-a second, an idle mode with backfill. Checked against a full search on 40 s of
-titan-rise: 2.4x faster, 99% of the sure detections the same. follow.py and --roi still
-have to be compared on the same clip (docs/todo.md); keep the better one.
+Ball following against a full search, 40 s of titan-rise (2026-10-27): 2.0x faster, the
+match ball found in 98.1% of the frames the full search found it in. It beat the other
+version tried (one crop around the last sure ball, `--roi`, since removed): 2.4x faster
+but 96.4%, missing half as many moving balls again.
 
 Writes data/cache/<id>/ball_detections.npz (format: setter_eyes.detect.video). Saved every
 `ball_save_every` frames and resumable: rerunning with the same settings continues after
@@ -22,9 +21,7 @@ Settings: `detect:` and `video:` in config/pipeline.yaml; the detector is
 
 Usage:
   python scripts/detect_ball.py --video titan-rise_set1 [--start 60 --seconds 30] [--restart]
-                                [--all-frames] [--no-follow | --roi]
-  python scripts/detect_ball.py --video titan-rise_set1 --roi --start 60 --seconds 60 \\
-      --out data/outputs/roi_check.npz
+                                [--all-frames] [--no-follow]
 """
 
 from __future__ import annotations
@@ -36,12 +33,10 @@ from pathlib import Path
 from setter_eyes import config
 from setter_eyes.datasets.tiles import parse_grid
 from setter_eyes.detect.follow import BallFollower
-from setter_eyes.detect.roi import RoiPlanner
 from setter_eyes.detect.tiled import (
     canonical_names,
     load_detector,
     model_ids,
-    predict_crop,
     predict_tiled,
     predict_windows,
 )
@@ -70,8 +65,6 @@ def main() -> int:
                     help="detect between rallies too (ignore play_spans.json)")
     ap.add_argument("--no-follow", action="store_true",
                     help="every tile on every frame (no ball following)")
-    ap.add_argument("--roi", action="store_true",
-                    help="search near the ball with detect/roi.py instead of ball following")
     ap.add_argument("--manifest", type=Path, default=config.repo_path(paths["manifest_path"]))
     args = ap.parse_args()
 
@@ -106,17 +99,10 @@ def main() -> int:
         return [(box, score) for _, box, score in
                 predict_tiled(model, bgr, grid, overlap, args.threshold, ball)]
 
-    def detect_crop(bgr, crop):
-        return [(box, score) for _, box, score in
-                predict_crop(model, bgr, crop, args.threshold, ball)]
-
     follow = det_cfg["ball_follow"]
-    follower = planner = None
+    follower = None
     detect = detect_tiles
-    if args.roi:
-        planner = RoiPlanner(info.width, info.height, grid, overlap, det_cfg["roi"])
-        settings.append(f"roi={json.dumps(det_cfg['roi'], sort_keys=True)}")
-    elif follow["enabled"] and not args.no_follow:
+    if follow["enabled"] and not args.no_follow:
         follower = BallFollower(detect_windows, grid, overlap, info.fps, follow)
         detect = follower
         settings.append(f"follow={json.dumps(follow, sort_keys=True)}")
@@ -127,9 +113,7 @@ def main() -> int:
                  last=round((args.start + args.seconds) * info.fps) if args.seconds else None,
                  save_every=det_cfg["ball_save_every"], restart=args.restart,
                  keep=keep, settings=" ".join(settings),
-                 meta={"video": entry.key, "checkpoint": str(args.checkpoint),
-                       "roi": bool(args.roi)},
-                 planner=planner, detect_crop=detect_crop)
+                 meta={"video": entry.key, "checkpoint": str(args.checkpoint)})
     if follower is not None:
         print(f"ball following: {follower.summary()} (9 without it)")
     return 0
