@@ -43,6 +43,7 @@ from setter_eyes.labels import load_manifest
 from setter_eyes.rally.live import PlayerMotion
 from setter_eyes.rally.segment import segment_from_touches, segment_rallies
 from setter_eyes.rally.serve_entry import find_our_serves
+from setter_eyes.rally.winner import infer_winners
 from setter_eyes.track.people import PeopleTracks
 from setter_eyes.track.roles import load_roles
 
@@ -128,6 +129,7 @@ def main() -> int:
                                                              cfg["classify"], launches),
                                      strict=True):
             c.action, c.action_confidence = action, conf
+    infer_winners(rallies, contacts, cfg)              # who serves next won the point
     (cache / f"contacts{suffix}.json").write_text(json.dumps(
         {"video": entry.key, "fps": fps, "contacts": [c.to_dict() for c in contacts]},
         indent=1), encoding="utf-8")

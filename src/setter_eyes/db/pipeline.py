@@ -2,8 +2,9 @@
 
 The pipeline DB (paths.db_path) has the same schema as the labels DB, so stats queries
 and evaluation work on either. Everything written here is automated: rows are
-unreviewed and carry their confidences; point_winner and outcome stay empty until the
-review UI sets the winner (CLAUDE.md: the pipeline never decides the score).
+unreviewed and carry their confidences. point_winner is inferred from who serves next
+(rally/winner.py, point_winner_source = 'next_serve') and the outcome follows from it; the
+review UI's key press (source 'user') overrides both.
 
 Re-writing a video replaces its UNREVIEWED rallies only. Rallies saved in the review UI
 (reviewed = 1) are human work: they and their touches are kept as they are, and pipeline
@@ -90,10 +91,13 @@ def write_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry,
             n_rallies += 1
             rally_id = conn.execute(
                 "INSERT INTO rallies (set_id, rally_number, start_frame, end_frame, start_t, "
-                "end_t, segment_confidence, serving_team, reviewed) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)",
+                "end_t, segment_confidence, serving_team, point_winner, point_winner_source, "
+                "score_us, score_them, outcome, outcome_confidence, reviewed) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
                 (set_id, 100_000 + n_rallies, r["start_frame"], r["end_frame"], r["start_t"],
-                 r["end_t"], r["confidence"], r["serving_team"]),
+                 r["end_t"], r["confidence"], r["serving_team"], r.get("point_winner"),
+                 "next_serve" if r.get("point_winner") else None, r.get("score_us"),
+                 r.get("score_them"), r.get("outcome"), r.get("outcome_confidence")),
             ).lastrowid
             for i in r["contacts"]:
                 c = contacts[i]

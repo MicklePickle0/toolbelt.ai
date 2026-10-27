@@ -234,6 +234,12 @@ rally:
   base_confidence: 0.4
   serve_bonus: 0.3
   floor_bonus: 0.3
+  # Point winner = the next rally's serving team (setter_eyes.rally.winner; labelled: 79/79).
+  # The review key press and scoreboard OCR override it.
+  winner:
+    suspect_gap_s: 32        # a longer gap to the next rally may hide a missed rally
+                             # (labelled gaps: median 16 s, p90 23 s; timeouts ~90 s)
+    suspect_factor: 0.6      # winner confidence factor then
   # Rallies built from touches (used with the learned touch scorer):
   from_touches:
     max_touch_gap_s: 3.0     # touches closer than this are one rally (labelled: <= 2.2 s

@@ -59,10 +59,10 @@ CREATE TABLE IF NOT EXISTS rallies (
     segment_confidence  REAL,
     serving_team        TEXT CHECK (serving_team IN ('us', 'them')),
     rotation            INTEGER CHECK (rotation BETWEEN 1 AND 6),
-    -- Point winner comes from the review UI key press (ground truth) or
-    -- scoreboard OCR as a sanity check; never from the ML pipeline alone.
+    -- Point winner: the review UI key press ('user', ground truth), scoreboard OCR
+    -- ('ocr'), or inferred from who serves next ('next_serve', rally/winner.py).
     point_winner        TEXT CHECK (point_winner IN ('us', 'them')),
-    point_winner_source TEXT CHECK (point_winner_source IN ('user', 'ocr')),
+    point_winner_source TEXT CHECK (point_winner_source IN ('user', 'ocr', 'next_serve')),
     score_us            INTEGER,
     score_them          INTEGER,
     outcome             TEXT,                 -- kill, attack_error, reception_error, ace, service_error, ...

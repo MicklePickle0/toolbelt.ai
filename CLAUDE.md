@@ -4,7 +4,7 @@ An automated alternative to Hudl / DataVolley / VolleyStation. Input: a match or
 
 ## Product constraints (decided, do not revisit without asking)
 - Only the near side of the court is analyzed. The far side is too small/distant to be reliable.
-- The ML pipeline does NOT decide the score. Score comes from (a) scoreboard OCR when visible as a sanity check, and (b) a one-key "point us / point them" input in the review UI. Vision infers rally start/end and the HOW of the point (kill, error, ace, etc.).
+- The pipeline does not decide the score alone. It tracks the score internally by inferring each point's winner from who serves next (`rally/winner.py`, stored as `point_winner_source = next_serve` with a confidence), and uses that winner to judge the HOW of the point: an attacker swung and their side scored -> kill, without having to see a fingertip block touch (owner, 2026-10-27). Scoreboard OCR (when visible) and the one-key "point us / point them" in the review UI override it. Vision infers rally start/end and the HOW of the point (kill, error, ace, etc.). Big blocks that win points matter; tiny block touches don't need to be found.
 - NO audio features. Tournament audio is too distorted/loud.
 - Processing is OFFLINE (whole rally available). Do not design for live labeling.
 - Every automated decision carries a confidence score. Low-confidence items go to a review queue. Human corrections are stored and become training data.

@@ -54,6 +54,9 @@ class RallyMatch:
     end_reason: str = ""
     label_outcome: str | None = None
     pred_outcome: str | None = None   # from the pipeline's last touch + the true winner
+    label_winner: str | None = None
+    pred_winner: str | None = None    # inferred: who serves next (rally/winner.py)
+    pred_outcome_inferred: str | None = None   # last touch + the inferred winner
 
 
 @dataclass
@@ -102,6 +105,13 @@ class Evaluation:
                                   if r.label_outcome and r.label_outcome != "replay"),
             "outcomes_labelled": sum(bool(r.label_outcome) and r.label_outcome != "replay"
                                      for r in found),
+            "winners_labelled": sum(bool(r.label_winner) for r in found),
+            "winners_inferred": sum(bool(r.label_winner and r.pred_winner) for r in found),
+            "winners_right": sum(bool(r.label_winner) and r.pred_winner == r.label_winner
+                                 for r in found),
+            "outcomes_inferred_right": sum(r.pred_outcome_inferred == r.label_outcome
+                                           for r in found if r.label_outcome
+                                           and r.label_outcome != "replay"),
         }
 
 
@@ -166,6 +176,9 @@ def evaluate(labels: list[RallyLabel], contacts: list[dict], rallies: list[dict]
             m.pred_serving = best["serving_team"]
             m.serve_how = {TRACED: "traced", -3: "inferred", None: "not found"}.get(sc, "seen")
             m.end_reason = best["end_reason"]
+            m.label_winner = r.point_winner
+            m.pred_winner = best.get("point_winner")
+            m.pred_outcome_inferred = best.get("outcome")
             touches = [contacts[i] for i in best.get("contacts", [])
                        if i < len(contacts) and contacts[i]["kind"] == "touch"]
             last = touches[-1] if touches else {}

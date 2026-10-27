@@ -74,6 +74,13 @@ class Rally:
     contacts: list[int] = field(default_factory=list)
     net_crossings: int = 0
     confidence: float = 0.0
+    # From rally/winner.py (who serves next), once all rallies are known:
+    point_winner: str | None = None
+    winner_confidence: float = 0.0
+    score_us: int = 0
+    score_them: int = 0
+    outcome: str | None = None
+    outcome_confidence: float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self)

@@ -1,7 +1,7 @@
 """Point outcome, the HOW of a point (CLAUDE.md step 9), once the rally is complete.
 
-The pipeline never decides WHO won: `point_winner` comes from the review UI (or the
-labels). Given it, the outcome follows from the rally's last touch and whether that
+`point_winner` comes from the review UI or the labels, else it is inferred from who serves
+next (rally/winner.py). Given it, the outcome follows from the rally's last touch and whether that
 touch's side won, matching how the owner labels (titan-rise_set1):
   last touch   its side won   its side lost
   serve        ace            service_error

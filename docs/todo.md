@@ -152,6 +152,15 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
 - [ ] **Learned action classifier** (stage 3): tried at 64%, no better than the rules on
       one set; retry with two labelled sets.
 
+- [x] **Point winner from who serves next** (2026-10-27, owner's call: the score can be
+      tracked internally to judge the HOW of a point; OCR and the review key override).
+      `rally/winner.py`; stored as `point_winner_source = next_serve` with a confidence, a
+      running score, and the outcome (event DB schema v4, migrated in place). Labelled:
+      the next server is the winner 79/79. Pipeline, out-of-fold: winner right 38/41
+      (titan-rise) and 32/38 (mac-chrome); misses come from a missed or false rally in
+      between, and the set's last rally (no next serve). Outcome with the inferred winner:
+      19/41 and 19/38 (with the true winner: 22/41 and 25/38).
+
 ## Milestone 6: review UI
 
 - [x] First version (`python scripts/review.py`, Streamlit): review queue (least confident
