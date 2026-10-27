@@ -189,6 +189,22 @@ contacts:
   # Touches and floor contacts from soft evidence (setter_eyes.contacts.events).
   max_contacts_per_side: 3   # plus a block
   over_limit_penalty: 0.5    # confidence factor for a touch beyond that in a row
+  # Stuff blocks (setter_eyes.contacts.blocks, scripts/check_blocks.py): a point-ending
+  # attack the attacker lost, re-detected at full frame rate; a second sharp turn right
+  # after it = the ball came back off a block. Labelled: 2/2 stuff blocks >= 2169 px/s,
+  # 0/19 attack errors (max 1565). Only 2 examples: added blocks go to review.
+  stuff_block:
+    window_before_s: 0.15    # decoded around the attack
+    window_after_s: 0.35
+    min_score: 0.3           # a detection this sure, in the crop where the path puts the ball,
+    max_jump_px: 250         # this close to it, is the ball
+    lag_samples: 3           # turn = velocity change over this many frames each side
+    own_turn_s: 0.1          # the attack's own turn is the strongest within this of it
+    min_gap_s: 0.03          # a second turn this long after it...
+    max_gap_s: 0.25          # ...and no longer (labelled attack -> block: 0.03-0.23 s)
+    valley_ratio: 1.5        # a peak of its own: this x the lowest turn in between
+    min_turn_px_s: 2000      # strong enough (4K px/s): a block
+    confidence: 0.6
   max_join_gap_samples: 2    # flights this close (samples) join at a shared sample
   max_bridge_s: 0.3          # further apart, up to this long (ball hidden by the toucher):
   bridge_penalty: 0.8        #   still a candidate, mid-gap, at this confidence factor

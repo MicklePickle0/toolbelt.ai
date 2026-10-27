@@ -63,8 +63,20 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
       team 33 -> 40 (titan-rise); false rallies 2 -> 0 and 9 -> 5; rallies found 39 -> 41
       and 37 -> 36. Touch scorer retrained with it.
 
-- [ ] **Blocks**: 8 of 18 found, and behind most wrong point outcomes. Ball near the net
-      tape, deflection is small and often hidden.
+- [x] **Stuff blocks** (2026-10-27; owner: count the big blocks that win points, not
+      fingertip touches; an attacker who swung and whose side scored has a kill either way).
+      Why blocks were missed: a block comes 0.03-0.23 s after the attack (labelled 28/28;
+      every other touch pair is >= 0.28 s apart), under what the 30 Hz ball path resolves,
+      so the attack and block are one touch. At 30 Hz no turn signal separates blocked
+      from unblocked attacks; re-detected at 60 Hz (one crop per frame) it is better but
+      still ~14/23 blocks vs 8/61 false at best, so not used in general. Used only where it
+      decides a stat: a point-ending attack the attacker lost (`contacts/blocks.py`,
+      `scripts/check_blocks.py`, GPU, ~5 s per attack): a second sharp turn >= 2000 px/s
+      (4K) right after it adds a block by the other side and makes it block_point.
+      Labelled: both stuff blocks >= 2169, the 19 attack errors <= 1565; out-of-fold
+      titan-rise 1 stuff block found (the other one's rally was cut short), 0 false over 18
+      checks; outcomes 22 -> 23/41. Only 2 examples: added blocks go to review (0.6).
+- [ ] Check stuff blocks on more footage (label any block points in the new venue's rallies).
 - [ ] **Inferred serves**: right about half the time (sent to review). Mostly from touches
       given the wrong team (team right 90%).
 - [x] **Rallies built from touches** (`rally/segment.py`, `segment_from_touches`), with a

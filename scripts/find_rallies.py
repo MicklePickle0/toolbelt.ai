@@ -36,6 +36,7 @@ from setter_eyes.ball.arcs import Arc
 from setter_eyes.ball.tracker import BallPath
 from setter_eyes.calibration import load as load_calibration
 from setter_eyes.classify.rules import classify_rally, launch_up
+from setter_eyes.contacts.blocks import add_stuff_blocks
 from setter_eyes.contacts.events import Contact, find_contacts
 from setter_eyes.contacts.scorer import TouchScorer, scored_contacts
 from setter_eyes.db.pipeline import write_video
@@ -130,6 +131,12 @@ def main() -> int:
                                      strict=True):
             c.action, c.action_confidence = action, conf
     infer_winners(rallies, contacts, cfg)              # who serves next won the point
+    checks_path = cache / f"block_checks{suffix}.json"  # scripts/check_blocks.py (GPU)
+    if checks_path.exists():
+        checks = {c["frame"]: c for c in
+                  json.loads(checks_path.read_text(encoding="utf-8"))["checks"]}
+        print(f"stuff blocks added: {add_stuff_blocks(rallies, contacts, checks, cfg)} "
+              f"({len(checks)} point-ending attacks checked)")
     (cache / f"contacts{suffix}.json").write_text(json.dumps(
         {"video": entry.key, "fps": fps, "contacts": [c.to_dict() for c in contacts]},
         indent=1), encoding="utf-8")
