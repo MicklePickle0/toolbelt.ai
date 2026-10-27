@@ -5,6 +5,10 @@ touch of an action (attack, serve, receive, ...), optionally for one player, bec
 clips (from the 1280-wide proxy when there is one, else the original), plus a single
 highlight reel. Reads the labels DB or the reviewed pipeline DB.
 
+With --player, that player gets a ring around their feet for the whole clip (Hudl style;
+track/spotlight.py): found as the near-side person nearest the ball at their labelled
+touch, then followed. --no-spotlight cuts plain clips instead.
+
 Writes data/outputs/clips/<id>/<what>[_playerN]/NN_m-ss.mp4 and <what>[_playerN]_reel.mp4.
 
 Usage:
@@ -17,21 +21,37 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 from pathlib import Path
 
+import cv2
+import numpy as np
+
 from setter_eyes import config, db
+from setter_eyes.ball.arcs import Arc
+from setter_eyes.ball.tracker import BallPath
+from setter_eyes.calibration.track import PoseTrack
 from setter_eyes.db.read import load_rallies
 from setter_eyes.labels import load_manifest
 from setter_eyes.labels.event_editor import clock
 from setter_eyes.stats.actions import stat_actions
 from setter_eyes.stats.sheet import SKIP, _decider
+from setter_eyes.track.people import PeopleTracks
+from setter_eyes.track.spotlight import (
+    ball_xyz,
+    draw_ring,
+    follow,
+    position_at,
+    toucher_track,
+)
 from setter_eyes.ui.review import rally_clip
 
 
 def moments(rallies, fps: float, stat: str | None, action: str | None,
-            player: int | None, before: float, after: float) -> list[tuple[float, float]]:
-    """(start s, end s) of each clip."""
+            player: int | None, before: float, after: float
+            ) -> list[tuple[float, float, int]]:
+    """(start s, end s, frame of the touch it is about) of each clip."""
     out = []
     for r in rallies:
         if r.outcome in SKIP:                     # replayed / dismissed: counts for nothing
@@ -39,12 +59,54 @@ def moments(rallies, fps: float, stat: str | None, action: str | None,
         if stat is not None:
             c, s = _decider(r)
             if s == stat and c is not None and (player is None or c.jersey == player):
-                out.append((r.start_frame / fps - before, r.end_frame / fps + after))
+                out.append((r.start_frame / fps - before, r.end_frame / fps + after,
+                            c.frame))
         else:
             for c, a in stat_actions(r):
                 if c.team == "us" and a == action and (player is None or c.jersey == player):
-                    out.append((c.frame / fps - before, c.frame / fps + after))
+                    out.append((c.frame / fps - before, c.frame / fps + after, c.frame))
     return out
+
+
+def spotlight_clip(src: Path, out: Path, t0: float, t1: float, fps: float, touch_frame: int,
+                   cams: PoseTrack, people: PeopleTracks, path: BallPath, arcs: list[Arc],
+                   g: np.ndarray, cfg: dict) -> bool:
+    """The clip with a ring around the player who made the touch at `touch_frame`.
+    False (nothing written) when that player can't be found."""
+    tid = toucher_track(path, people, touch_frame,
+                        xyz=ball_xyz(arcs, g, touch_frame / fps))
+    if tid is None:
+        return False
+    f0, f1 = round(t0 * fps), round(t1 * fps)
+    rows = follow(people, tid, f0, f1, fps)
+    cap = cv2.VideoCapture(str(src))
+    cap.set(cv2.CAP_PROP_POS_FRAMES, f0)
+    ok, img = cap.read()
+    if not ok:
+        return False
+    h, w = img.shape[:2]
+    s = w / cams.base.width
+    out.parent.mkdir(parents=True, exist_ok=True)
+    enc = subprocess.Popen(
+        ["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{w}x{h}",
+         "-r", f"{fps:.6f}", "-i", "-", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+         "-pix_fmt", "yuv420p", "-an", str(out)], stdin=subprocess.PIPE)
+    f = f0
+    while ok and f < f1:
+        pos = position_at(people, rows, f)
+        if pos is not None:
+            draw_ring(img, cams.camera(f), pos[0], pos[1], cfg, s)
+        enc.stdin.write(np.ascontiguousarray(img).tobytes())
+        ok, img = cap.read()
+        f += 1
+    enc.stdin.close()
+    enc.wait()
+    return True
+
+
+def _arcs(cache: Path) -> tuple[list[Arc], np.ndarray]:
+    d = json.loads((cache / "ball_arcs.json").read_text(encoding="utf-8"))
+    return [Arc(**a) for a in d["arcs"]], np.array([0.0, 0.0, -float(d["gravity"])])
 
 
 def main() -> int:
@@ -62,6 +124,8 @@ def main() -> int:
                     "rally, 3 for a touch)")
     ap.add_argument("--after", type=float, help="seconds after (default 2)")
     ap.add_argument("--no-reel", action="store_true", help="clips only, no joined reel")
+    ap.add_argument("--no-spotlight", action="store_true",
+                    help="with --player: plain clips, no ring around the player")
     args = ap.parse_args()
 
     conn = db.connect(config.repo_path(
@@ -83,12 +147,30 @@ def main() -> int:
     proxy = config.repo_path(paths["cache_dir"]) / entry.key / "proxy.mp4"
     src = proxy if proxy.exists() else entry.path
     out_dir = config.repo_path(paths["output_dir"]) / "clips" / entry.key / name
+    spot = None
+    if args.player and not args.no_spotlight:
+        cache = config.repo_path(paths["cache_dir"]) / entry.key
+        spot = (PoseTrack.load(config.repo_path(paths["calibration_dir"]) /
+                               f"{entry.key}_track.npz"),
+                PeopleTracks.load(cache / "people_tracks.npz"),
+                BallPath.load(cache / "ball_path.npz"),
+                *_arcs(cache), config.load("pipeline")["overlay"]["spotlight"])
     clips: list[Path] = []
-    for n, (t0, t1) in enumerate(spans, start=1):
+    for n, (t0, t1, touch) in enumerate(spans, start=1):
         t0 = max(0.0, t0)
         out = out_dir / f"{n:02d}_{clock(t0).replace(':', '-').split('.')[0]}.mp4"
-        clips.append(rally_clip(src, out, t0, t1))
-        print(f"  {out.name}: {clock(t0)} - {clock(t1)}")
+        note = ""
+        if spot is not None:
+            if spotlight_clip(src, out, t0, t1, fps, touch, *spot):
+                note = "  (ring around the player)"
+            else:
+                note = "  (player not found at the touch: no ring)"
+                out.unlink(missing_ok=True)
+                rally_clip(src, out, t0, t1)
+        else:
+            rally_clip(src, out, t0, t1)
+        clips.append(out)
+        print(f"  {out.name}: {clock(t0)} - {clock(t1)}{note}")
     print(f"{len(clips)} clips -> {out_dir}")
     if not args.no_reel:
         listing = out_dir / "reel.txt"

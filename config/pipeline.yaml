@@ -264,6 +264,11 @@ classify:
 overlay:                     # drawing sizes in render_overlay.py demos
   ring_radius_m: 0.55        # green ring under each of our players, court metres
   trail_px: 3                # ball trail width at 1920 px wide (scaled with the video)
+  spotlight:                 # one player's ring in their highlight clips (clips.py --player)
+    ring_radius_m: 0.55      # outer edge, court metres
+    ring_width_m: 0.12       # band width: a ring around the feet, not a filled disc
+    ring_opacity: 0.85
+    ring_colour: [60, 220, 60]   # BGR
 
 # Global review policy: any automated output whose confidence is below its
 # stage threshold is queued for review.
