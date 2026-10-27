@@ -22,6 +22,42 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
       real, team 83-85%. `titan-rise_set1` is the manifest's test split, so the next honest
       test is a labelled set from a new venue.
 
+## On the laptop (no footage, no GPU, no training)
+
+Works from code, the event DB and the labels in git. Laptop env synced 2026-10-27
+(scikit-learn, trackers; extra OpenCV builds removed): 138 tests pass.
+
+- [ ] **Player identity groundwork (Milestone 7)**, start here:
+      - [ ] Roster entry: team, then players by jersey number and name (`players` is empty).
+      - [ ] Lineup entry per set: six numbers in rotation order, plus the libero.
+      - [ ] Rotation state machine (`src/identity/`): six slots, rotate on each side-out,
+            each player at most once, libero swaps apart. Drive it from the serving-team
+            sequence in the DB; check against the labelled sets.
+      - [ ] Number voting and track binding as pure logic, tested on synthetic reads (OCR and
+            the appearance gallery need crops: on the desktop).
+- [ ] **DataVolley export (Milestone 9)**: `.dvw` from `rallies` + `contacts` (scout line per
+      touch, point and score lines from the stored winner); placeholder numbers until
+      identity. Test on a fixture DB; open the file in a DataVolley viewer.
+- [ ] **Team-level combos** as SQL: kill % by set type and by rotation (per player after
+      identity).
+- [ ] **Ask the owner** how scrappy non-setter 2nd touches are counted; record it in
+      `docs/labelling.md`.
+- [ ] **Review UI**: pre-fill the point winner from `next_serve` (one key accepts it; low
+      confidence first in the queue); keyboard shortcuts (point us / them, rally ended
+      here, next item). Visual check on the desktop.
+- [ ] **Milestones 11-12, data-free parts**: shared court-map plotting (near zones 1-6,
+      opponent zones, dots by score/outcome, heatmap toggle) and serve-landing logic
+      (floor crossing or first opponent touch, coarse zones, confidence, review queue),
+      tested on synthetic points and arcs. Real arcs on the desktop.
+- [ ] **Docs cleanup**: here, "Clips per stat" is done (`scripts/clips.py`), the Speed section
+      still describes the removed `--roi`, `our-serve-entry` is merged; in
+      `docs/issues-log.md`, "Still open" predates the point-winner and stuff-block work.
+- [ ] Update the git remote on both machines: the repo moved to
+      `https://github.com/MicklePickle0/toolbelt.ai.git`.
+
+Later (CLAUDE.md, "Product shape"): hosted web app and player phone app only once the local
+pipeline is right; no paid cloud hosting before then.
+
 ## Detection speed (on the desktop, with footage)
 
 - [ ] **Check play spans on the labelled sets**: `find_play.py --video titan-rise_set1`
