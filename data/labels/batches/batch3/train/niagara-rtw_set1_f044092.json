@@ -1,0 +1,41 @@
+{
+  "version": "4.2.0",
+  "flags": {},
+  "checked": false,
+  "shapes": [
+    {
+      "label": "ball",
+      "score": null,
+      "points": [
+        [
+          1406.1890869140625,
+          1170.142578125
+        ],
+        [
+          1448.493408203125,
+          1170.142578125
+        ],
+        [
+          1448.493408203125,
+          1212.0157470703125
+        ],
+        [
+          1406.1890869140625,
+          1212.0157470703125
+        ]
+      ],
+      "group_id": null,
+      "description": "prelabel 0.90",
+      "difficult": false,
+      "shape_type": "rectangle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    }
+  ],
+  "imagePath": "niagara-rtw_set1_f044092.jpg",
+  "imageData": null,
+  "imageHeight": 2160,
+  "imageWidth": 3840,
+  "description": ""
+}

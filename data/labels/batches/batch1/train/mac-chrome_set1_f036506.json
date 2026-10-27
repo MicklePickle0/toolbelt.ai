@@ -1,0 +1,41 @@
+{
+  "version": "4.2.0",
+  "flags": {},
+  "checked": false,
+  "shapes": [
+    {
+      "label": "ball",
+      "score": null,
+      "points": [
+        [
+          2077.9765130984642,
+          1041.3188798554652
+        ],
+        [
+          2105.7271906052392,
+          1041.3188798554652
+        ],
+        [
+          2105.7271906052392,
+          1072.3215898825654
+        ],
+        [
+          2077.9765130984642,
+          1072.3215898825654
+        ]
+      ],
+      "group_id": null,
+      "description": "prelabel 0.51",
+      "difficult": false,
+      "shape_type": "rectangle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    }
+  ],
+  "imagePath": "mac-chrome_set1_f036506.jpg",
+  "imageData": null,
+  "imageHeight": 2160,
+  "imageWidth": 3840,
+  "description": ""
+}

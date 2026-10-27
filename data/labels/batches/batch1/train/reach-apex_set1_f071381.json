@@ -1,0 +1,41 @@
+{
+  "version": "4.2.0",
+  "flags": {},
+  "checked": false,
+  "shapes": [
+    {
+      "label": "ball",
+      "score": null,
+      "points": [
+        [
+          1486.5704286964128,
+          651.117672790901
+        ],
+        [
+          1529.615048118985,
+          651.117672790901
+        ],
+        [
+          1529.615048118985,
+          696.6119860017496
+        ],
+        [
+          1486.5704286964128,
+          696.6119860017496
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rectangle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    }
+  ],
+  "imagePath": "reach-apex_set1_f071381.jpg",
+  "imageData": null,
+  "imageHeight": 2160,
+  "imageWidth": 3840,
+  "description": ""
+}

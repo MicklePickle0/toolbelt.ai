@@ -1,0 +1,128 @@
+{
+ "video": "reach-apex_set2",
+ "fps": 59.94006309148265,
+ "samples": [
+  {
+   "frame": 0,
+   "offset_px": 3.5,
+   "matches": 565
+  },
+  {
+   "frame": 3596,
+   "offset_px": 3.4,
+   "matches": 899
+  },
+  {
+   "frame": 7192,
+   "offset_px": 6.0,
+   "matches": 552
+  },
+  {
+   "frame": 10788,
+   "offset_px": 6.6,
+   "matches": 693
+  },
+  {
+   "frame": 14384,
+   "offset_px": 5.5,
+   "matches": 591
+  },
+  {
+   "frame": 17980,
+   "offset_px": 4.1,
+   "matches": 488
+  },
+  {
+   "frame": 21576,
+   "offset_px": 4.4,
+   "matches": 595
+  },
+  {
+   "frame": 25172,
+   "offset_px": 4.1,
+   "matches": 425
+  },
+  {
+   "frame": 28768,
+   "offset_px": 4.4,
+   "matches": 617
+  },
+  {
+   "frame": 32364,
+   "offset_px": 4.7,
+   "matches": 673
+  },
+  {
+   "frame": 35960,
+   "offset_px": 4.6,
+   "matches": 546
+  },
+  {
+   "frame": 39556,
+   "offset_px": 4.3,
+   "matches": 458
+  },
+  {
+   "frame": 43152,
+   "offset_px": 5.3,
+   "matches": 528
+  },
+  {
+   "frame": 46748,
+   "offset_px": 4.4,
+   "matches": 522
+  },
+  {
+   "frame": 50344,
+   "offset_px": 4.0,
+   "matches": 478
+  },
+  {
+   "frame": 53940,
+   "offset_px": 4.3,
+   "matches": 565
+  },
+  {
+   "frame": 57536,
+   "offset_px": 4.6,
+   "matches": 598
+  },
+  {
+   "frame": 61132,
+   "offset_px": 4.7,
+   "matches": 470
+  },
+  {
+   "frame": 64728,
+   "offset_px": 4.8,
+   "matches": 568
+  },
+  {
+   "frame": 68324,
+   "offset_px": 4.6,
+   "matches": 504
+  },
+  {
+   "frame": 71920,
+   "offset_px": 39.2,
+   "matches": 548
+  },
+  {
+   "frame": 75516,
+   "offset_px": 19.1,
+   "matches": 755
+  },
+  {
+   "frame": 79112,
+   "offset_px": 7.6,
+   "matches": 674
+  },
+  {
+   "frame": 82708,
+   "offset_px": 20.4,
+   "matches": 956
+  }
+ ],
+ "moves": [],
+ "verdict": "drifting"
+}

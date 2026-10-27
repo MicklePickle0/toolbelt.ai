@@ -1,0 +1,44 @@
+{
+  "video": "mac-chrome_set1",
+  "method": "transfer",
+  "confidence": 0.8031,
+  "needs_review": false,
+  "net_height_m": 2.43,
+  "frame": 6028,
+  "camera": {
+    "width": 3840,
+    "height": 2160,
+    "f": 3147.6857160462496,
+    "k1": -0.02142717396163016,
+    "rvec": [
+      0.03815295986208251,
+      2.2616659685442446,
+      -2.1762046934278283
+    ],
+    "tvec": [
+      -4.807878238708649,
+      1.2863251649934766,
+      11.942831789486739
+    ],
+    "centre_m": [
+      4.602,
+      11.976,
+      1.675
+    ],
+    "hfov_deg": 62.76
+  },
+  "support": {
+    "inliers": 127,
+    "rms_px": 1.75,
+    "spread_m": [
+      15.9,
+      20.3
+    ],
+    "confidence": 0.803
+  },
+  "clicks": {},
+  "line_clicks": {},
+  "reprojection_rms_px": null,
+  "applies_from": 4831,
+  "saved_at": "2026-10-24T18:57:12+00:00"
+}

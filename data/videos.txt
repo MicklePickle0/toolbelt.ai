@@ -1,0 +1,10 @@
+https://www.youtube.com/playlist?list=PLbRun2wQWdbQ
+
+
+data/
+  README.md        layout, naming rule, first steps (tracked in git)
+  manifest.yaml    your local registry (gitignored), empty, with a commented template entry
+  raw/             original recordings (phone .mov etc.), never edited
+  videos/          normalised, constant-frame-rate copies: label and process these
+  labels/<id>/     events.csv + boxes.coco.json for each video
+  cache/  outputs/  datasets/

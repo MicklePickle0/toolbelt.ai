@@ -1,0 +1,103 @@
+{
+ "video": "titan-rise_set1",
+ "fps": 59.94006309148265,
+ "samples": [
+  {
+   "frame": 0,
+   "offset_px": 2.4,
+   "matches": 963
+  },
+  {
+   "frame": 3596,
+   "offset_px": 8.7,
+   "matches": 742
+  },
+  {
+   "frame": 7192,
+   "offset_px": 4.1,
+   "matches": 642
+  },
+  {
+   "frame": 10788,
+   "offset_px": 3.6,
+   "matches": 668
+  },
+  {
+   "frame": 14384,
+   "offset_px": 3.6,
+   "matches": 729
+  },
+  {
+   "frame": 17980,
+   "offset_px": 6.5,
+   "matches": 733
+  },
+  {
+   "frame": 21576,
+   "offset_px": 3.6,
+   "matches": 699
+  },
+  {
+   "frame": 25172,
+   "offset_px": 3.6,
+   "matches": 778
+  },
+  {
+   "frame": 28768,
+   "offset_px": 9.8,
+   "matches": 722
+  },
+  {
+   "frame": 32364,
+   "offset_px": 5.2,
+   "matches": 720
+  },
+  {
+   "frame": 35960,
+   "offset_px": 5.2,
+   "matches": 649
+  },
+  {
+   "frame": 39556,
+   "offset_px": 4.4,
+   "matches": 706
+  },
+  {
+   "frame": 43152,
+   "offset_px": 5.6,
+   "matches": 708
+  },
+  {
+   "frame": 46748,
+   "offset_px": 4.4,
+   "matches": 704
+  },
+  {
+   "frame": 50344,
+   "offset_px": 4.5,
+   "matches": 707
+  },
+  {
+   "frame": 53940,
+   "offset_px": 8.7,
+   "matches": 696
+  },
+  {
+   "frame": 57536,
+   "offset_px": 5.6,
+   "matches": 642
+  },
+  {
+   "frame": 61132,
+   "offset_px": 4.4,
+   "matches": 636
+  },
+  {
+   "frame": 64728,
+   "offset_px": 5.2,
+   "matches": 636
+  }
+ ],
+ "moves": [],
+ "verdict": "ok"
+}

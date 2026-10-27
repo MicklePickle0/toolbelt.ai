@@ -68,7 +68,7 @@ config/            pass_scale.yaml, court.yaml, model paths
 src/ingest/  src/calibration/  src/detect/  src/track/  src/ball/
 src/pose/  src/contacts/  src/rally/  src/identity/  src/classify/
 src/db/  src/stats/  src/api/ (FastAPI)  src/ui/
-data/ (gitignored)  models/ (gitignored)  tests/  scripts/
+data/ (videos/caches gitignored; labels tracked)  models/ (in-use models tracked, LFS)  tests/  scripts/
 ```
 
 ## Local setup
@@ -128,11 +128,19 @@ conversations that don't see each other. The shared state is the repo, so:
 - End by updating those docs with any decision or measured result, committing and pushing.
   Anything left only in a conversation or in Claude's local memory is lost to the other
   machine.
-- `data/` and `models/` are not in git: the laptop has code, not footage. Work that needs
-  footage or the GPU is marked "on the desktop" in `docs/todo.md`.
+- Labels, calibrations, the manifest, the event DB and the models in use ARE in git (the
+  detector through Git LFS: install `git lfs` on every machine). Videos, caches, frames,
+  datasets and outputs are not: the laptop has no footage. Work that needs footage or the
+  GPU is marked "on the desktop" in `docs/todo.md`. Commit labels as soon as they're done.
 
 ## Working rules for Claude Code
 - Build one milestone at a time; add a visual verification script (overlay video/images) for each.
 - Split train/val/test BY VIDEO, never by frame.
 - Keep everything configurable and every automated output confidence-scored.
 - Ask before adding audio, live processing, or far-side analysis; those are out of scope.
+- Protect `data/` and `models/` (2026-10-26: a junction inside a temporary git worktree plus
+  `git worktree remove --force` deleted both; only a Windows snapshot saved the hand
+  labels). Never link real
+  data into a folder that will be deleted; to run old code on real data, point PYTHONPATH
+  at the old checkout's `src` instead. Ask the owner before any recursive or forced delete
+  outside the scratchpad, and list the target (and any links in it) first.

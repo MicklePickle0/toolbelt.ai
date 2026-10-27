@@ -1,0 +1,118 @@
+{
+ "video": "mac-iron_set1",
+ "fps": 59.94006309148265,
+ "samples": [
+  {
+   "frame": 0,
+   "offset_px": 4.4,
+   "matches": 764
+  },
+  {
+   "frame": 3596,
+   "offset_px": 5.5,
+   "matches": 696
+  },
+  {
+   "frame": 7192,
+   "offset_px": 4.8,
+   "matches": 747
+  },
+  {
+   "frame": 10788,
+   "offset_px": 4.9,
+   "matches": 665
+  },
+  {
+   "frame": 14384,
+   "offset_px": 4.2,
+   "matches": 556
+  },
+  {
+   "frame": 17980,
+   "offset_px": 4.7,
+   "matches": 655
+  },
+  {
+   "frame": 21576,
+   "offset_px": 4.7,
+   "matches": 764
+  },
+  {
+   "frame": 25172,
+   "offset_px": 5.5,
+   "matches": 503
+  },
+  {
+   "frame": 28768,
+   "offset_px": 4.6,
+   "matches": 622
+  },
+  {
+   "frame": 32364,
+   "offset_px": 6.1,
+   "matches": 696
+  },
+  {
+   "frame": 35960,
+   "offset_px": 6.3,
+   "matches": 510
+  },
+  {
+   "frame": 39556,
+   "offset_px": 6.6,
+   "matches": 627
+  },
+  {
+   "frame": 43152,
+   "offset_px": 7.7,
+   "matches": 633
+  },
+  {
+   "frame": 46748,
+   "offset_px": 5.2,
+   "matches": 534
+  },
+  {
+   "frame": 50344,
+   "offset_px": 6.3,
+   "matches": 445
+  },
+  {
+   "frame": 53940,
+   "offset_px": 9.0,
+   "matches": 437
+  },
+  {
+   "frame": 57536,
+   "offset_px": 26.3,
+   "matches": 629
+  },
+  {
+   "frame": 61132,
+   "offset_px": 26.6,
+   "matches": 505
+  },
+  {
+   "frame": 64728,
+   "offset_px": 26.5,
+   "matches": 491
+  },
+  {
+   "frame": 68324,
+   "offset_px": 27.5,
+   "matches": 557
+  },
+  {
+   "frame": 71920,
+   "offset_px": 27.4,
+   "matches": 427
+  },
+  {
+   "frame": 75516,
+   "offset_px": 27.4,
+   "matches": 428
+  }
+ ],
+ "moves": [],
+ "verdict": "drifting"
+}

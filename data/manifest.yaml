@@ -1,0 +1,110 @@
+# Your local manifest (gitignored). Format: config/manifest.example.yaml and docs/labelling.md.
+# Paths are relative to this file's directory (data/).
+
+team: Our Team
+
+# Jersey numbers in event labels and lineups are checked against this.
+roster: []
+#  - {number: 1, name: Setter One}
+#  - {number: 12, name: Libero Twelve, libero: true}
+
+videos:
+  # All at Humber on 2026-10-17 (different courts, same gym). One venue, so
+  # datasets.split_by is 'video'; both sets of a match are pinned to one split.
+  # Add labels: {events: ..., boxes: ...} to an entry once its label files exist.
+  - id: leaside-panther_set1
+    path: raw/humber/Leaside Panther Set 1.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Leaside Panther
+    played_on: 2026-10-17
+    split: train
+  - id: leaside-panther_set2
+    path: raw/humber/Leaside Panther Set 2.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Leaside Panther
+    played_on: 2026-10-17
+    split: train
+  - id: mac-chrome_set1
+    path: raw/humber/MAC Chrome Set 1.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: MAC Chrome
+    played_on: 2026-10-17
+    split: train
+  - id: mac-chrome_set2
+    path: raw/humber/MAC Chrome Set 2.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: MAC Chrome
+    played_on: 2026-10-17
+    split: train
+  - id: niagara-rtw_set1
+    path: raw/humber/Niagara RTW Set 1.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Niagara RTW
+    played_on: 2026-10-17
+    split: train
+  - id: niagara-rtw_set2
+    path: videos/niagara-rtw_set2.mp4   # normalised: raw/humber/Niagara RTW Set 2.webm has corrupt packets
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Niagara RTW
+    played_on: 2026-10-17
+    split: train
+  - id: reach-apex_set1
+    path: raw/humber/Reach Apex Set 1.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Reach Apex
+    played_on: 2026-10-17
+    split: train
+  - id: reach-apex_set2
+    path: raw/humber/Reach Apex Set 2.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Reach Apex
+    played_on: 2026-10-17
+    split: train
+  - id: mac-iron_set1
+    path: raw/humber/MAC Iron Set 1.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: MAC Iron
+    played_on: 2026-10-17
+    split: valid
+  - id: mac-iron_set2
+    path: raw/humber/MAC Iron Set 2.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: MAC Iron
+    played_on: 2026-10-17
+    split: valid
+  - id: titan-rise_set1
+    path: raw/humber/Titan Rise Set 1.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Titan Rise
+    played_on: 2026-10-17
+    split: test
+  - id: titan-rise_set2
+    path: raw/humber/Titan Rise Set 2.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Titan Rise
+    played_on: 2026-10-17
+    split: test

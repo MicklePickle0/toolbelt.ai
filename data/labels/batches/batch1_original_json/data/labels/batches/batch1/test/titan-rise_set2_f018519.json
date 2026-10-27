@@ -1,0 +1,41 @@
+{
+  "version": "4.2.0",
+  "flags": {},
+  "checked": false,
+  "shapes": [
+    {
+      "label": "ball",
+      "score": null,
+      "points": [
+        [
+          832.8363507277246,
+          393.54277600283996
+        ],
+        [
+          891.9062832800852,
+          393.54277600283996
+        ],
+        [
+          891.9062832800852,
+          449.6308129215478
+        ],
+        [
+          832.8363507277246,
+          449.6308129215478
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rectangle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    }
+  ],
+  "imagePath": "titan-rise_set2_f018519.jpg",
+  "imageData": null,
+  "imageHeight": 2160,
+  "imageWidth": 3840,
+  "description": ""
+}

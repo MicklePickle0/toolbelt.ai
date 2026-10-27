@@ -1,0 +1,70 @@
+{
+  "version": "4.2.0",
+  "flags": {},
+  "checked": false,
+  "shapes": [
+    {
+      "label": "ball",
+      "score": null,
+      "points": [
+        [
+          1992.2640342652705,
+          720.3956310290127
+        ],
+        [
+          2046.7605633802816,
+          720.3956310290127
+        ],
+        [
+          2046.7605633802816,
+          773.3568075117372
+        ],
+        [
+          1992.2640342652705,
+          773.3568075117372
+        ]
+      ],
+      "group_id": null,
+      "description": "prelabel 0.90",
+      "difficult": false,
+      "shape_type": "rectangle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "ball",
+      "score": null,
+      "points": [
+        [
+          2746.42578125,
+          1196.54052734375
+        ],
+        [
+          2779.085205078125,
+          1196.54052734375
+        ],
+        [
+          2779.085205078125,
+          1226.921630859375
+        ],
+        [
+          2746.42578125,
+          1226.921630859375
+        ]
+      ],
+      "group_id": null,
+      "description": "prelabel 0.46",
+      "difficult": false,
+      "shape_type": "rectangle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    }
+  ],
+  "imagePath": "mac-iron_set1_f021982.jpg",
+  "imageData": null,
+  "imageHeight": 2160,
+  "imageWidth": 3840,
+  "description": ""
+}

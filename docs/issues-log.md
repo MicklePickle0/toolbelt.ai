@@ -141,6 +141,7 @@ Labelling conventions decided along the way (also in `docs/labelling.md`, "Judge
 | Problem | Fix |
 |---|---|
 | Shell heredocs mangled backslashes; a stray `cat` hung waiting for input | Multi-line edits written as scripts in a scratch folder and run from there |
+| 2026-10-26: `data/` and `models/` deleted. Claude linked them (Windows junctions) into a temporary git worktree to compare old code, then `git worktree remove --force` followed the links. The SSD's TRIM made file-recovery tools useless (zeros) | Restored in full from a Windows Previous Versions snapshot (7:09 pm), copied out with robocopy (Explorer crashed on the many small files) and checked file by file. Labels, calibrations, the event DB and the models in use are now in git (detector via LFS); the rule against linking data into disposable folders is in CLAUDE.md |
 | Small bugs: a shadowed variable (`plausible`), a dropped line (`finished += tracks`), `load_roles` needing a `Path` | Caught by tests or by checking output, and fixed |
 | An unwanted change to `video.py` (log flushing) | Reverted at the owner's request |
 

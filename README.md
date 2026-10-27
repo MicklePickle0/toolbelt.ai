@@ -67,7 +67,8 @@ src/setter_eyes/     ingest, calibration, detect, track, ball, pose, contacts,
                      rally, identity, classify, db, stats, api, ui,
                      labels (manifest, events CSV, COCO boxes, DB import), datasets (splits, export)
 docs/                labelling.md
-data/  models/       gitignored (videos, caches, event DB, weights)
+data/  models/       labels, calibrations, event DB, models in use tracked (detector via Git LFS);
+                     videos, caches, frames, datasets, outputs gitignored
 tests/  scripts/
 ```
 

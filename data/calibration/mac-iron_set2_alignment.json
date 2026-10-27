@@ -1,0 +1,73 @@
+{
+ "video": "mac-iron_set2",
+ "fps": 59.94006309148265,
+ "samples": [
+  {
+   "frame": 0,
+   "offset_px": 4.0,
+   "matches": 675
+  },
+  {
+   "frame": 3596,
+   "offset_px": 3.8,
+   "matches": 785
+  },
+  {
+   "frame": 7192,
+   "offset_px": 7.8,
+   "matches": 524
+  },
+  {
+   "frame": 10788,
+   "offset_px": 4.1,
+   "matches": 637
+  },
+  {
+   "frame": 14384,
+   "offset_px": 4.4,
+   "matches": 602
+  },
+  {
+   "frame": 17980,
+   "offset_px": 4.3,
+   "matches": 498
+  },
+  {
+   "frame": 21576,
+   "offset_px": 3.6,
+   "matches": 537
+  },
+  {
+   "frame": 25172,
+   "offset_px": 4.1,
+   "matches": 516
+  },
+  {
+   "frame": 28768,
+   "offset_px": 5.0,
+   "matches": 513
+  },
+  {
+   "frame": 32364,
+   "offset_px": 4.0,
+   "matches": 488
+  },
+  {
+   "frame": 35960,
+   "offset_px": 5.9,
+   "matches": 583
+  },
+  {
+   "frame": 39556,
+   "offset_px": 4.3,
+   "matches": 433
+  },
+  {
+   "frame": 43152,
+   "offset_px": 5.3,
+   "matches": 483
+  }
+ ],
+ "moves": [],
+ "verdict": "ok"
+}

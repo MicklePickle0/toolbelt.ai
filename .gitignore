@@ -1,24 +1,41 @@
-# Large / private artifacts
-# data/: keep the folder skeleton (README + .gitkeep files), ignore the contents
-data/**
-!data/**/
-!data/**/.gitkeep
-!data/README.md
-models/*
-!models/.gitkeep
+# Large artifacts
 *.mp4
 *.mov
 *.mkv
 *.avi
+*.webm
 *.onnx
 *.pt
 *.pth
+*.ckpt
 *.db
 *.duckdb
 *.sqlite
 outputs/
-!data/outputs/
-!data/outputs/.gitkeep
+
+# data/ and models/: anything made by hand or slow to rebuild is tracked (labels,
+# calibrations, manifest, the event DB with review edits, the models in use); videos,
+# caches, frames, datasets and outputs are not (rebuilt from the videos). See data/README.md.
+# Order matters: the last matching rule wins.
+data/**
+!data/**/
+!data/**/.gitkeep
+!data/README.md
+!data/manifest.yaml
+!data/videos.txt
+!data/setter_eyes.db
+!data/labels/**
+data/labels/**/*.jpg
+data/labels/**/*.png
+!data/calibration/**
+models/**
+!models/**/
+!models/.gitkeep
+!models/contacts/touch_scorer.pkl
+# The detector in use goes through Git LFS (.gitattributes); old runs and .ckpt stay local.
+!models/rfdetr/batch123_medium_1280/checkpoint_best_total.pth
+!models/rfdetr/batch123_medium_1280/training_config.json
+!models/rfdetr/batch123_medium_1280/metrics.csv
 
 # Python
 __pycache__/
