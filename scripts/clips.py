@@ -5,7 +5,7 @@ touch of an action (attack, serve, receive, ...), optionally for one player, bec
 clips (from the 1280-wide proxy when there is one, else the original), plus a single
 highlight reel. Reads the labels DB or the reviewed pipeline DB.
 
-Writes data/outputs/clips/<id>/<what>[_#N]/NN_m-ss.mp4 and <what>[_#N]_reel.mp4.
+Writes data/outputs/clips/<id>/<what>[_playerN]/NN_m-ss.mp4 and <what>[_playerN]_reel.mp4.
 
 Usage:
   python scripts/clips.py --video titan-rise_set1 --stat kills
@@ -74,7 +74,8 @@ def main() -> int:
     after = args.after if args.after is not None else 2.0
     spans = moments(load_rallies(conn, args.video), fps, args.stat, args.action, args.player,
                     before, after)
-    name = (args.stat or args.action) + (f"_#{args.player}" if args.player else "")
+    # No "#" in names: ffmpeg's concat list can't read paths with it.
+    name = (args.stat or args.action) + (f"_player{args.player}" if args.player else "")
     if not spans:
         print(f"no {name} in {args.video} ({args.db} DB)")
         return 0
