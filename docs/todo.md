@@ -11,7 +11,9 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
       more full Humber sets add little. Next labels: ~10-15 rallies from a NEW venue (the
       honest test, since both labelled sets are now in training), and targeted rare events
       (blocks, free balls, dumps, replays). Then corrections from the review UI.
-- [ ] **Run the remaining 10 videos** (owner): `.\scripts\process_videos.ps1`. Resumes if
+- [ ] **Run the remaining 3 videos** (owner): 9 of 12 are processed; `leaside-panther_set2`,
+      `mac-iron_set2` and `titan-rise_set2` have only part of their cache.
+      `.\scripts\process_videos.ps1`. Resumes if
       stopped, and runs `find_play` first so ball detection skips the time between rallies.
       Was ~1.6 h of ball detection per set before play spans and ball following; the new
       time is still to be measured (see "Detection speed" below).
@@ -82,6 +84,10 @@ the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
       being behind our end line (check on new angles). Their serves are fine (44/48).
       Placed at the hit, not the toss (where the ball stops rising): none of 29 now 0.4 s+
       early (was 10); the hit touch is no longer an extra "dig".
+      Merged 2026-10-26. Out-of-fold with it: titan-rise 41/42 rallies, 0 false, outcomes
+      23 -> 22/41; mac-chrome 36 -> 38/39 rallies but 5 -> 7 false, outcomes 23/36 -> 24/38.
+      The 2 new false rallies (5:37.0, 13:39.9) are 0.3 s, one touch: an entry serve with
+      nothing after it. Next: drop an entry-serve rally with no following touch.
 - [ ] **Serve-only rallies from our off-screen server** (aces, service errors): 3 of 42
       missed (the `our-serve-entry` branch addresses these).
 - [x] **Live-ball check, first version** (`rally/live.py`): a trailing touch > 2 s after the
