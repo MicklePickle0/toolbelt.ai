@@ -60,12 +60,15 @@ def receptions(rallies: Iterable[RallyLabel], scale: dict) -> list[Reception]:
     return out
 
 
-def passing_average(recs: Iterable[Reception]) -> dict:
-    """{"team": (count, mean), jersey: (count, mean), ...} over scored receptions."""
+def passing_average(recs: Iterable[Reception], top: int = 4) -> dict:
+    """{"team": (count, mean), jersey: (count, mean), ...} over scored receptions.
+
+    Passes are always scored 0-4. `top` = 3 reads them on a 3-point scale for the
+    average only: a 4 counts as a 3 (owner, 2026-10-28)."""
     by: dict = {}
     for rec in recs:
         if rec.score is None:
             continue
         for key in ("team",) + ((rec.jersey,) if rec.jersey is not None else ()):
-            by.setdefault(key, []).append(rec.score)
+            by.setdefault(key, []).append(min(rec.score, top))
     return {k: (len(v), round(sum(v) / len(v), 2)) for k, v in by.items()}

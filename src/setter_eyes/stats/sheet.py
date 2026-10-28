@@ -65,8 +65,9 @@ def _decider(r: RallyLabel) -> tuple[ContactLabel | None, str | None]:
     return (ours[-1][0], stat) if ours else (None, None)
 
 
-def stat_rows(rallies: Iterable[RallyLabel], scale: dict) -> dict:
-    """{"team": {...}, jersey: {...}} (jersey None = player unknown)."""
+def stat_rows(rallies: Iterable[RallyLabel], scale: dict, pass_top: int = 4) -> dict:
+    """{"team": {...}, jersey: {...}} (jersey None = player unknown). pass_top: 4 or 3,
+    the scale the passing average is read on (stats/passing.py)."""
     rallies = [r for r in rallies if r.outcome not in SKIP]
     by: dict = defaultdict(Counter)
     for r in rallies:
@@ -96,7 +97,7 @@ def stat_rows(rallies: Iterable[RallyLabel], scale: dict) -> dict:
                  "side_out_chances": len(side_out),
                  "serve_points_won": sum(r.point_winner == "us" for r in serving),
                  "serve_points_played": len(serving)})
-    avg = passing_average(receptions(rallies, scale))
+    avg = passing_average(receptions(rallies, scale), pass_top)
     out = {}
     for key, c in by.items():
         row = dict(c)

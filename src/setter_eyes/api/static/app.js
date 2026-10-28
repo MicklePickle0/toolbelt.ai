@@ -1,4 +1,4 @@
-// Setter Eyes web app: videos + processing queue, rally review, stat sheet.
+// Toolbelt web app: videos + processing queue, rally review, stat sheet.
 // Plain JS, no build step. Pages are routed by the URL hash:
 //   #/                    videos
 //   #/queue               processing jobs
@@ -223,7 +223,14 @@ async function statsPage(params) {
   let chosen = (params.get("v") || "").split(",").filter(Boolean);
   if (!chosen.length && vids.length) chosen = [vids[0].key];
   const src = params.get("src") || "pipeline";
-  const go = (keys, s) => { location.hash = `#/stats?v=${keys.join(",")}&src=${s}`; };
+  let scale = params.get("pass");
+  if (scale !== "3" && scale !== "4") {
+    try { scale = localStorage.getItem("passScale"); } catch (_) { scale = null; }
+    if (scale !== "3" && scale !== "4") scale = "4";
+  }
+  const go = (keys, s, p = scale) => {
+    try { localStorage.setItem("passScale", p); } catch (_) { /* private mode */ }
+    location.hash = `#/stats?v=${keys.join(",")}&src=${s}&pass=${p}`; };
 
   const picker = h("div", { class: "card" },
     h("div", { class: "row spread" }, h("strong", {}, "Sets"),
@@ -235,11 +242,15 @@ async function statsPage(params) {
       h("label", { class: "check chip" },
         h("input", { type: "checkbox", checked: chosen.includes(v.key), onchange: e => {
           const next = e.target.checked ? [...chosen, v.key] : chosen.filter(k => k !== v.key);
-          go(next, src); } }), v.key))));
+          go(next, src); } }), v.key))),
+    h("div", { class: "row", style: "margin-top:8px" },
+      h("span", { class: "small" }, "Passing average on a"),
+      seg([["4", "4-point scale"], ["3", "3-point scale (4s count as 3)"]], scale,
+        p => go(chosen, src, p))));
 
   let body;
   try {
-    const st = await api(`/stats?videos=${encodeURIComponent(chosen.join(","))}&source=${src}`);
+    const st = await api(`/stats?videos=${encodeURIComponent(chosen.join(","))}&source=${src}&pass_scale=${scale}`);
     body = statsBody(st, src);
   } catch (e) {
     body = [h("p", { class: "muted" }, e.message)];
@@ -257,7 +268,8 @@ function statsBody(st, src) {
     tile(pct(t.serve_points_won, t.serve_points_played),
       `points on our serve (${t.serve_points_won}/${t.serve_points_played})`),
     tile(fmt(t.hitting_eff), "hitting efficiency"),
-    tile(fmt(t.pass_avg), `pass average (${t.pass_n || 0} scored passes)`));
+    tile(fmt(t.pass_avg), `pass average, ${st.pass_scale}-point scale (${t.pass_n || 0} ` +
+      "scored passes)"));
   const cols = st.columns;
   const head = h("tr", {}, h("th", {}, "Player"), ...cols.map(c => h("th", { title: label(c) },
     st.short[c])));

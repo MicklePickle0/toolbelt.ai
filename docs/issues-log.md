@@ -1,6 +1,6 @@
 # Issues log
 
-Problems hit while building Setter-Eyes, why they happened, and how they were fixed. Grouped
+Problems hit while building Toolbelt (formerly Setter-Eyes), why they happened, and how they were fixed. Grouped
 by pipeline stage, roughly in the order the stages were built. The last section lists what
 is still open.
 

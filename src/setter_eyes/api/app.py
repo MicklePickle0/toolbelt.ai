@@ -98,7 +98,7 @@ def _edits(touches: list[Touch]) -> list[rv.TouchEdit]:
 
 def create_app(settings: Settings | None = None, start_worker: bool = True) -> FastAPI:
     s = settings or Settings.from_config()
-    app = FastAPI(title="Setter Eyes")
+    app = FastAPI(title="Toolbelt")
 
     def calibration(video: str) -> dict | None:
         cal = cal_store.load(video, s.calibration_dir)
@@ -162,7 +162,9 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
 
     # ---- stats -----------------------------------------------------------------------------
     @app.get("/api/stats")
-    def stats(videos: str, source: str = "pipeline") -> dict:
+    def stats(videos: str, source: str = "pipeline", pass_scale: int = 4) -> dict:
+        if pass_scale not in (3, 4):
+            raise HTTPException(400, "pass_scale is 3 or 4")
         path = {"pipeline": s.db_path, "labels": s.labels_db_path}.get(source)
         if path is None:
             raise HTTPException(400, "source is pipeline or labels")
@@ -179,7 +181,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 if keys else (0, 0)
         if not rallies:
             raise HTTPException(404, "no rallies with a point winner for these videos")
-        rows = stat_rows(rallies, config.load("pass_scale"))
+        rows = stat_rows(rallies, config.load("pass_scale"), pass_scale)
         team = rows.pop("team")
         unknown = rows.pop(None, None)
         players = [{"player": str(k), "name": names.get(int(k)), **v}
@@ -187,7 +189,8 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         if unknown:
             players.append({"player": "?", "name": "player not known", **unknown})
         return {"columns": COLUMNS, "short": SHORT, "team": team, "players": players,
-                "rallies": counts[0], "reviewed": counts[1], "counted": len(rallies)}
+                "rallies": counts[0], "reviewed": counts[1], "counted": len(rallies),
+                "pass_scale": pass_scale}
 
     # ---- review ----------------------------------------------------------------------------
     @app.get("/api/sets/{set_id}/rallies")

@@ -1,5 +1,7 @@
 # Volleyball Stat Tracker (one-end-of-court, offline video analysis)
 
+Product name: **Toolbelt** (owner, 2026-10-28; formerly Setter Eyes). Use it in anything a user sees (web app, docs, exports). The repo folder and the Python package `setter_eyes` keep the old name for now; renaming them is a separate change to ask about.
+
 An automated alternative to Hudl / DataVolley / VolleyStation. Input: a match or training video filmed from low, behind one end of the court. Output: per-player stats for ONE team (the near side), a ball-path overlay, and an editable event database.
 
 ## Product constraints (decided, do not revisit without asking)

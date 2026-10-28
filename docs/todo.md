@@ -33,6 +33,8 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
       - [ ] Upload a video from the phone, or a YouTube/Drive link (yt-dlp), into the manifest.
       - [ ] Browser calibration (tap 6-8 court points on a still).
       - [ ] Clips per stat; one-key point us/them on the review page.
+      - [x] Passing average on a 4- or 3-point scale (a 4 counts as 3), picked on the
+            stats page; passes are always stored 0-4.
       - [ ] Pass average in the stat sheet: pipeline rallies have no pass scores yet
             (only aces count, as 0), so it reads 0.0 until passes are scored.
 - [ ] **P0 Calibration confidence**: auto calibration gave 0.87 on a wrong fit (far
@@ -41,6 +43,19 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
       Unity Force sets bot-blocked by YouTube, retry). Needs manual calibrations first.
 - [ ] **P1 DA labels** (owner): ~80 ball frames + ~10-20 rallies from 2 DA gyms, then
       retrain the ball detector and touch scorer; this is also the new-venue test.
+- [ ] **P1 Jersey numbers -> per-player stats** (Milestone 7, started 2026-10-28).
+      Findings on `titan-rise_set1` (4K): back numbers are large and readable by eye in
+      most crops of near-side players (boxes 350-650 px tall); the libero's green jersey
+      stands out. Two problems:
+      1. *Reading:* off-the-shelf EasyOCR reads ~6/40 crops (the outlined font defeats its
+         text finder); its recognizer alone gives noise. Next: a stronger pretrained
+         reader (PARSeq, via torch hub: needs the owner's OK to run downloaded code) or
+         our own small digit classifier trained on crops the owner tags in the app
+         (~300-500 crops, ~1 s each), plus votes per track.
+      2. *Who touched:* in ~1/3 of 30 labelled touches the toucher's track shows a
+         different player (e.g. a "#12 receive" crop shows #1). Pick the toucher better
+         (hands/pose at the ball, not the nearest feet) before numbers can help.
+      Roster in the manifest is still empty (`roster: []`): owner to add numbers + names.
 - [ ] **P1 Third-set side switch**: the camera moves with us; detect the move and ask for
       a new calibration (re-anchored `@f<frame>`).
 - [ ] **P1 Manual stat tracker** in the app (iStatVball-style, works offline on the

@@ -1,6 +1,6 @@
 from setter_eyes import config
 from setter_eyes.labels.events import ContactLabel, RallyLabel
-from setter_eyes.stats.passing import passing_average, receptions
+from setter_eyes.stats.passing import Reception, passing_average, receptions
 
 SCALE = config.load("pass_scale")
 
@@ -44,3 +44,11 @@ def test_a_replayed_rally_counts_for_nothing():
     replay = _rally(1, [("them", "serve", None, None), ("us", "receive", 7, 1)], None, "replay")
     assert receptions([replay], SCALE) == []
     assert counts([replay]) == {}
+
+
+def test_three_point_scale_counts_a_4_as_a_3():
+    recs = [Reception(1, 10, 7, 4, "receive"), Reception(2, 20, 7, 2, "receive"),
+            Reception(3, None, None, 0, "ace")]
+    assert passing_average(recs)["team"] == (3, 2.0)
+    assert passing_average(recs, top=3)["team"] == (3, 1.67)
+    assert passing_average(recs, top=3)[7] == (2, 2.5)

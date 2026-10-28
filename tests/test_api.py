@@ -127,3 +127,9 @@ def test_job_cancel_stops_the_running_step(tmp_path):
     while job.status == jb.RUNNING and time.time() < deadline:
         time.sleep(0.05)
     assert job.status == jb.CANCELLED
+
+
+def test_stats_pass_scale_must_be_3_or_4(client):
+    assert client.get("/api/stats", params={"videos": "v1", "pass_scale": 3}).json()[
+        "pass_scale"] == 3
+    assert client.get("/api/stats", params={"videos": "v1", "pass_scale": 5}).status_code == 400
