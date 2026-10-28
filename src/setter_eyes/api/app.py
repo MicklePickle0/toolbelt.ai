@@ -64,6 +64,7 @@ class Settings:
     output_dir: Path | None = None
     accept_auto_calibration: bool = False
     frame_width: int = 1920               # px, frames sent to the calibration page
+    step_weights: dict = field(default_factory=dict)
 
     @classmethod
     def from_config(cls) -> Settings:
@@ -75,7 +76,7 @@ class Settings:
                    a["steps"], a["needs_calibration"], a["clip_width"], a["clip_pad_s"],
                    labels["actions"], labels["outcomes"], config.repo_path(p["output_dir"]),
                    a.get("accept_auto_calibration", False),
-                   a.get("calibration_frame_width", 1920))
+                   a.get("calibration_frame_width", 1920), a.get("step_weights", {}))
 
 
 class Touch(BaseModel):
@@ -140,7 +141,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
 
     jobs = JobQueue(s.log_dir, s.steps, s.needs_calibration,
                     lambda v: usable(cal_store.load(v, s.calibration_dir)),
-                    config.REPO_ROOT)
+                    config.REPO_ROOT, step_weights=s.step_weights)
     app.state.jobs = jobs
     if start_worker:
         jobs.start()
@@ -467,10 +468,11 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             path = jobs.log_path(jobs.get(job_id))
         except KeyError as e:
             raise HTTPException(404, f"no job {job_id}") from e
+        head = jobs.progress_text(job_id) + "\n" + "-" * 60 + "\n"
         if not path.exists():
-            return ""
+            return head
         data = path.read_bytes()[-tail:].decode("utf-8", "replace")
-        return data.replace("\r", "\n") or last_line(path)
+        return head + (data.replace("\r", "\n") or last_line(path))
 
     app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
     return app

@@ -34,6 +34,9 @@ def _save(path: Path, frames, det_frame, det_box, det_score, meta: dict) -> None
     tmp.replace(path)                     # never leave a half-written file behind
 
 
+PROGRESS_EVERY_S = 20.0          # a progress line at least this often
+
+
 def detect_video(video: Path, out: Path, detect: DetectFn, *, stride: int, threshold: float,
                  fps: float, total_frames: int, first: int = 0, last: int | None = None,
                  save_every: int = 2000, restart: bool = False, meta: dict | None = None,
@@ -73,6 +76,7 @@ def detect_video(video: Path, out: Path, detect: DetectFn, *, stride: int, thres
 
     threading.Thread(target=reader, daemon=True).start()
     t0, n = time.time(), 0
+    last_report = t0
     todo = max(1, sum(1 for f in range(first, last or total_frames, stride)
                       if keep is None or keep(f)))
     while (frame := q.get()) is not None:
@@ -82,8 +86,12 @@ def detect_video(video: Path, out: Path, detect: DetectFn, *, stride: int, thres
             det_score.append(score)
         frames.append(frame.index)
         n += 1
-        if n % save_every == 0:
+        saving = n % save_every == 0
+        if saving:
             _save(out, frames, det_frame, det_box, det_score, meta)
+        # Progress line ("n/todo"): the web app's queue turns it into a progress bar.
+        if saving or time.time() - last_report >= PROGRESS_EVERY_S:
+            last_report = time.time()
             rate = n / (time.time() - t0)
             log(f"  frame {frame.index}: {n}/{todo} at {rate:.1f}/s, "
                 f"~{(todo - n) / rate / 60:.0f} min left")

@@ -177,8 +177,24 @@ function videoCard(v) {
 }
 
 // ---- queue --------------------------------------------------------------------------------
+function bar(share, text) {
+  const pct = Math.round(100 * Math.max(0, Math.min(1, share || 0)));
+  return h("div", { class: "bar", title: `${pct}%` },
+    h("div", { class: "fill", style: `width:${pct}%` }),
+    h("span", {}, `${text} ${pct}%`));
+}
+
 async function queuePage() {
   let openLog = null;
+  // One log box, kept across refreshes so it doesn't flicker or lose its scroll position.
+  const logPre = h("pre", { class: "log" }, "loading…");
+  const refreshLog = async () => {
+    if (openLog === null) return;
+    const atEnd = logPre.scrollHeight - logPre.scrollTop - logPre.clientHeight < 40;
+    try { logPre.textContent = (await api(`/jobs/${openLog}/log`)) || "(empty)"; }
+    catch (e) { logPre.textContent = e.message; }
+    if (atEnd) logPre.scrollTop = logPre.scrollHeight;
+  };
   const draw = async () => {
     const jobs = await api("/jobs");
     const cards = jobs.map(j => {
@@ -193,8 +209,17 @@ async function queuePage() {
           ? h("button", { onclick: async () => {
             try { await api(`/jobs/${j.id}/resume`, { body: {} }); draw(); }
             catch (e) { toast(e.message, 5000); } } }, "Resume") : null,
-        h("button", { onclick: () => { openLog = openLog === j.id ? null : j.id; draw(); } },
+        h("button", { onclick: () => {
+          openLog = openLog === j.id ? null : j.id;
+          logPre.textContent = "loading…"; draw().then(refreshLog); } },
           openLog === j.id ? "Hide log" : "Log"));
+      const live = j.status === "running";
+      const bars = (live || j.status === "queued") ? h("div", { style: "margin:6px 0" },
+        bar(j.share, "all steps"),
+        live ? bar(j.step_share, `${j.step_name}` +
+          (j.step_share === null ? " (no progress count yet)" : "") +
+          (j.step_eta_min !== null ? `, ~${Math.round(j.step_eta_min)} min left` : "")) : null)
+        : null;
       const card = h("div", { class: "card" },
         h("div", { class: "row spread" },
           h("div", {}, h("strong", {}, `#${j.id} ${j.video}`), " ",
@@ -203,16 +228,12 @@ async function queuePage() {
         h("div", { class: "small" }, `step ${Math.min(done + 1, n)}/${n}: ` +
           (j.step_name || "finished") +
           (j.status === "running" ? ` (${ago(j.step_started)})` : "")),
+        bars,
         j.progress ? h("div", { class: "small mono muted" }, j.progress) : null,
         j.error ? h("div", { class: "small", style: "color:var(--bad)" }, j.error) : null,
         h("div", { class: "small muted" }, "queued " + ago(j.created) + " ago" +
           (j.started ? ", started " + ago(j.started) + " ago" : "")));
-      if (openLog === j.id) {
-        const pre = h("pre", { class: "log" }, "loading…");
-        api(`/jobs/${j.id}/log`).then(t => { pre.textContent = t || "(empty)";
-          pre.scrollTop = pre.scrollHeight; });
-        card.append(pre);
-      }
+      if (openLog === j.id) card.append(logPre);
       return card;
     });
     view.replaceChildren(h("h1", {}, "Processing queue"),
@@ -221,7 +242,7 @@ async function queuePage() {
       ...(cards.length ? cards : [h("p", { class: "muted" }, "Nothing queued yet.")]));
   };
   await draw();
-  timer = setInterval(() => { if (openLog === null) draw().catch(() => {}); }, 3000);
+  timer = setInterval(() => { draw().then(refreshLog).catch(() => {}); }, 3000);
 }
 
 // ---- stats --------------------------------------------------------------------------------

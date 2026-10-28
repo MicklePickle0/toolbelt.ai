@@ -31,6 +31,12 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
             current frame), stat sheet (any sets combined, pipeline or hand labels).
             Checked on the real DB at desktop width; phone layout still to check on a phone.
       - [ ] Upload a video from the phone, or a YouTube/Drive link (yt-dlp), into the manifest.
+      - [x] Progress in the queue (2026-10-28): bars for the whole job (steps weighted by
+            `app.step_weights`) and the running step (parsed from its "n/total" lines,
+            with minutes left); the log refreshes live with a text bar on top. Detection
+            prints a progress line at least every 20 s, track_camera as frame n/total.
+      - [ ] Measured: `pakmen-black_set1` (first job from the app, 2026-10-28): find_play
+            kept 91% of the video; ball detection 8.5-8.8 frames/s (~65 min for the set).
       - [x] Browser calibration (2026-10-28, owner: don't expect auto line detection on
             high-school gym floors). Calibrate page per video: pick a frame (exact, via
             ffmpeg seek, ~0.7 s at 1080p), press-and-drag with a magnifier to place the

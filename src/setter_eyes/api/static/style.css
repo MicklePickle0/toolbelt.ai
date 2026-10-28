@@ -76,3 +76,8 @@ pre.log { white-space: pre-wrap; word-break: break-all; font-size: 12px; max-hei
          background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px;
          max-width: calc(100% - 32px); }
 .picker { width: 100%; }
+.bar { position: relative; height: 22px; border-radius: 6px; background: var(--chip);
+       border: 1px solid var(--line); overflow: hidden; margin-top: 4px; }
+.bar .fill { position: absolute; inset: 0 auto 0 0; background: var(--accent); opacity: 0.35; }
+.bar span { position: relative; padding: 0 8px; font-size: 12px; line-height: 22px;
+            white-space: nowrap; }

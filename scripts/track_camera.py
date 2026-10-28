@@ -102,8 +102,9 @@ def main() -> int:
                                                [cv2.IMWRITE_JPEG_QUALITY, 92])[1].tobytes()
 
     print(f"tracking {entry.key} from calibrated frame {cal.frame} ({entry.path.name})")
+    total = probe(entry.path).frame_count or "?"
     track = track_video(entry.path, cal, cfg, on_frame=on_frame,
-                        progress=lambda i: print(f"  frame {i}", flush=True))
+                        progress=lambda i: print(f"  frame {i}/{total}", flush=True))
     if later:
         track = reanchor(track, later)
         print(f"later calibrations from frames {[c.applies_from for c in later]}")

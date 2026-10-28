@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -60,19 +61,40 @@ def last_line(path: Path, tail: int = 4096) -> str:
     return lines[-1][:300] if lines else ""
 
 
+_FRACTION = re.compile(r"(\d+)\s*/\s*(\d+)")
+_ETA = re.compile(r"~\s*(\d+(?:\.\d+)?)\s*min left")
+
+
+def parse_progress(line: str) -> tuple[float | None, float | None]:
+    """(share done 0-1, minutes left) from a step's progress line, e.g. "frame 7998:
+    4000/34436 at 8.8/s, ~58 min left" -> (0.116, 58). None where the line doesn't say."""
+    fracs = [(int(a), int(b)) for a, b in _FRACTION.findall(line) if int(b) > 0]
+    frac = next((min(1.0, a / b) for a, b in reversed(fracs) if a <= b), None)
+    eta = _ETA.search(line)
+    return frac, float(eta.group(1)) if eta else None
+
+
+def progress_bar(share: float, width: int = 30) -> str:
+    """[#########---------------------]  30%"""
+    n = round(max(0.0, min(1.0, share)) * width)
+    return f"[{'#' * n}{'-' * (width - n)}] {share:4.0%}"
+
+
 class JobQueue:
     """`is_calibrated(video)` says whether a video has its court calibration. `command(step,
     video)` builds the step's command line (default: this Python on scripts/<step>.py)."""
 
     def __init__(self, log_dir: Path, steps: list[str], needs_calibration: list[str],
                  is_calibrated: Callable[[str], bool], repo_root: Path,
-                 command: Callable[[str, str], list[str]] | None = None):
+                 command: Callable[[str, str], list[str]] | None = None,
+                 step_weights: dict[str, float] | None = None):
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.steps = list(steps)
         self.needs_calibration = set(needs_calibration)
         self.is_calibrated = is_calibrated
         self.repo_root = repo_root
+        self.step_weights = step_weights or {}      # rough share of a job's time per step
         self.command = command or (lambda step, video: [
             sys.executable, "-u", str(repo_root / "scripts" / f"{step}.py"), "--video", video])
         self._lock = threading.Lock()
@@ -155,15 +177,43 @@ class JobQueue:
         return self.log_dir / job.log_name
 
     def snapshot(self) -> list[dict]:
-        """Jobs, newest first, with the running step's latest output line."""
+        """Jobs, newest first, with the running step's latest output line and how far along
+        the step and the whole job are (step_share, share: 0-1, None if unknown)."""
         out = []
         for j in reversed(self.jobs):
             d = asdict(j)
             if j.status == RUNNING:
                 d["progress"] = last_line(self.log_path(j))
             d["step_name"] = j.steps[j.step] if j.step < len(j.steps) else None
+            step_share, eta = (parse_progress(d["progress"]) if j.status == RUNNING
+                               else (None, None))
+            d["step_share"], d["step_eta_min"] = step_share, eta
+            d["share"] = self._share(j, step_share or 0.0)
             out.append(d)
         return out
+
+    def _share(self, job: Job, step_share: float) -> float:
+        """The job's share done, weighting steps by step_weights (unlisted steps: 1)."""
+        if job.status == DONE:
+            return 1.0
+        w = [float(self.step_weights.get(s, 1.0)) for s in job.steps]
+        done = sum(w[:job.step]) + (w[job.step] * step_share if job.step < len(w) else 0.0)
+        return round(done / max(1e-9, sum(w)), 4)
+
+    def progress_text(self, job_id: int) -> str:
+        """A text progress bar for the top of the log view."""
+        d = next(x for x in self.snapshot() if x["id"] == job_id)
+        n = len(d["steps"])
+        lines = [f"job {d['id']} {d['video']}: {d['status']}",
+                 f"all steps  {progress_bar(d['share'])}"]
+        if d["step_name"] and d["status"] in (RUNNING, QUEUED):
+            step = f"step {min(d['step'] + 1, n)}/{n} {d['step_name']}"
+            if d["step_share"] is not None:
+                step += f"  {progress_bar(d['step_share'])}"
+            if d["step_eta_min"] is not None:
+                step += f"  ~{d['step_eta_min']:.0f} min left in this step"
+            lines.append(step)
+        return "\n".join(lines)
 
     # ---- worker --------------------------------------------------------------------------
     def _next(self) -> Job | None:

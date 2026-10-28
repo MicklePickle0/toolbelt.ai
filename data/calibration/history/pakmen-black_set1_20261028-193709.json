@@ -1,0 +1,55 @@
+{
+  "video": "pakmen-black_set1",
+  "method": "auto",
+  "confidence": 0.8674,
+  "needs_review": false,
+  "net_height_m": 2.35,
+  "frame": 1798,
+  "camera": {
+    "width": 1920,
+    "height": 1080,
+    "f": 2082.1973304137678,
+    "k1": -0.4999999960521139,
+    "rvec": [
+      1.0021094430554325,
+      1.7843501917040654,
+      -1.5411339359859322
+    ],
+    "tvec": [
+      -2.4780934866592226,
+      -3.5698175863439863,
+      31.700864477907384
+    ],
+    "centre_m": [
+      -25.028,
+      19.853,
+      1.815
+    ],
+    "hfov_deg": 49.5
+  },
+  "support": {
+    "inliers": 921,
+    "visible": 1037,
+    "support": 0.8881,
+    "chance": 0.1567,
+    "lines_found": [
+      "end_near",
+      "attack_near",
+      "centre",
+      "attack_far",
+      "end_far",
+      "side_left",
+      "side_right",
+      "net_top",
+      "net_bottom",
+      "antenna_left",
+      "antenna_right"
+    ],
+    "confidence": 0.8674
+  },
+  "clicks": {},
+  "line_clicks": {},
+  "reprojection_rms_px": null,
+  "applies_from": null,
+  "saved_at": "2026-10-28T14:21:10+00:00"
+}

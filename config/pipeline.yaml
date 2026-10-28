@@ -417,6 +417,10 @@ app:
   # wrong while scoring high (Durham Attack, 2026-10-28), so every video is tapped in the app.
   accept_auto_calibration: false
   calibration_frame_width: 1920   # px, frames shown on the calibration page
+  # Rough share of a job's time per step, for the queue's overall progress bar (unlisted: 1).
+  # From pakmen-black_set1 (1080p, 2026-10-28): ball ~60 min, people ~20, camera ~10.
+  step_weights: {detect_ball: 60, detect_people: 20, track_camera: 10, find_play: 2,
+                 check_blocks: 2}
   clip_width: 1280         # px, rally clips for review
   clip_pad_s: 2.0          # clip margin around a rally
   log_dir: data/outputs/logs/jobs

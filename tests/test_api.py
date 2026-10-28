@@ -177,3 +177,15 @@ def test_an_automatic_fit_does_not_count_as_calibrated(client, tmp_path):
     assert cal["method"] == "auto" and not cal["usable"]
     assert not client.app.state.jobs.is_calibrated("v1")
     assert json.loads((tmp_path / "cal" / "v1.json").read_text())["method"] == "auto"
+
+
+def test_progress_from_a_step_line(tmp_path):
+    assert jb.parse_progress("  frame 7998: 4000/34436 at 8.8/s, ~58 min left") == \
+        pytest.approx((4000 / 34436, 58.0))
+    assert jb.parse_progress("  frame 3000/75351")[0] == pytest.approx(3000 / 75351)
+    assert jb.parse_progress("saved 12 rallies") == (None, None)
+    assert jb.progress_bar(0.5, width=10) == "[#####-----]  50%"
+    q = jb.JobQueue(tmp_path, ["a", "b"], [], lambda v: True, tmp_path,
+                    step_weights={"a": 3, "b": 1})
+    job = jb.Job(1, "v1", ["a", "b"], status=jb.RUNNING, step=1)
+    assert q._share(job, 0.5) == pytest.approx(3.5 / 4)
