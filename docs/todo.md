@@ -15,7 +15,9 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
 - [ ] **P0 Speed: ~30 min per 1080p set.** Measured 2026-10-28, `pakmen-black_set1` 5:00-7:00,
       no play spans: ball detection with following 8.6 frames/s = 452 s for 120 s of video
       (3.8x real time, ~75 min for a 20-min set); following only cut passes 9 -> 6 per frame
-      (62% of frames scanned in full: the detector is unsure at this new gym).
+      (62% of frames scanned in full: the detector is unsure at this new gym). Full search
+      6.1 frames/s (604 s, ~100 min a set); people 29.2 frames/s (135 s, ~22 min a set).
+      So ~100 min a set today, ~3x off the target.
       People at 10 Hz, TensorRT/fp16, fewer/larger tiles at 1080p (may need retraining at
       DA scale), play spans.
 - [ ] **P0 Web app on the desktop, reachable from the laptop/phone** (Tailscale, owner
