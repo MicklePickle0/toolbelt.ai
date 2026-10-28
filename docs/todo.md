@@ -21,9 +21,20 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
       People at 10 Hz, TensorRT/fp16, fewer/larger tiles at 1080p (may need retraining at
       DA scale), play spans.
 - [ ] **P0 Web app on the desktop, reachable from the laptop/phone** (Tailscale, owner
-      installs; PC set to never sleep, auto-start): upload or link a video, browser
-      calibration (tap 6-8 court points), processing queue with progress, review queue,
-      stat sheet, clips.
+      installs; PC set to never sleep, auto-start).
+      - [x] Skeleton (2026-10-28): `scripts/serve_app.py`, FastAPI (`src/setter_eyes/api/`)
+            + a plain JS page (no build step). Videos page (calibration, caches, job
+            state), processing queue (`api/jobs.py`: one video at a time, logs, cancel,
+            resume; stops before `track_ball` when there is no calibration, so detection
+            can run while the owner calibrates), rally review (same saving as the
+            Streamlit UI, review queue first, clip with frame stepping, add touch at the
+            current frame), stat sheet (any sets combined, pipeline or hand labels).
+            Checked on the real DB at desktop width; phone layout still to check on a phone.
+      - [ ] Upload a video from the phone, or a YouTube/Drive link (yt-dlp), into the manifest.
+      - [ ] Browser calibration (tap 6-8 court points on a still).
+      - [ ] Clips per stat; one-key point us/them on the review page.
+      - [ ] Pass average in the stat sheet: pipeline rallies have no pass scores yet
+            (only aces count, as 0), so it reads 0.0 until passes are scored.
 - [ ] **P0 Calibration confidence**: auto calibration gave 0.87 on a wrong fit (far
       wall/net) at the DA gyms; make the confidence honest so the app asks for taps.
 - [ ] **P0 DA footage processed end to end** (10 of 12 sets downloaded, 1080p59.94;

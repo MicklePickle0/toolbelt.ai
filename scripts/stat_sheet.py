@@ -17,16 +17,7 @@ import csv
 
 from setter_eyes import config, db
 from setter_eyes.db.read import load_rallies, video_keys
-from setter_eyes.stats.sheet import stat_rows
-
-COLUMNS = ["serves", "aces", "service_errors", "attacks", "kills", "attack_errors",
-           "hitting_eff", "receptions", "pass_n", "pass_avg", "reception_errors", "digs",
-           "free_ball_passes", "sets", "blocks", "block_points", "ball_handling_errors"]
-SHORT = {"serves": "Srv", "aces": "Ace", "service_errors": "SE", "attacks": "Att",
-         "kills": "K", "attack_errors": "AE", "hitting_eff": "Eff", "receptions": "Rec",
-         "pass_n": "PassN", "pass_avg": "PassAvg", "reception_errors": "RE", "digs": "Dig",
-         "free_ball_passes": "FBP", "sets": "Set", "blocks": "Blk",
-         "block_points": "BlkPt", "ball_handling_errors": "BHE"}
+from setter_eyes.stats.sheet import COLUMNS, SHORT, stat_rows
 
 
 def main() -> int:

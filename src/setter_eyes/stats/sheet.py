@@ -29,6 +29,16 @@ from setter_eyes.stats.passing import passing_average, receptions
 
 SKIP = ("replay", "not_a_rally")
 
+# Stat sheet columns in order, and their short headers (scripts/stat_sheet.py, the app).
+COLUMNS = ["serves", "aces", "service_errors", "attacks", "kills", "attack_errors",
+           "hitting_eff", "receptions", "pass_n", "pass_avg", "reception_errors", "digs",
+           "free_ball_passes", "sets", "blocks", "block_points", "ball_handling_errors"]
+SHORT = {"serves": "Srv", "aces": "Ace", "service_errors": "SE", "attacks": "Att",
+         "kills": "K", "attack_errors": "AE", "hitting_eff": "Eff", "receptions": "Rec",
+         "pass_n": "PassN", "pass_avg": "PassAvg", "reception_errors": "RE", "digs": "Dig",
+         "free_ball_passes": "FBP", "sets": "Set", "blocks": "Blk",
+         "block_points": "BlkPt", "ball_handling_errors": "BHE"}
+
 
 _CREDIT = {  # (outcome, did we win) -> (which of our touches, stat)
     ("kill", True): ("attack", "kills"),

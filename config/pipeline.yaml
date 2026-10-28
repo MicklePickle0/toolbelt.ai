@@ -399,3 +399,16 @@ activity:
     min_span_s: 1.0          # less motion than this in a joined span is noise
     check_lead_s: 1.0        # find_play.py's check: labelled rallies covered from this long
                              # before their start (the toss) to their end
+
+# Web app (scripts/serve_app.py): processing queue, review, stat sheet in the browser.
+app:
+  # Pipeline steps a processing job runs, in order (scripts/<step>.py --video KEY), as in
+  # scripts/process_videos.ps1. find_rallies twice: check_blocks needs its point winners.
+  steps: [find_play, detect_ball, detect_people, track_ball, track_people, find_rallies,
+          check_blocks, find_rallies]
+  # Steps from the first of these on need the court calibration: a job without one stops
+  # there ("needs calibration") and is resumed once the video is calibrated.
+  needs_calibration: [track_ball, track_people, find_rallies, check_blocks]
+  clip_width: 1280         # px, rally clips for review
+  clip_pad_s: 2.0          # clip margin around a rally
+  log_dir: data/outputs/logs/jobs

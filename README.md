@@ -45,6 +45,21 @@ pytest
 ruff check .
 ```
 
+## Web app
+
+Videos and their processing queue, rally review and the stat sheet in a browser (phone
+or laptop). Needs the `app` extra.
+
+```bash
+python scripts/serve_app.py                  # http://localhost:8000 on this PC
+python scripts/serve_app.py --host 0.0.0.0   # reachable over Tailscale: http://<pc>:8000
+python scripts/serve_app.py --no-worker      # review and stats only, no processing
+```
+
+No login: only expose it on a private network (Tailscale). Processing runs the
+`app.steps` in `config/pipeline.yaml` one video at a time; logs in `data/outputs/logs/jobs/`.
+The Streamlit review (`scripts/review.py`) still works and saves the same way.
+
 ## Labelled footage
 
 Register videos in `data/manifest.yaml`, label events (CSV) and boxes (COCO), then validate,
