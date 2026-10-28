@@ -11,7 +11,8 @@ Re-writing a video replaces its UNREVIEWED rallies only. Rallies saved in the re
 rallies overlapping one are dropped (also for a rally reviewed as `not_a_rally`, so a
 false rally the reviewer dismissed doesn't come back). Rally numbers then follow time order again.
 
-A video is one set (set 1 unless the manifest's lineups say otherwise).
+A video is one set (set 1 unless the manifest's lineups say otherwise). With a lineup, each
+rally gets its rotation and our serves their server (db/rotation.py).
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import json
 import sqlite3
 from dataclasses import dataclass
 
+from setter_eyes.db.rotation import apply_rotation
 from setter_eyes.labels.importer import upsert_roster
 from setter_eyes.labels.manifest import Manifest, VideoEntry
 
@@ -113,4 +115,5 @@ def write_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry,
                 )
                 n_contacts += 1
         renumber(conn, set_id)
+    apply_rotation(conn, set_id)
     return WriteSummary(game_id, n_rallies, n_contacts, len(kept))

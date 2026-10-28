@@ -183,6 +183,27 @@ Deadline: 16U OVA Fall Classic, Ottawa, 2026-11-06/07. The owner has only a lapt
 5. After Ottawa: Phase B top to bottom, with Phase C alongside (C1 first, so new gyms stop needing labels).
 6. Then Phase D in the order that matters to the owner's coaching.
 
+## Product shape (later; do not build yet)
+Decided 2026-10-27, for further down the road. Perfect the local pipeline first (accuracy,
+identity, stats, exports, speed); no paid cloud hosting (AWS/Azure/GCP) until then. Until
+then, keep the code easy to move later: an API in front of the event DB, video stored apart
+from the code, and processing that runs as a batch job.
+- Hudl/Balltime-style: upload video from any camera (no recording app first), process
+  offline on a GPU worker, view in two front ends over one FastAPI backend and event DB.
+- Coaches: web app for laptop and iPad. Review queue, roster/lineup, stats, exports
+  (DataVolley `.dvw`, CSV, PDF stat sheet, MP4 reels).
+- Players: phone app (a home-screen web app first, native later). Their own touches,
+  highlights, stats, sharing.
+- Clips are time ranges over the original video; cut an MP4 with ffmpeg only on
+  download/share.
+- Players are minors: invite-only teams, consent before clips are shared, coach approval
+  of what players can share. Check the privacy laws that apply.
+- Order: (1) local only, as now; (2) private beta: hosted web app, with the owner's desktop
+  GPU pulling jobs from a queue (no cloud GPU bill); (3) cloud GPU workers, player app,
+  then a capture app that checks camera placement (behind our end line, court in frame).
+- Before paying for cloud GPUs: 1080p input (downscaled on the phone, so uploads are
+  smaller too) and faster inference (see `docs/todo.md`).
+
 ## Working across machines and conversations
 Work happens on a desktop (footage, GPU, `data/`) and a laptop, in separate Claude Code
 conversations that don't see each other. The shared state is the repo, so:

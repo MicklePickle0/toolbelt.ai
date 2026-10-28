@@ -10,6 +10,7 @@ import json
 import sqlite3
 from dataclasses import dataclass
 
+from setter_eyes.db.rotation import apply_rotation
 from setter_eyes.ingest.video import VideoInfo
 from setter_eyes.labels.boxes import BoxLabels
 from setter_eyes.labels.events import RallyLabel
@@ -109,10 +110,11 @@ def import_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry
             for c in r.contacts:
                 conn.execute(
                     "INSERT INTO contacts (rally_id, t, frame, contact_confidence, team, "
-                    "player_id, action, action_confidence, pass_score, pass_confidence, "
-                    "reviewed) VALUES (?, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, 1)",
+                    "player_id, player_confidence, action, action_confidence, pass_score, "
+                    "pass_confidence, reviewed) VALUES (?, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, 1)",
                     (rally_id, c.frame / info.fps, c.frame, c.team,
                      players.get(c.jersey) if c.jersey is not None else None,
+                     1.0 if c.jersey is not None else None,
                      c.action, 1.0 if c.action else None,
                      c.pass_score, 1.0 if c.pass_score is not None else None),
                 )
@@ -133,4 +135,6 @@ def import_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry
                     )
                     n_ball += 1
 
+    for set_id in set_ids.values():
+        apply_rotation(conn, set_id)
     return ImportSummary(game_id, len(set_ids), len(rallies), n_contacts, n_ball)
