@@ -121,6 +121,68 @@ Background and venue variety:
 11. Serve-receive by zone: for each first ball after the serve, record the player, the court zone (1-6, near side) and floor point of the contact, and the 0-4 pass score. Per player: a court map of contact points colored by pass score, plus average score and error rate per zone, so it shows who passes best and worst in each position.
 12. Serve placement: where our serves go on the opponent side, by zone (1-6) as percentages. Show a court map with each serve as a dot (colored by outcome: ace, in play, error) and a heatmap toggle. Landing point comes from the ball's 3D arc (floor crossing or the opponent's first contact). This is the ball only, not far-side player tracking, but far-side depth accuracy is weaker, so keep zones coarse, attach a confidence to each landing point and send low-confidence ones to the review queue.
 
+## Roadmap (agreed 2026-10-28; progress and measurements live in docs/todo.md)
+Deadline: 16U OVA Fall Classic, Ottawa, 2026-11-06/07. The owner has only a laptop and a phone there and wants each day's sets analysed the same day (6-9 sets on day 1). Flow: record each set at 1080p60, upload the file after the set (no live streaming), process it as a batch on the home PC (cloud GPUs as a backup), review and read stats in the web app over Tailscale. Live AI stats are out of scope. (Owner) = only the owner can do it.
+
+**Phase A, Fall Classic minimum (by 2026-11-05):**
+- A1 (Owner) Push after each session; the laptop only sees what is pushed.
+- A2 (Owner) Calibrate the 10 Durham Attack sets by hand (`calibrate.py --manual`); auto calibration fails at those gyms.
+- A3 (Owner) Tailscale on PC, laptop and phone; PC never sleeps; app starts on boot.
+- A4 (Owner) Queue the Durham Attack sets overnight in the app.
+- A5 Browser calibration page (tap 6-8 court points on a still).
+- A6 Honest auto-calibration confidence (a wrong fit scored 0.87), so the app asks for taps.
+- A7 Upload a video or paste a YouTube/Drive link in the app; it joins the manifest.
+- A8 Speed-ups to ~30-40 min per 1080p set (~100 min measured 2026-10-28): people detection at 10 Hz, 2x2 tiles at 1080p (check accuracy, retrain if needed), TensorRT/fp16.
+- A9 (Owner labels) ~50 ball frames from each of 2-3 Durham Attack gyms, then retrain.
+- A10 Third-set side switch: detect the camera move, ask for a second calibration.
+- A11 One-key point us/them and keyboard shortcuts on the review page.
+- A12 Manual stat tracker on the phone, works offline (optional; owner picks the stats).
+- A13 (Owner) Dry run ~2026-11-03/04 from the laptop away from home on Durham Attack sets.
+- A14 (Owner) Recording plan: 1080p60, phone low behind our end line, spare battery, upload after each set.
+
+**Phase B, per-player stats (after Ottawa, or earlier if Phase A goes well):**
+- B1 (Owner) Roster (numbers + names) and each set's starting lineup.
+- B2 Pick the toucher by hands at the ball (RTMPose), not nearest feet (wrong ~1/3 of labelled touches).
+- B3 Jersey-number reading: PARSeq (needs the owner's OK to run torch-hub code) or our own digit model trained on ~300-500 crops the owner tags. Off-the-shelf EasyOCR read ~6/40.
+- B4 Number votes per track; keep the binding when the number is hidden.
+- B5 Re-attach broken tracks by appearance.
+- B6 Rotation state machine and libero swaps.
+- B7 Fix a touch's player in review; one fix relabels the whole track.
+- B8 Pass scores in the pipeline (from the setter's feet).
+
+**Phase C, accuracy and new gyms without labelling:**
+- C1 Self-labelling: confident ball arcs become detector labels; retrain overnight on new footage.
+- C2 Test on a whole held-out gym (Durham Attack); this defines "good enough without labels".
+- C3 Retrain the touch scorer with reviewed rallies.
+- C4 Action stage 2 with pose (dump, free ball vs attack, block).
+- C5 Learned action classifier from corrections.
+- C6 Rest of the dead-ball check (net shake); other courts' balls by size.
+- C7 Serve-only rallies from an off-screen server; better inferred serves.
+- C8 Stuff blocks checked on more footage.
+- C9 Process the 3 remaining Humber sets.
+- C10 Small known issues (mac-chrome_set2 camera jump, camera offsets, line judge marked as a player).
+
+**Phase D, deeper stats and product:**
+- D1 Clips per stat and highlight reels in the app.
+- D2 Combos (setter-to-hitter kill %), trends across games.
+- D3 (Owner decides) How scrappy non-setter second touches are counted.
+- D4 Milestone 11, serve-receive by zone.
+- D5 Milestone 12, serve placement.
+- D6 Milestone 10, setting arcs.
+- D7 DataVolley export.
+- D8 Cloud GPUs (container, job queue, upload bucket; ~$5-10/day), so it doesn't need the home PC.
+- D9 Login, if the app is ever exposed beyond Tailscale.
+- D10 Optional: rename the package/repo to Toolbelt.
+- D11 Practice-footage features (later).
+
+**Order:**
+1. 2026-10-28/29: A1-A4 (owner), A5-A7 (Claude).
+2. 2026-10-30 to 11-01: A8 and A10 (Claude), A9 (owner), then retrain.
+3. 2026-11-02: A11, then A12 if there is time. If still above ~40 min a set, start D8 as the backup.
+4. 2026-11-03/04: A13 dry run, fix what breaks. 2026-11-05: freeze; no new features.
+5. After Ottawa: Phase B top to bottom, with Phase C alongside (C1 first, so new gyms stop needing labels).
+6. Then Phase D in the order that matters to the owner's coaching.
+
 ## Working across machines and conversations
 Work happens on a desktop (footage, GPU, `data/`) and a laptop, in separate Claude Code
 conversations that don't see each other. The shared state is the repo, so:
