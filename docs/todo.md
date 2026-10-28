@@ -4,6 +4,39 @@ Ordered by priority within each section. Scores are from the labelled `titan-ris
 (touches from models that never saw the rally scored). Last updated 2026-10-26, merging
 the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
 
+## Fall Classic, Ottawa, 2026-11-06/07 (deadline)
+
+Owner has only a laptop + phone there; 6-9 sets on day 1, stats wanted by end of day.
+Plan (2026-10-28): record each set on the phone at 1080p60, upload the file after the set
+(not a live stream: gym upload is unreliable and the pipeline needs whole rallies), process
+it as a batch job, look at results in a browser. Live AI stats: not feasible (out of scope).
+Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a backup.
+
+- [ ] **P0 Speed: ~30 min per 1080p set.** Measured 2026-10-28, `pakmen-black_set1` 5:00-7:00,
+      no play spans: ball detection with following 8.6 frames/s = 452 s for 120 s of video
+      (3.8x real time, ~75 min for a 20-min set); following only cut passes 9 -> 6 per frame
+      (62% of frames scanned in full: the detector is unsure at this new gym).
+      People at 10 Hz, TensorRT/fp16, fewer/larger tiles at 1080p (may need retraining at
+      DA scale), play spans.
+- [ ] **P0 Web app on the desktop, reachable from the laptop/phone** (Tailscale, owner
+      installs; PC set to never sleep, auto-start): upload or link a video, browser
+      calibration (tap 6-8 court points), processing queue with progress, review queue,
+      stat sheet, clips.
+- [ ] **P0 Calibration confidence**: auto calibration gave 0.87 on a wrong fit (far
+      wall/net) at the DA gyms; make the confidence honest so the app asks for taps.
+- [ ] **P0 DA footage processed end to end** (10 of 12 sets downloaded, 1080p59.94;
+      Unity Force sets bot-blocked by YouTube, retry). Needs manual calibrations first.
+- [ ] **P1 DA labels** (owner): ~80 ball frames + ~10-20 rallies from 2 DA gyms, then
+      retrain the ball detector and touch scorer; this is also the new-venue test.
+- [ ] **P1 Third-set side switch**: the camera moves with us; detect the move and ask for
+      a new calibration (re-anchored `@f<frame>`).
+- [ ] **P1 Manual stat tracker** in the app (iStatVball-style, works offline on the
+      phone, syncs later). Owner to pick the stats.
+- [ ] **P2 Cloud GPUs** (container + job runner + upload bucket, ~2-3 days): only if the
+      home PC can't reach ~35 min/set by ~2026-11-02.
+- [ ] **Dry run** ~2026-11-03/04: owner on the laptop away from home, full day's flow on DA
+      sets.
+
 ## Now
 
 - [x] **Label `mac-chrome_set1`** (owner): done, 39 rallies, 246 touches, 20 pass scores.
