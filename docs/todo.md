@@ -31,7 +31,17 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
             current frame), stat sheet (any sets combined, pipeline or hand labels).
             Checked on the real DB at desktop width; phone layout still to check on a phone.
       - [ ] Upload a video from the phone, or a YouTube/Drive link (yt-dlp), into the manifest.
-      - [ ] Browser calibration (tap 6-8 court points on a still).
+      - [x] Browser calibration (2026-10-28, owner: don't expect auto line detection on
+            high-school gym floors). Calibrate page per video: pick a frame (exact, via
+            ffmpeg seek, ~0.7 s at 1080p), press-and-drag with a magnifier to place the
+            court points (skip hidden ones), then points along lines, check the court
+            drawn back over the frame, save. Same solve as calibrate.py's click UI
+            (`calibration/solve.py`). Previous calibrations kept in
+            `data/calibration/history/`. Processing can start before calibrating: the job
+            stops at `track_camera` (now in `app.steps`; it was missing, new videos need
+            it) and is resumed from the page. Automatic fits no longer count as calibrated
+            (`app.accept_auto_calibration: false`), which also covers A6 for now.
+            Phone layout still to check on a phone.
       - [ ] Clips per stat; one-key point us/them on the review page.
       - [x] Passing average on a 4- or 3-point scale (a 4 counts as 3), picked on the
             stats page; passes are always stored 0-4.

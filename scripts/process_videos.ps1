@@ -13,8 +13,9 @@ $log = "data\outputs\logs\process_videos.log"
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
 # find_rallies twice: check_blocks needs its point winners, and the second run adds the
 # stuff blocks it found.
-$steps = "find_play", "detect_ball", "detect_people", "track_ball", "track_people",
-         "find_rallies", "check_blocks", "find_rallies"
+# track_camera needs the video calibrated first (web app, or scripts/calibrate.py).
+$steps = "find_play", "detect_ball", "detect_people", "track_camera", "track_ball",
+         "track_people", "find_rallies", "check_blocks", "find_rallies"
 
 foreach ($v in $Videos) {
     foreach ($step in $steps) {

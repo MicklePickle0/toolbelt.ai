@@ -133,3 +133,47 @@ def test_stats_pass_scale_must_be_3_or_4(client):
     assert client.get("/api/stats", params={"videos": "v1", "pass_scale": 3}).json()[
         "pass_scale"] == 3
     assert client.get("/api/stats", params={"videos": "v1", "pass_scale": 5}).status_code == 400
+
+
+def test_calibrate_in_the_browser(client, tmp_path):
+    import cv2
+    import numpy as np
+
+    from test_calibration import MODEL, VIEWS, render
+
+    truth = VIEWS["diagonal"]
+    frames = tmp_path / "cache" / "v1" / "frames"
+    frames.mkdir(parents=True)
+    cv2.imwrite(str(frames / "v1_f000010.jpg"), render(truth))
+    names = ["near_left_corner", "near_right_corner", "near_left_attack", "near_right_attack",
+             "centre_left", "centre_right", "net_tape_left", "net_tape_right"]
+    uv = truth.project(np.array([MODEL.keypoints[n] for n in names]))[0]
+    clicks = {n: [float(u), float(v)] for n, (u, v) in zip(names, uv, strict=True)}
+    body = {"frame": 10, "clicks": clicks,
+            "line_clicks": {}}
+    too_few = {**body, "clicks": dict(list(body["clicks"].items())[:3])}
+    assert client.post("/api/videos/v1/calibration/solve", json=too_few).status_code == 400
+    r = client.post("/api/videos/v1/calibration/solve", json=body).json()
+    assert r["ok"] and r["rms"] < 1.0 and r["overlay"].startswith("data:image/jpeg")
+    assert client.get("/api/videos").json()[0]["calibration"] is None
+    saved = client.post("/api/videos/v1/calibration", json=body).json()
+    assert saved["saved"] and not saved["needs_review"] and saved["rerun_from"] is None
+    cal = client.get("/api/videos").json()[0]["calibration"]
+    assert cal["method"] == "manual" and cal["usable"] and cal["frame"] == 10
+    assert client.app.state.jobs.is_calibrated("v1")
+    # saving again keeps the first one in history (clicks are human work)
+    client.post("/api/videos/v1/calibration", json=body)
+    assert len(list((tmp_path / "cal" / "history").glob("v1_*.json"))) == 1
+    assert client.get("/api/videos/v1/frame/10").headers["content-type"] == "image/jpeg"
+
+
+def test_an_automatic_fit_does_not_count_as_calibrated(client, tmp_path):
+    import json
+
+    from setter_eyes.calibration import Calibration, save
+    from test_calibration import VIEWS
+    save(Calibration("v1", VIEWS["diagonal"], "auto", 0.9, 2.43, frame=1), tmp_path / "cal")
+    cal = client.get("/api/videos").json()[0]["calibration"]
+    assert cal["method"] == "auto" and not cal["usable"]
+    assert not client.app.state.jobs.is_calibrated("v1")
+    assert json.loads((tmp_path / "cal" / "v1.json").read_text())["method"] == "auto"

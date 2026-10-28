@@ -251,6 +251,25 @@ def read_frames(path: str | Path, indices: Iterable[int]) -> Iterator[Frame]:
         cap.release()
 
 
+def grab_frame(path: str | Path, index: int, fps: float) -> np.ndarray:
+    """One frame by index, fast: ffmpeg seeks to the nearest keyframe and decodes from
+    there (read_frames decodes from the start). Exact for constant-frame-rate video: it
+    asks for the first frame at or after a quarter frame before `index`'s timestamp."""
+    if index < 0:
+        raise IndexError(f"negative frame index {index}")
+    if not shutil.which("ffmpeg"):
+        raise RuntimeError("ffmpeg not found on PATH")
+    t = max(0.0, (index - 0.25) / fps)
+    out = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t:.6f}", "-i", str(path),
+                          "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "-"],
+                         capture_output=True, check=False)
+    image = (cv2.imdecode(np.frombuffer(out.stdout, np.uint8), cv2.IMREAD_COLOR)
+             if out.stdout else None)
+    if image is None:
+        raise IndexError(f"no frame {index} in {path}: {out.stderr.decode(errors='replace')}")
+    return image
+
+
 def burst_indices(start: int, end: int, bursts: int, length: int, seed: str) -> list[int]:
     """Frame indices for `bursts` runs of `length` consecutive frames in [start, end).
 

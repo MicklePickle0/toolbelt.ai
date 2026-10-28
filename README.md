@@ -56,7 +56,9 @@ python scripts/serve_app.py --host 0.0.0.0   # reachable over Tailscale: http://
 python scripts/serve_app.py --no-worker      # review and stats only, no processing
 ```
 
-No login: only expose it on a private network (Tailscale). Processing runs the
+Each video is calibrated on its Calibrate page (tap the court points on a frame); processing
+waits for it before following the camera. No login: only expose it on a private network
+(Tailscale). Processing runs the
 `app.steps` in `config/pipeline.yaml` one video at a time; logs in `data/outputs/logs/jobs/`.
 The Streamlit review (`scripts/review.py`) still works and saves the same way.
 

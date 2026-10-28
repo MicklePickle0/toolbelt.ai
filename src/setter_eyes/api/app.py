@@ -4,24 +4,38 @@ in a browser on the laptop or phone. Run: python scripts/serve_app.py
 Everything reads and writes the event DB (paths.db_path), the same as the Streamlit review
 (ui/review.py does the saving, so corrections are logged the same way). The page itself is
 static/index.html + app.js; this module is the JSON API under /api.
+
+Calibration is part of processing: the owner taps the court points on a frame in the
+browser (calibration/solve.py, the same solve as scripts/calibrate.py's click UI). An
+automatic fit only counts when `app.accept_auto_calibration` is on: on high-school gym
+floors it is often wrong while looking sure, so by default every video is tapped.
 """
 
 from __future__ import annotations
 
+import base64
+import shutil
 import sqlite3
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import cv2
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from setter_eyes import config, db
+from setter_eyes.calibration import court_model, draw_court, line_mask
 from setter_eyes.calibration import store as cal_store
+from setter_eyes.calibration.lines import LineScorer
+from setter_eyes.calibration.manual import CLICKABLE_LINES, LINE_HINTS
+from setter_eyes.calibration.solve import error_limit_px, manual_calibration, solve_manual
 from setter_eyes.db.read import load_rallies
+from setter_eyes.ingest import frame_filename, grab_frame, probe, write_image
 from setter_eyes.labels import load_manifest
 from setter_eyes.stats.sheet import COLUMNS, SHORT, stat_rows
 from setter_eyes.ui import review as rv
@@ -47,6 +61,9 @@ class Settings:
     clip_pad_s: float = 2.0
     actions: list[str] = field(default_factory=list)
     outcomes: list[str] = field(default_factory=list)
+    output_dir: Path | None = None
+    accept_auto_calibration: bool = False
+    frame_width: int = 1920               # px, frames sent to the calibration page
 
     @classmethod
     def from_config(cls) -> Settings:
@@ -56,7 +73,9 @@ class Settings:
                    config.repo_path(p["manifest_path"]), config.repo_path(p["calibration_dir"]),
                    config.repo_path(p["cache_dir"]), config.repo_path(a["log_dir"]),
                    a["steps"], a["needs_calibration"], a["clip_width"], a["clip_pad_s"],
-                   labels["actions"], labels["outcomes"])
+                   labels["actions"], labels["outcomes"], config.repo_path(p["output_dir"]),
+                   a.get("accept_auto_calibration", False),
+                   a.get("calibration_frame_width", 1920))
 
 
 class Touch(BaseModel):
@@ -87,6 +106,12 @@ class Merge(BaseModel):
     other_id: int
 
 
+class Clicks(BaseModel):
+    frame: int
+    clicks: dict[str, list[float]]
+    line_clicks: dict[str, list[list[float]]] = {}
+
+
 class NewJob(BaseModel):
     video: str
     from_step: str | None = None
@@ -100,16 +125,21 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     s = settings or Settings.from_config()
     app = FastAPI(title="Toolbelt")
 
+    def usable(cal) -> bool:
+        return cal is not None and (cal.method == "manual" or s.accept_auto_calibration)
+
     def calibration(video: str) -> dict | None:
         cal = cal_store.load(video, s.calibration_dir)
         if cal is None:
             return None
         extra = len(cal_store.load_segments(video, s.calibration_dir))
         return {"method": cal.method, "confidence": cal.confidence,
-                "needs_review": cal.needs_review, "extra_segments": extra}
+                "needs_review": cal.needs_review, "extra_segments": extra,
+                "usable": usable(cal), "frame": cal.frame,
+                "rms_px": cal.reprojection_rms_px}
 
     jobs = JobQueue(s.log_dir, s.steps, s.needs_calibration,
-                    lambda v: cal_store.load(v, s.calibration_dir) is not None,
+                    lambda v: usable(cal_store.load(v, s.calibration_dir)),
                     config.REPO_ROOT)
     app.state.jobs = jobs
     if start_worker:
@@ -278,6 +308,124 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 raise HTTPException(400, "rallies are from different sets")
             rv.merge_rallies(c, rally_id, body.other_id)
         return {"ok": True}
+
+    # ---- calibration -----------------------------------------------------------------------
+    def _entry(key: str):
+        try:
+            return manifest().video(key)
+        except KeyError as e:
+            raise HTTPException(404, str(e)) from e
+
+    def _full_frame(key: str, index: int):
+        """The exact frame at full resolution, cached like the click UI's frames."""
+        path = s.cache_dir / key / "frames" / frame_filename(key, index)
+        if path.exists():
+            return cv2.imread(str(path))
+        entry = _entry(key)
+        if not entry.path.exists():
+            raise HTTPException(404, "the video isn't on this machine")
+        try:
+            image = grab_frame(entry.path, index, probe(entry.path).fps)
+        except IndexError as e:
+            raise HTTPException(400, str(e)) from e
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_image(path, image)
+        return image
+
+    def _cached_frames(key: str) -> list[int]:
+        out = []
+        for f in (s.cache_dir / key / "frames").glob(f"{key}_f*.jpg"):
+            tail = f.stem.rsplit("_f", 1)[-1]
+            if tail.isdigit():
+                out.append(int(tail))
+        return sorted(out)
+
+    @app.get("/api/videos/{key}/calibration")
+    def calibration_info(key: str) -> dict:
+        entry = _entry(key)
+        if not entry.path.exists():
+            raise HTTPException(404, "the video isn't on this machine")
+        info = probe(entry.path)
+        cal = cal_store.load(key, s.calibration_dir)
+        model = court_model(entry.net_height_m)
+        current = None if cal is None else {
+            "frame": cal.frame, "method": cal.method, "confidence": cal.confidence,
+            "needs_review": cal.needs_review, "usable": usable(cal),
+            "clicks": cal.clicks, "line_clicks": cal.line_clicks,
+            "rms_px": cal.reprojection_rms_px}
+        return {"video": key, "width": info.width, "height": info.height, "fps": info.fps,
+                "duration": info.duration, "net_height_m": entry.net_height_m,
+                "keypoints": list(model.keypoints), "lines": list(CLICKABLE_LINES),
+                "line_hints": LINE_HINTS, "cached_frames": _cached_frames(key),
+                "current": current,
+                "camera_tracked": (s.calibration_dir / f"{key}_track.npz").exists()}
+
+    @app.get("/api/videos/{key}/frame/{index}")
+    def calibration_frame(key: str, index: int) -> FileResponse:
+        small = s.cache_dir / key / "calib_web" / f"f{index:06d}_{s.frame_width}.jpg"
+        if not small.exists():
+            image = _full_frame(key, index)
+            f = min(1.0, s.frame_width / image.shape[1])
+            small.parent.mkdir(parents=True, exist_ok=True)
+            write_image(small, cv2.resize(image, None, fx=f, fy=f, interpolation=cv2.INTER_AREA),
+                        jpeg_quality=92)
+        return FileResponse(small, media_type="image/jpeg")
+
+    def _solve(key: str, body: Clicks):
+        entry = _entry(key)
+        image = _full_frame(key, body.frame)
+        h, w = image.shape[:2]
+        cfg = config.load("court")["calibration"]
+        model = court_model(entry.net_height_m)
+        mask, scale = line_mask(image, cfg)
+        scorer = LineScorer(mask, scale, model, cfg)
+        try:
+            solved = solve_manual(w, h, model, cfg, body.clicks, body.line_clicks, scorer)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        except Exception as e:  # noqa: BLE001 - a bad set of clicks can fail the solver
+            raise HTTPException(400, f"could not solve these points: {e}") from e
+        return image, model, cfg, scorer, solved
+
+    def _overlay(image, cam, model, label: str) -> bytes:
+        out = draw_court(image, cam, model, label)
+        f = min(1.0, s.frame_width / out.shape[1])
+        out = cv2.resize(out, None, fx=f, fy=f, interpolation=cv2.INTER_AREA)
+        return cv2.imencode(".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, 88])[1].tobytes()
+
+    @app.post("/api/videos/{key}/calibration/solve")
+    def calibration_solve(key: str, body: Clicks) -> dict:
+        image, model, cfg, _, solved = _solve(key, body)
+        limit = error_limit_px(cfg, image.shape[1])
+        jpg = _overlay(image, solved.camera, model,
+                       f"{key}  points {solved.rms:.1f}px  lines {solved.line_rms:.1f}px")
+        return {"rms": round(solved.rms, 2), "line_rms": round(solved.line_rms, 2),
+                "limit_px": round(limit, 2), "ok": solved.worst_rms <= limit,
+                "n_points": solved.n_points, "n_line": solved.n_line,
+                "overlay": "data:image/jpeg;base64," + base64.b64encode(jpg).decode("ascii")}
+
+    @app.post("/api/videos/{key}/calibration")
+    def calibration_save(key: str, body: Clicks) -> dict:
+        image, model, cfg, scorer, solved = _solve(key, body)
+        cal = manual_calibration(key, body.frame, image.shape[1], model, cfg, solved,
+                                 body.clicks, body.line_clicks,
+                                 scorer.evaluate(solved.camera).to_dict())
+        old = s.calibration_dir / f"{key}.json"
+        if old.exists():                      # clicks are human work: keep the previous one
+            history = s.calibration_dir / "history"
+            history.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(old, history / f"{key}_{time.strftime('%Y%m%d-%H%M%S')}.json")
+        cal_store.save(cal, s.calibration_dir)
+        if s.output_dir is not None:
+            out = s.output_dir / "calibration" / f"{key}.jpg"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_bytes(_overlay(image, cal.camera, model,
+                                     f"{key}  f{cal.frame}  manual  {cal.confidence:.2f}"))
+        stale = (s.calibration_dir / f"{key}_track.npz").exists()
+        return {"saved": True, "needs_review": cal.needs_review,
+                "rms_px": cal.reprojection_rms_px,
+                # the camera track, and everything after it, was built on the old calibration
+                "rerun_from": "track_camera" if stale and "track_camera" in s.steps else None}
 
     # ---- processing queue ------------------------------------------------------------------
     @app.get("/api/jobs")

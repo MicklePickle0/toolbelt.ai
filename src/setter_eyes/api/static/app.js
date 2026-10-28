@@ -102,11 +102,13 @@ async function route() {
   const { parts, params } = parseHash();
   const page = parts[0] || "videos";
   document.querySelectorAll("nav a").forEach(a =>
-    a.classList.toggle("on", a.dataset.nav === (page === "review" ? "videos" : page)));
+    a.classList.toggle("on", a.dataset.nav ===
+      (page === "review" || page === "calibrate" ? "videos" : page)));
   try {
     if (page === "queue") await queuePage();
     else if (page === "stats") await statsPage(params);
     else if (page === "review") await reviewPage(+parts[1], parts[2] ? +parts[2] : null, params);
+    else if (page === "calibrate") await calibratePage(decodeURIComponent(parts[1]), params);
     else await videosPage();
   } catch (e) {
     view.replaceChildren(errorBox(e));
@@ -137,10 +139,12 @@ async function videosPage() {
 
 function videoCard(v) {
   const cal = v.calibration;
+  const calibrated = cal && cal.usable;
   const calChip = !cal ? h("span", { class: "chip bad" }, "not calibrated")
-    : h("span", { class: "chip " + (cal.method === "manual" ? "good" : "warn") },
-        `calibration: ${cal.method} ${cal.confidence.toFixed(2)}` +
-        (cal.method === "manual" ? "" : " (check)"));
+    : !calibrated ? h("span", { class: "chip bad" }, "auto fit only: tap the court")
+    : h("span", { class: "chip " + (cal.needs_review ? "warn" : "good") },
+        `calibrated` + (cal.rms_px ? ` (${cal.rms_px} px)` : "") +
+        (cal.needs_review ? ", check it" : ""));
   const steps = Object.entries(v.cache).map(([k, ok]) =>
     h("span", { class: "chip " + (ok ? "good" : "") }, (ok ? "✓ " : "· ") + k));
   const job = v.job;
@@ -149,6 +153,9 @@ function videoCard(v) {
     `job ${job.id}: ${label(job.status)}` + (job.step_name ? `, ${job.step_name}` : "") +
     (job.status === "running" && job.progress ? ` · ${job.progress}` : "")) : null;
   const buttons = h("div", { class: "row" },
+    v.has_video ? h("button", { class: calibrated ? "" : "primary", onclick: () => {
+      location.hash = `#/calibrate/${v.key}`; } }, calibrated ? "Recalibrate" : "Calibrate")
+      : null,
     v.set_id ? h("button", { class: "primary", onclick: () => {
       location.hash = `#/review/${v.set_id}`; } },
       `Review (${v.reviewed}/${v.rallies})`) : null,
