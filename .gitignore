@@ -28,6 +28,7 @@ data/**
 data/labels/**/*.jpg
 data/labels/**/*.png
 !data/calibration/**
+!data/rosters/**
 models/**
 !models/**/
 !models/.gitkeep

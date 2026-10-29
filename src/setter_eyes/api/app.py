@@ -29,6 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from setter_eyes import config, db
+from setter_eyes import rosters as rost
 from setter_eyes.calibration import court_model, draw_court, line_mask
 from setter_eyes.calibration import store as cal_store
 from setter_eyes.calibration.lines import LineScorer
@@ -65,6 +66,7 @@ class Settings:
     accept_auto_calibration: bool = False
     frame_width: int = 1920               # px, frames sent to the calibration page
     step_weights: dict = field(default_factory=dict)
+    rosters_dir: Path | None = None
 
     @classmethod
     def from_config(cls) -> Settings:
@@ -76,7 +78,8 @@ class Settings:
                    a["steps"], a["needs_calibration"], a["clip_width"], a["clip_pad_s"],
                    labels["actions"], labels["outcomes"], config.repo_path(p["output_dir"]),
                    a.get("accept_auto_calibration", False),
-                   a.get("calibration_frame_width", 1920), a.get("step_weights", {}))
+                   a.get("calibration_frame_width", 1920), a.get("step_weights", {}),
+                   config.repo_path(p["rosters_dir"]))
 
 
 class Touch(BaseModel):
@@ -111,6 +114,25 @@ class Clicks(BaseModel):
     frame: int
     clicks: dict[str, list[float]]
     line_clicks: dict[str, list[list[float]]] = {}
+
+
+class PlayerIn(BaseModel):
+    number: int
+    name: str
+    height: str | float | None = None      # cm, or feet and inches (6'2")
+    position: str | None = None
+    libero: bool = False
+
+
+class RosterIn(BaseModel):
+    name: str
+    season: str | None = None
+    notes: str | None = None
+    players: list[PlayerIn] = []
+
+
+class RosterChoice(BaseModel):
+    roster: str | None = None
 
 
 class NewJob(BaseModel):
@@ -154,6 +176,16 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         finally:
             c.close()
 
+    def sync_rosters() -> None:
+        if s.rosters_dir is not None:
+            with conn() as c:
+                rost.sync_db(c, s.rosters_dir)
+
+    try:
+        sync_rosters()                          # the DB copy follows the files (e.g. after a pull)
+    except rost.RosterError as e:
+        print(f"rosters not synced: {e}")
+
     def manifest():
         return load_manifest(s.manifest_path)
 
@@ -169,6 +201,9 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     def videos() -> list[dict]:
         with conn() as c:
             in_db = {g["video_key"]: g for g in rv.games(c)}
+        assigned = rost.load_assignments(s.rosters_dir) if s.rosters_dir else {}
+        roster_names = ({k: r.name for k, r in rost.load_all(s.rosters_dir).items()}
+                        if s.rosters_dir else {})
         latest = {}
         for j in jobs.snapshot():                       # newest first
             latest.setdefault(j["video"], j)
@@ -184,6 +219,8 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 "cache": {name: (cache / f).exists() for name, f in (
                     ("play", "play_spans.json"), ("ball", "ball_detections.npz"),
                     ("people", "person_detections.npz"), ("rallies", "rallies.json"))},
+                "roster": {"slug": assigned[v.key], "name": roster_names.get(assigned[v.key])}
+                if v.key in assigned else None,
                 "set_id": g["set_id"] if g else None,
                 "rallies": g["rallies"] if g else 0,
                 "reviewed": g["reviewed"] if g else 0,
@@ -202,8 +239,14 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         if not path.exists():
             raise HTTPException(404, f"no {source} DB ({path.name})")
         keys = [k for k in videos.split(",") if k]
-        names = {r.number: r.name for r in manifest().roster}
+        names = {r.number: (r.name, None) for r in manifest().roster}
         with conn(path) as c:
+            if keys:
+                for row in c.execute(
+                        "SELECT p.jersey_number, p.name, p.height_cm FROM players p JOIN games g "
+                        f"ON p.team_id = g.team_id WHERE g.video_key IN "
+                        f"({','.join('?' * len(keys))})", keys):
+                    names[row[0]] = (row[1], row[2])
             rallies = [r for k in keys for r in load_rallies(c, k)]
             counts = c.execute(
                 f"SELECT COUNT(r.id), COALESCE(SUM(r.reviewed), 0) FROM rallies r "
@@ -215,7 +258,8 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         rows = stat_rows(rallies, config.load("pass_scale"), pass_scale)
         team = rows.pop("team")
         unknown = rows.pop(None, None)
-        players = [{"player": str(k), "name": names.get(int(k)), **v}
+        players = [{"player": str(k), "name": names.get(int(k), (None, None))[0],
+                    "height_cm": names.get(int(k), (None, None))[1], **v}
                    for k, v in sorted(rows.items(), key=lambda kv: int(kv[0]))]
         if unknown:
             players.append({"player": "?", "name": "player not known", **unknown})
@@ -427,6 +471,70 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 "rms_px": cal.reprojection_rms_px,
                 # the camera track, and everything after it, was built on the old calibration
                 "rerun_from": "track_camera" if stale and "track_camera" in s.steps else None}
+
+    # ---- rosters ---------------------------------------------------------------------------
+    def _rosters_dir() -> Path:
+        if s.rosters_dir is None:
+            raise HTTPException(404, "rosters aren't set up (paths.rosters_dir)")
+        return s.rosters_dir
+
+    @app.get("/api/rosters")
+    def roster_list() -> list[dict]:
+        d = _rosters_dir()
+        assigned = rost.load_assignments(d)
+        return [{"slug": r.slug, "name": r.name, "season": r.season, "notes": r.notes,
+                 "players": [vars(p) for p in sorted(r.players, key=lambda p: p.number)],
+                 "videos": sorted(k for k, v in assigned.items() if v == r.slug)}
+                for r in rost.load_all(d).values()]
+
+    @app.post("/api/rosters")
+    def roster_new(body: RosterIn) -> dict:
+        d = _rosters_dir()
+        try:
+            slug = rost.slugify(body.name)
+        except rost.RosterError as e:
+            raise HTTPException(400, str(e)) from e
+        if slug in rost.load_all(d):
+            raise HTTPException(400, f"there is already a roster called {body.name!r}")
+        return roster_save(slug, body)
+
+    @app.put("/api/rosters/{slug}")
+    def roster_save(slug: str, body: RosterIn) -> dict:
+        d = _rosters_dir()
+        try:
+            players = [rost.RosterPlayer(p.number, p.name.strip(), rost.parse_height(p.height),
+                                         (p.position or "").strip() or None, p.libero)
+                       for p in body.players]
+            rost.save(d, rost.Roster(slug, body.name.strip() or slug,
+                                     (body.season or "").strip() or None,
+                                     (body.notes or "").strip() or None, players))
+            sync_rosters()
+        except rost.RosterError as e:
+            raise HTTPException(400, str(e)) from e
+        return {"slug": slug}
+
+    @app.delete("/api/rosters/{slug}")
+    def roster_delete(slug: str) -> dict:
+        try:
+            rost.delete(_rosters_dir(), slug)
+        except rost.RosterError as e:
+            raise HTTPException(400, str(e)) from e
+        return {"deleted": slug}
+
+    @app.put("/api/videos/{key}/roster")
+    def video_roster(key: str, body: RosterChoice) -> dict:
+        d = _rosters_dir()
+        _entry(key)
+        assigned = rost.load_assignments(d)
+        if body.roster is None:
+            assigned.pop(key, None)
+        elif body.roster not in rost.load_all(d):
+            raise HTTPException(404, f"no roster {body.roster!r}")
+        else:
+            assigned[key] = body.roster
+        rost.save_assignments(d, assigned)
+        sync_rosters()
+        return {"video": key, "roster": body.roster}
 
     # ---- processing queue ------------------------------------------------------------------
     @app.get("/api/jobs")

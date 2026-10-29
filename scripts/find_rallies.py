@@ -166,7 +166,8 @@ def main() -> int:
     if not args.no_db and not args.oof:
         conn = db.connect(config.repo_path(paths["db_path"]))
         w = write_video(conn, manifest, entry, fps, [r.to_dict() for r in rallies],
-                        [c.to_dict() for c in contacts])
+                        [c.to_dict() for c in contacts],
+                        rosters_dir=config.repo_path(paths["rosters_dir"]))
         conn.close()
         print(f"event DB: {w.rallies} rallies, {w.contacts} touches written, {w.kept_reviewed} "
               f"reviewed rallies kept -> {paths['db_path']}")

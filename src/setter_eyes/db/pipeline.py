@@ -20,7 +20,9 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
+from pathlib import Path
 
+from setter_eyes import rosters as rost
 from setter_eyes.db.rotation import apply_rotation
 from setter_eyes.labels.importer import upsert_roster
 from setter_eyes.labels.manifest import Manifest, VideoEntry
@@ -61,10 +63,14 @@ def renumber(conn: sqlite3.Connection, set_id: int) -> None:
 
 def write_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry, fps: float,
                 rallies: list[dict], contacts: list[dict],
-                calibration: dict | None = None) -> WriteSummary:
-    """rallies / contacts: the rallies.json / contacts.json lists from find_rallies.py."""
+                calibration: dict | None = None,
+                rosters_dir: Path | None = None) -> WriteSummary:
+    """rallies / contacts: the rallies.json / contacts.json lists from find_rallies.py.
+    rosters_dir: data/rosters; the video's assigned roster (rosters.py), if any, is its team."""
+    team_id = rost.team_for_video(conn, rosters_dir, entry.key)
     with conn:
-        team_id = upsert_roster(conn, manifest)
+        manifest_team = upsert_roster(conn, manifest)
+        team_id = team_id if team_id is not None else manifest_team
         game_id = _game(conn, team_id, entry, fps, calibration)
         set_number = min(entry.lineups) if entry.lineups else 1
         lineup = entry.lineups.get(set_number)

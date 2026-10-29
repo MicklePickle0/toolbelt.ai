@@ -53,6 +53,11 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
             stats page; passes are always stored 0-4.
       - [ ] Pass average in the stat sheet: pipeline rallies have no pass scores yet
             (only aces count, as 0), so it reads 0.0 until passes are scored.
+- [x] **B1 Rosters** (2026-10-28): several rosters (number, name, height in cm or 6'2",
+      position, libero), each applied to the videos it played, on the app's Rosters page.
+      Files in git (`data/rosters/<slug>.yaml`, `assignments.yaml`), copied into the event
+      DB (schema v6: `teams.roster_slug`, `players.height_cm` / `position`) so they can be
+      queried; touches credited to a jersey follow when a video's roster changes.
 - [ ] **P0 Calibration confidence**: auto calibration gave 0.87 on a wrong fit (far
       wall/net) at the DA gyms; make the confidence honest so the app asks for taps.
 - [ ] **P0 DA footage processed end to end** (10 of 12 sets downloaded, 1080p59.94;
@@ -72,8 +77,16 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
          different player (e.g. a "#12 receive" crop shows #1). Pick the toucher better
          (hands/pose at the ball, not the nearest feet) before numbers can help.
       Roster in the manifest is still empty (`roster: []`): owner to add numbers + names.
-- [ ] **P1 Third-set side switch**: the camera moves with us; detect the move and ask for
-      a new calibration (re-anchored `@f<frame>`).
+- [ ] **P1 Third-set side switch** (A10). Seen in `pakmen-black_set3` and `416-knight_set3`
+      (2026-10-28): one continuous recording; at ~8 points the phone is carried to the other
+      end (30-45 s of walls and floor), then a completely different view (other corner, other
+      wall); our team stays on the near side. Needs a second full calibration, not a nudge.
+      Found cheaply before any calibration: tiny grey thumbnails at 2 Hz, each compared with
+      the first and the last minute's views: pakmen-black_set3 is view A until 4:20 (0.8-1.0
+      similarity), the walk at 4:30-4:50 (~0), view B from 5:00 (0.9-1.0); ~47 s CPU for a
+      10-min set. Plan: detect views in the first step, ask for one calibration per view on
+      the Calibrate page (the second applies from where view B settles), treat the walk as
+      no camera (no rallies there), track the camera per view.
 - [ ] **P1 Manual stat tracker** in the app (iStatVball-style, works offline on the
       phone, syncs later). Owner to pick the stats.
 - [ ] **P2 Cloud GPUs** (container + job runner + upload bucket, ~2-3 days): only if the

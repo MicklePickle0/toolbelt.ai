@@ -6,8 +6,12 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS teams (
     id          INTEGER PRIMARY KEY,
-    name        TEXT NOT NULL UNIQUE
+    name        TEXT NOT NULL UNIQUE,
+    -- A roster from data/rosters/<roster_slug>.yaml (rosters.py); NULL for the manifest's team.
+    roster_slug TEXT,
+    season      TEXT
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_teams_roster ON teams(roster_slug);
 
 CREATE TABLE IF NOT EXISTS players (
     id            INTEGER PRIMARY KEY,
@@ -15,6 +19,8 @@ CREATE TABLE IF NOT EXISTS players (
     jersey_number INTEGER NOT NULL,
     name          TEXT NOT NULL,
     is_libero     INTEGER NOT NULL DEFAULT 0,
+    height_cm     REAL,
+    position      TEXT,                       -- free text from the roster: S, OH, MB, ...
     UNIQUE (team_id, jersey_number)
 );
 

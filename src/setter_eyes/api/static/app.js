@@ -109,6 +109,7 @@ async function route() {
     else if (page === "stats") await statsPage(params);
     else if (page === "review") await reviewPage(+parts[1], parts[2] ? +parts[2] : null, params);
     else if (page === "calibrate") await calibratePage(decodeURIComponent(parts[1]), params);
+    else if (page === "rosters") await rostersPage(parts[1]);
     else await videosPage();
   } catch (e) {
     view.replaceChildren(errorBox(e));
@@ -172,7 +173,10 @@ function videoCard(v) {
       buttons),
     h("div", { class: "row", style: "margin-top:8px" },
       v.has_video ? null : h("span", { class: "chip" }, "video not on this machine"),
-      calChip, ...steps),
+      calChip,
+      h("a", { class: "chip " + (v.roster ? "good" : ""), href: "#/rosters" +
+        (v.roster ? `/${v.roster.slug}` : "") }, v.roster ? `roster: ${v.roster.name}` : "no roster"),
+      ...steps),
     jobLine);
 }
 
@@ -304,7 +308,8 @@ function statsBody(st, src) {
   const rows = [{ player: "TEAM", ...t, team: true }, ...st.players].map(r =>
     h("tr", { class: r.team ? "team" : "" },
       h("td", {}, r.team ? "TEAM" : (r.player === "?" ? "#?" : "#" + r.player) +
-        (r.name && r.player !== "?" ? " " + r.name : "")),
+        (r.name && r.player !== "?" ? " " + r.name : "") +
+        (r.height_cm ? ` (${Math.round(r.height_cm)} cm)` : "")),
       ...cols.map(c => h("td", {}, fmt(r[c])))));
   const note = src === "pipeline"
     ? `${st.counted} rallies counted; ${st.reviewed} of ${st.rallies} reviewed by you. ` +

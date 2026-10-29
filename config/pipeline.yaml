@@ -7,6 +7,8 @@ paths:
   # One JSON per video (camera pose, clicks, confidence). Not a cache: manual
   # clicks are human work.
   calibration_dir: data/calibration
+  # Rosters (players, numbers, heights) and which videos they played: human work, in git.
+  rosters_dir: data/rosters
   db_path: data/setter_eyes.db
   # Ground truth from hand-labelled footage. Same schema as db_path but a
   # separate file, so pipeline output can be evaluated against it.

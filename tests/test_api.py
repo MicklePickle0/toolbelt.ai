@@ -47,7 +47,8 @@ def client(tmp_path):
     s = Settings(tmp_path / "events.db", tmp_path / "labels.db", mpath, tmp_path / "cal",
                  tmp_path / "cache", tmp_path / "logs", ["find_play"], [], 640, 2.0,
                  ["serve", "receive", "set", "attack", "dig", "block"],
-                 ["kill", "attack_error", "ace", "service_error", "other", "replay"])
+                 ["kill", "attack_error", "ace", "service_error", "other", "replay"],
+                 rosters_dir=tmp_path / "rosters")
     return TestClient(create_app(s, start_worker=False))
 
 
@@ -189,3 +190,22 @@ def test_progress_from_a_step_line(tmp_path):
                     step_weights={"a": 3, "b": 1})
     job = jb.Job(1, "v1", ["a", "b"], status=jb.RUNNING, step=1)
     assert q._share(job, 0.5) == pytest.approx(3.5 / 4)
+
+
+def test_rosters_in_the_app(client, tmp_path):
+    body = {"name": "Venom 16U", "season": "2026-27", "players": [
+        {"number": 7, "name": "Seven", "height": "6'2\"", "position": "OH"},
+        {"number": 6, "name": "Libby", "height": 170, "libero": True}]}
+    slug = client.post("/api/rosters", json=body).json()["slug"]
+    assert slug == "venom-16u"
+    assert client.post("/api/rosters", json=body).status_code == 400     # same name twice
+    bad = {**body, "players": [{"number": 7, "name": "A"}, {"number": 7, "name": "B"}]}
+    assert client.put(f"/api/rosters/{slug}", json=bad).status_code == 400
+    assert client.put("/api/videos/v1/roster", json={"roster": slug}).status_code == 200
+    r = client.get("/api/rosters").json()[0]
+    assert r["videos"] == ["v1"] and r["players"][1]["height_cm"] == pytest.approx(188, abs=1)
+    assert client.get("/api/videos").json()[0]["roster"]["name"] == "Venom 16U"
+    assert (tmp_path / "rosters" / "venom-16u.yaml").exists()
+    assert client.delete(f"/api/rosters/{slug}").status_code == 400      # still applied
+    client.put("/api/videos/v1/roster", json={"roster": None})
+    assert client.delete(f"/api/rosters/{slug}").status_code == 200

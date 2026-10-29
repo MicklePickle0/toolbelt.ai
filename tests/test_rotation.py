@@ -124,5 +124,5 @@ def test_v4_db_gains_player_confidence(tmp_path):
     conn = db.connect(path)
     cols = {r[1] for r in conn.execute("PRAGMA table_info(contacts)")}
     assert "player_confidence" in cols
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
     assert isinstance(conn, sqlite3.Connection)
