@@ -12,7 +12,23 @@ Plan (2026-10-28): record each set on the phone at 1080p60, upload the file afte
 it as a batch job, look at results in a browser. Live AI stats: not feasible (out of scope).
 Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a backup.
 
-- [ ] **P0 Speed: ~30 min per 1080p set.** Measured 2026-10-28, `pakmen-black_set1` 5:00-7:00,
+- [x] **Speed-ups, 2026-10-29: ~2 h -> ~33 min per 20-min 1080p set.** Measured on a 1080p
+      copy of titan-rise_set1 (`titan-rise_set1_1080p`, same frames, labels apply; 18.4 min):
+      find_play 68 s, ball 21 min (25.9 frames/s), people 5.8 min, track_ball 68 s,
+      track_people 19 s, rallies 3 s; camera tracking now runs alongside the detectors.
+      1. Ball tiles by video width (`detect.ball_tiling`): 1080p 2x2 at 960 (3.6x; 93.5%
+         of the 3x3@1280 sure balls on pakmen-black_set1); 4K unchanged.
+      2. People at 10 Hz (`detect.person_sample_hz`), filled in to 30 Hz by track_people
+         (`sparse_detection_cfg`); touch scorer retrained on 10 Hz tracks. OOF on both
+         labelled sets: within noise (titan actions 73 -> 71%, mac 78 -> 79%).
+         Lower person input size: 98-99% of people but only ~15% faster, not used.
+      3. track_camera alongside detection in the app queue (`app.background_steps`).
+      Accuracy, scorer trained on mac-chrome only, titan 4K -> 1080p fast: touches found
+      83 -> 79%, real 92 -> 94%, actions 75 -> 69%, rallies 41 -> 38/42 (false 5 -> 2),
+      winner 35/41 -> 31/38, outcome (inferred winner) 13/41 -> 16/38. Part of the loss is
+      1080p itself (not separated). Next: retrain the ball detector at 1080p scale (labels
+      downscaled, no new labelling), then a smaller model / TensorRT if needed.
+- [ ] **P0 Speed: ~30 min per 1080p set.** (superseded by the entry above; history:) Measured 2026-10-28, `pakmen-black_set1` 5:00-7:00,
       no play spans: ball detection with following 8.6 frames/s = 452 s for 120 s of video
       (3.8x real time, ~75 min for a 20-min set); following only cut passes 9 -> 6 per frame
       (62% of frames scanned in full: the detector is unsure at this new gym). Full search

@@ -219,3 +219,34 @@ def test_split_from_the_review_page(client):
     rows = client.get(f"/api/sets/{set_id}/rallies").json()["rallies"]
     assert [r["id"] for r in rows] == [rid, new]
     assert len(client.get(f"/api/rallies/{new}").json()["touches"]) == 1
+
+
+def test_camera_tracking_runs_alongside_detection(tmp_path):
+    (tmp_path / "scripts").mkdir()
+    for step in ("detect", "camera", "after"):
+        (tmp_path / "scripts" / f"{step}.py").write_text("", encoding="utf-8")
+    ran = []
+
+    def command(step, video):
+        ran.append(step)
+        sleep = {"detect": 0.6, "camera": 0.3, "after": 0.0}[step]
+        return [sys.executable, "-c", f"import time; time.sleep({sleep}); print('{step} ok')"]
+
+    q = jb.JobQueue(tmp_path / "logs", ["detect", "camera", "after"], ["camera"],
+                    lambda v: True, tmp_path, command=command,
+                    background_steps=["camera"], background_during=["detect"])
+    job = q.submit("v1")
+    t0 = time.time()
+    q.run_job(job)
+    assert job.status == jb.DONE and ran == ["camera", "detect", "after"]
+    assert time.time() - t0 < 1.5                      # camera ran during detect, not after
+    log = q.log_path(job).read_text(encoding="utf-8")
+    assert "camera (ran alongside detection, exit 0)" in log and "camera ok" in log
+    assert not q.log_path(job).with_suffix(".bg.log").exists()
+    # not calibrated: no background start; the job stops at the camera step as before
+    q2 = jb.JobQueue(tmp_path / "logs2", ["detect", "camera"], ["camera"], lambda v: False,
+                     tmp_path, command=command, background_steps=["camera"],
+                     background_during=["detect"])
+    j2 = q2.submit("v2")
+    q2.run_job(j2)
+    assert j2.status == jb.NEEDS_CALIBRATION

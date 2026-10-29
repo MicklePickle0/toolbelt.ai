@@ -31,9 +31,9 @@ import json
 from pathlib import Path
 
 from setter_eyes import config
-from setter_eyes.datasets.tiles import parse_grid
 from setter_eyes.detect.follow import BallFollower
 from setter_eyes.detect.tiled import (
+    ball_tiling,
     canonical_names,
     load_detector,
     model_ids,
@@ -86,10 +86,12 @@ def main() -> int:
         else:
             print(f"no {spans_path}: detecting every frame (run scripts/find_play.py first "
                   "to skip the time between rallies)")
-    model = load_detector(args.model, args.checkpoint, det_cfg["ball_input_resolution"],
-                          fp16=True)
+    grid, resolution = ball_tiling(det_cfg, info.width)
+    overlap = ds["tile_overlap"]
+    settings.append(f"tiling={grid[0]}x{grid[1]}@{resolution}")
+    print(f"tiles: {grid[0]}x{grid[1]} at {resolution} px ({info.width} px wide video)")
+    model = load_detector(args.model, args.checkpoint, resolution, fp16=True)
     ball = {i: c for i, c in canonical_names(model_ids(model, True)).items() if c == "ball"}
-    grid, overlap = parse_grid(ds["tiles"]), ds["tile_overlap"]
 
     def detect_windows(bgr, windows):
         return [(box, score) for _, box, score in
@@ -115,7 +117,7 @@ def main() -> int:
                  keep=keep, settings=" ".join(settings),
                  meta={"video": entry.key, "checkpoint": str(args.checkpoint)})
     if follower is not None:
-        print(f"ball following: {follower.summary()} (9 without it)")
+        print(f"ball following: {follower.summary()} ({grid[0] * grid[1]} without it)")
     return 0
 
 

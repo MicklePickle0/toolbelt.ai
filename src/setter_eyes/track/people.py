@@ -117,10 +117,27 @@ class PeopleTracks:
         return out
 
 
+def sparse_detection_cfg(cfg: dict, step: int) -> dict:
+    """Cleaning settings counted in detections for people detected every `step`th sample
+    (10 Hz against the 30 Hz grid: step 3): the windows over detected rows shrink so they
+    cover the same time. Filling and smoothing run on the full grid and are unchanged."""
+    if step <= 1:
+        return cfg
+    c = dict(cfg["clean"])
+    odd = lambda n: max(1, round(n / step)) | 1           # noqa: E731 - centred windows
+    c["outlier_window"] = odd(c["outlier_window"])
+    c["jump_window_samples"] = odd(c["jump_window_samples"])
+    c["jump_pad_samples"] = max(0, round(c["jump_pad_samples"] / step))
+    return {**cfg, "clean": c}
+
+
 def track_people(frames: np.ndarray, det_frame: np.ndarray, det_box: np.ndarray,
                  det_score: np.ndarray, fps: float, camera_at, ref: Camera, image_height: int,
-                 cfg: dict) -> PeopleTracks:
-    """frames: every processed frame (in order); camera_at(frame) -> that frame's Camera."""
+                 cfg: dict, grid: np.ndarray | None = None) -> PeopleTracks:
+    """frames: every processed frame (in order); camera_at(frame) -> that frame's Camera.
+    grid: the sample frames the tracks are given on (default: `frames`). People detected
+    at 10 Hz are tracked there and filled in (interpolated, source 1) on the 30 Hz grid
+    the ball and touches use."""
     import supervision as sv
     from trackers import ByteTrackTracker
 
@@ -164,7 +181,7 @@ def track_people(frames: np.ndarray, det_frame: np.ndarray, det_box: np.ndarray,
                             np.zeros((0, 2)), np.zeros((0, 2)), empty.astype(bool),
                             empty.astype(np.int8), empty)
     cat = {k: np.concatenate(v) for k, v in rows.items()}
-    return clean_tracks(cat, np.asarray(frames), fps, cfg)
+    return clean_tracks(cat, np.asarray(frames if grid is None else grid), fps, cfg)
 
 
 def clean_tracks(cat: dict, frames: np.ndarray, fps: float, cfg: dict) -> PeopleTracks:

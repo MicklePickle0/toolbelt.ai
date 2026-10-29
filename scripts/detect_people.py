@@ -53,7 +53,10 @@ def main() -> int:
         return [(box, score) for _, box, score in
                 predict_full(model, bgr, args.threshold, keep)]
 
-    stride = args.stride or config.sample_stride(info.fps)
+    # People move slower than the ball: detected at detect.person_sample_hz (10 Hz) and
+    # filled in to the 30 Hz grid by track_people.py.
+    every = max(1, round(pipeline["video"]["sample_hz"] / det_cfg["person_sample_hz"]))
+    stride = args.stride or config.sample_stride(info.fps) * every
     detect_video(entry.path, out, detect, stride=stride, threshold=args.threshold,
                  fps=info.fps, total_frames=info.frame_count or int(info.duration * info.fps),
                  first=round(args.start * info.fps),

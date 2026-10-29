@@ -100,6 +100,18 @@ videos:
     opponent: Titan Rise
     played_on: 2026-10-17
     split: test
+  # 1080p copy of titan-rise_set1 (ffmpeg scale, same 59.94 fps and 66126 frames, so its
+  # labels apply): checks the pipeline at 1080p against labels (2026-10-29). A test copy,
+  # not another game: process it with find_rallies --no-db so it stays out of the stats.
+  - id: titan-rise_set1_1080p
+    path: raw/humber/Titan Rise Set 1 (1080p test).mp4
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Titan Rise
+    played_on: 2026-10-17
+    split: test
+    labels: {events: labels/titan-rise_set1/events.csv}
   - id: titan-rise_set2
     path: raw/humber/Titan Rise Set 2.webm
     venue: Humber

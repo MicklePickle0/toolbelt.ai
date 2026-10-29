@@ -73,7 +73,15 @@ models:
 detect:
   person_min_confidence: 0.4
   ball_min_confidence: 0.25
-  ball_input_resolution: 1280
+  ball_input_resolution: 1280   # training / labelling tools; detection uses ball_tiling
+  # Tiles per frame and model input size, by video width (first entry the width reaches).
+  # The detector was trained on 3x3 tiles of 4K at 1280. At 1080p, 2x2 tiles at 960 show
+  # the ball at about that size: 3.6x faster than 3x3 at 1280 (22.6 vs 6.3 frames/s), with
+  # 93.5% of its sure balls (pakmen-black_set1 5:00-5:27, 2026-10-29). 2x2 at 768: 5.0x,
+  # 92%; the whole frame at 1280: 5.8x but 72%.
+  ball_tiling:
+    - {min_width: 3000, grid: 3x3, resolution: 1280}
+    - {min_width: 0, grid: 2x2, resolution: 960}
   # Whole-video ball detection (scripts/detect_ball.py) samples at video.sample_hz.
   # Tiles: datasets.tiles at the video's own resolution, so a tile covers the same share
   # of the frame (and the ball the same share of the model input) at 1080p as at 4K.
@@ -100,7 +108,10 @@ detect:
   # `person` class on whole frames (players are large; tiles would cut them). 1280 finds
   # slightly more small/far people than the native 576 for ~8 ms more per frame.
   person_model: medium
-  person_input_resolution: 1280
+  person_input_resolution: 1280   # 960/768/640: 98-99% of the people but only ~15% faster
+  # People are detected this often and filled in to video.sample_hz by track_people.py
+  # (3x fewer detector runs than 30 Hz; players move little in 0.1 s).
+  person_sample_hz: 10
   person_store_threshold: 0.3
 
 track:
@@ -437,6 +448,10 @@ app:
   # From pakmen-black_set1 (1080p, 2026-10-28): ball ~60 min, people ~20, camera ~10.
   step_weights: {detect_ball: 60, detect_people: 20, track_camera: 10, find_play: 2,
                  check_blocks: 2}
+  # Processor-only steps started alongside the GPU detectors (calibrated videos): the
+  # camera tracking (~6 min a set) then costs no extra time.
+  background_steps: [track_camera]
+  background_during: [detect_ball, detect_people]
   clip_width: 1280         # px, rally clips for review
   clip_pad_s: 2.0          # clip margin around a rally
   log_dir: data/outputs/logs/jobs

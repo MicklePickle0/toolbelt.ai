@@ -9,6 +9,11 @@ Steps that need the court calibration (`app.needs_calibration`) are not started 
 one: the job stops at that step as "needs calibration", the worker goes on with the next
 job, and the job is resumed from that step once the video is calibrated.
 
+A processor-only step (`app.background_steps`, e.g. track_camera) is started alongside
+the GPU steps (`app.background_during`: the detectors) once the video is calibrated, with
+its own log (<job log>.bg.log, copied into the job's log when it ends); when the job
+reaches that step it just waits for it. If it failed, the step runs again normally.
+
 Jobs are kept in <log_dir>/jobs.json, so the list survives a restart; a job that was
 running when the app stopped is shown as interrupted.
 """
@@ -87,7 +92,9 @@ class JobQueue:
     def __init__(self, log_dir: Path, steps: list[str], needs_calibration: list[str],
                  is_calibrated: Callable[[str], bool], repo_root: Path,
                  command: Callable[[str, str], list[str]] | None = None,
-                 step_weights: dict[str, float] | None = None):
+                 step_weights: dict[str, float] | None = None,
+                 background_steps: list[str] | None = None,
+                 background_during: list[str] | None = None):
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.steps = list(steps)
@@ -95,6 +102,9 @@ class JobQueue:
         self.is_calibrated = is_calibrated
         self.repo_root = repo_root
         self.step_weights = step_weights or {}      # rough share of a job's time per step
+        self.background_steps = set(background_steps or [])
+        self.background_during = set(background_during or [])
+        self._bg: subprocess.Popen | None = None
         self.command = command or (lambda step, video: [
             sys.executable, "-u", str(repo_root / "scripts" / f"{step}.py"), "--video", video])
         self._lock = threading.Lock()
@@ -165,6 +175,8 @@ class JobQueue:
                 self._cancel.add(job_id)
                 if self._proc is not None:
                     self._proc.terminate()
+                if self._bg is not None:
+                    self._bg.terminate()
         return job
 
     def get(self, job_id: int) -> Job:
@@ -229,20 +241,60 @@ class JobQueue:
                 continue
             self.run_job(job)
 
+    def _start_background(self, job: Job, i: int) -> tuple[str, subprocess.Popen] | None:
+        """Start the first later background step (calibrated video only), if any."""
+        for step in job.steps[i + 1:]:
+            if step not in self.background_steps:
+                continue
+            if step in self.needs_calibration and not self.is_calibrated(job.video):
+                return None
+            f = self.log_path(job).with_suffix(".bg.log").open("wb")
+            proc = subprocess.Popen(self.command(step, job.video), cwd=self.repo_root,
+                                    stdout=f, stderr=subprocess.STDOUT,
+                                    env={**os.environ, "PYTHONUNBUFFERED": "1"})
+            f.close()                               # the child keeps its own handle
+            with self._lock:
+                self._bg = proc
+            return step, proc
+        return None
+
+    def _join_background(self, job: Job, bg: tuple[str, subprocess.Popen]) -> int:
+        """Wait for the background step; copy its log into the job's. -> exit code."""
+        step, proc = bg
+        code = proc.wait()
+        with self._lock:
+            self._bg = None
+        side = self.log_path(job).with_suffix(".bg.log")
+        with self.log_path(job).open("ab") as f:
+            f.write(f"\n=== {step} (ran alongside detection, exit {code})\n".encode())
+            if side.exists():
+                f.write(side.read_bytes())
+                side.unlink()
+        return code
+
     def run_job(self, job: Job) -> None:
         with self._lock:
             job.status, job.started = RUNNING, time.time()
             self._save()
         log = self.log_path(job)
+        bg = None                                   # (step, process) running alongside
         for i in range(job.step, len(job.steps)):
             step = job.steps[i]
             with self._lock:
                 job.step, job.step_started = i, time.time()
                 self._save()
+            if bg is not None and step == bg[0]:
+                if self._join_background(job, bg) == 0:
+                    bg = None
+                    continue                        # done alongside the detectors
+                bg = None                           # failed: run it again, normally
             if step in self.needs_calibration and not self.is_calibrated(job.video):
+                self._stop_background(job, bg)
                 self._finish(job, NEEDS_CALIBRATION,
                              f"{step} needs the court calibration: calibrate, then resume")
                 return
+            if bg is None and step in self.background_during:
+                bg = self._start_background(job, i)
             with log.open("ab") as f:
                 f.write(f"\n=== {time.strftime('%H:%M:%S')} {step}\n".encode())
                 f.flush()
@@ -256,12 +308,21 @@ class JobQueue:
                     self._proc = None
             if job.id in self._cancel:
                 self._cancel.discard(job.id)
+                self._stop_background(job, bg)
                 self._finish(job, CANCELLED, f"cancelled during {step}")
                 return
             if code != 0:
+                self._stop_background(job, bg)
                 self._finish(job, FAILED, f"{step} exited with {code}: {last_line(log)}")
                 return
+        if bg is not None:
+            self._join_background(job, bg)
         self._finish(job, DONE, None, step=len(job.steps))
+
+    def _stop_background(self, job: Job, bg: tuple[str, subprocess.Popen] | None) -> None:
+        if bg is not None:
+            bg[1].terminate()
+            self._join_background(job, bg)
 
     def _finish(self, job: Job, status: str, error: str | None, step: int | None = None) -> None:
         with self._lock:

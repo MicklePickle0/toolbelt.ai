@@ -67,6 +67,8 @@ class Settings:
     accept_auto_calibration: bool = False
     frame_width: int = 1920               # px, frames sent to the calibration page
     step_weights: dict = field(default_factory=dict)
+    background_steps: list[str] = field(default_factory=list)
+    background_during: list[str] = field(default_factory=list)
     rosters_dir: Path | None = None
     missed_point_gap_s: float = 20.0      # a gap this long before a rally: a point may be missing
 
@@ -88,6 +90,8 @@ class Settings:
                    accept_auto_calibration=a.get("accept_auto_calibration", False),
                    frame_width=a.get("calibration_frame_width", 1920),
                    step_weights=a.get("step_weights", {}),
+                   background_steps=a.get("background_steps", []),
+                   background_during=a.get("background_during", []),
                    rosters_dir=config.repo_path(p["rosters_dir"]),
                    missed_point_gap_s=cfg["rally"].get("missed_point_gap_s", 20.0))
 
@@ -186,7 +190,9 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
 
     jobs = JobQueue(s.log_dir, s.steps, s.needs_calibration,
                     lambda v: usable(cal_store.load(v, s.calibration_dir)),
-                    config.REPO_ROOT, step_weights=s.step_weights)
+                    config.REPO_ROOT, step_weights=s.step_weights,
+                    background_steps=s.background_steps,
+                    background_during=s.background_during)
     app.state.jobs = jobs
     if start_worker:
         jobs.start()

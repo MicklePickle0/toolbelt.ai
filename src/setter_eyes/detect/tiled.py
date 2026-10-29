@@ -58,6 +58,16 @@ def canonical_names(ids: dict[int, str]) -> dict[int, str]:
     return {i: aliases[n.lower()] for i, n in ids.items() if n.lower() in aliases}
 
 
+def ball_tiling(detect_cfg: dict, width: int) -> tuple[tuple[int, int], int]:
+    """(tile grid, model input size) for a video this wide (`detect.ball_tiling`): the
+    first entry whose min_width it reaches."""
+    for t in detect_cfg["ball_tiling"]:
+        if width >= t["min_width"]:
+            cols, rows = (int(v) for v in str(t["grid"]).lower().split("x"))
+            return (cols, rows), int(t["resolution"])
+    raise ValueError(f"no detect.ball_tiling entry for width {width}")
+
+
 def predict_tiled(model, bgr: np.ndarray, grid: tuple[int, int], overlap: float,
                   threshold: float, keep: dict[int, str]) -> list[tuple[str, list[float], float]]:
     """-> [(class, [x1, y1, x2, y2], score)] in full-image pixels."""

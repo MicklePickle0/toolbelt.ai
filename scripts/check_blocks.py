@@ -23,8 +23,14 @@ import numpy as np
 from setter_eyes import config
 from setter_eyes.ball.tracker import BallPath
 from setter_eyes.contacts.blocks import candidates, full_rate_path, second_turn
-from setter_eyes.datasets.tiles import parse_grid, tile_boxes
-from setter_eyes.detect.tiled import canonical_names, load_detector, model_ids, predict_crop
+from setter_eyes.datasets.tiles import tile_boxes
+from setter_eyes.detect.tiled import (
+    ball_tiling,
+    canonical_names,
+    load_detector,
+    model_ids,
+    predict_crop,
+)
 from setter_eyes.ingest import probe
 from setter_eyes.labels import load_manifest
 
@@ -60,10 +66,10 @@ def main() -> int:
         det = cfg["detect"]
         model = load_detector(pipeline["train"]["model"],
                               config.repo_path(pipeline["models"]["ball_detector"]),
-                              det["ball_input_resolution"], fp16=True)
+                              ball_tiling(det, info.width)[1], fp16=True)
         ball = {i: c for i, c in canonical_names(model_ids(model, True)).items() if c == "ball"}
         threshold = det["ball_store_threshold"]
-        grid, overlap = parse_grid(cfg["datasets"]["tiles"]), cfg["datasets"]["tile_overlap"]
+        grid, overlap = ball_tiling(det, info.width)[0], cfg["datasets"]["tile_overlap"]
         _, _, cw, ch = tile_boxes(info.width, info.height, grid, overlap)[0]
         path = BallPath.load(cache / "ball_path.npz")
 
