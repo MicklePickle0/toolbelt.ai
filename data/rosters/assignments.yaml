@@ -1,0 +1,25 @@
+# Which roster each video was played with (video key -> roster file name).
+416-knight_set1: venom-riot
+416-knight_set2: venom-riot
+416-knight_set3: venom-riot
+leaside-panther_set1: venom-riot
+leaside-panther_set2: venom-riot
+mac-chrome_set1: venom-riot
+mac-chrome_set2: venom-riot
+mac-iron_set1: venom-riot
+mac-iron_set2: venom-riot
+mac-platinum_set1: venom-riot
+mac-platinum_set2: venom-riot
+niagara-rtw_set1: venom-riot
+niagara-rtw_set2: venom-riot
+pakmen-black_set1: venom-riot
+pakmen-black_set2: venom-riot
+pakmen-black_set3: venom-riot
+pakmen-gold_set1: venom-riot
+pakmen-gold_set2: venom-riot
+reach-apex_set1: venom-riot
+reach-apex_set2: venom-riot
+titan-rise_set1: venom-riot
+titan-rise_set2: venom-riot
+unity-force_set1: venom-riot
+unity-force_set2: venom-riot

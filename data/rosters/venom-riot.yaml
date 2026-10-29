@@ -1,0 +1,48 @@
+name: Venom Riot
+season: 2026-2027
+players:
+- number: 1
+  name: Matthew Chan
+  height_cm: 183.0
+  position: OPP
+- number: 5
+  name: Evan Duda
+  height_cm: 190.0
+  position: MB
+- number: 6
+  name: Sheldon Luk
+  height_cm: 169.0
+  position: L
+  libero: true
+- number: 10
+  name: Chase Ma
+  height_cm: 169.0
+  position: OH
+- number: 12
+  name: Juha Kim
+  height_cm: 181.0
+  position: OH
+- number: 13
+  name: Taylor Kim
+  height_cm: 182.0
+  position: OH
+- number: 14
+  name: Saleh Ghulaim
+  height_cm: 189.0
+  position: OPP
+- number: 17
+  name: Oliver Wong
+  height_cm: 179.0
+  position: S
+- number: 18
+  name: Basil Lee
+  height_cm: 180.0
+  position: S
+- number: 21
+  name: William Trippen
+  height_cm: 198.0
+  position: MB
+- number: 23
+  name: Rayon Ali
+  height_cm: 184.0
+  position: MB
