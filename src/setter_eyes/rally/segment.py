@@ -327,3 +327,52 @@ def _apply_touch_prior(contacts: list[Contact], members: list[int], cfg: dict) -
         run_team = c.team
         if run > limit + 1:                               # +1: allow one block
             c.confidence = round(c.confidence * cfg["contacts"]["over_limit_penalty"], 3)
+
+
+def merge_close(rallies: list[Rally], contacts: list[Contact], cfg: dict) -> list[Rally]:
+    """One point cut in two: rallies closer than `rally.merge_gap_s` (owner: there are
+    usually 10+ s between points) become one. The first keeps its serve; the second's
+    "serve" was a touch in play (actions are classified afterwards, from the merged rally).
+    The merged rally's confidence is the lower of the two (it goes to review sooner).
+    A rally that starts with a clearly seen serve is never merged in: that is a new point,
+    and a false rally in the downtime would otherwise chain two real points together
+    (labelled: points are always 10.6+ s apart)."""
+    gap = cfg["rally"]["merge_gap_s"]
+    sure = cfg["rally"]["merge_keeps_serve_conf"]
+    out: list[Rally] = []
+    for r in rallies:
+        prev = out[-1] if out else None
+        serve = (contacts[r.serve_contact] if r.serve_contact is not None
+                 and r.serve_contact >= 0 else None)
+        new_point = serve is not None and (serve.entry_serve or serve.confidence >= sure)
+        if prev is not None and r.start_t - prev.end_t < gap and not new_point:
+            prev_seen = prev.serve_contact is not None and prev.serve_contact >= 0
+            if not prev_seen and serve is not None:
+                out[-1] = r                     # no serve, then a serve: downtime, then a point
+                continue
+            if r.serve_contact is not None and r.serve_contact >= 0:
+                contacts[r.serve_contact].serve = False
+                contacts[r.serve_contact].entry_serve = False
+            prev.contacts = sorted(set(prev.contacts) | set(r.contacts))
+            prev.end_t, prev.end_frame = max(prev.end_t, r.end_t), max(prev.end_frame, r.end_frame)
+            prev.end_reason = r.end_reason
+            prev.net_crossings += r.net_crossings
+            prev.confidence = round(min(prev.confidence, r.confidence), 3)
+            continue
+        out.append(r)
+    for i, r in enumerate(out, start=1):
+        r.index = i
+    return out
+
+
+def flag_gaps(rallies: list[Rally], cfg: dict) -> int:
+    """A long gap before a rally may hide a point the pipeline missed: that rally's
+    confidence drops (`rally.missed_point_factor`) so it comes up early in review, where
+    the missed point can be added. Returns how many were flagged."""
+    gap, factor = cfg["rally"]["missed_point_gap_s"], cfg["rally"]["missed_point_factor"]
+    n = 0
+    for prev, r in zip(rallies, rallies[1:], strict=False):
+        if r.start_t - prev.end_t > gap:
+            r.confidence = round(r.confidence * factor, 3)
+            n += 1
+    return n

@@ -148,3 +148,51 @@ def add_stuff_blocks(rallies: list, contacts: list[Contact], checks: dict[int, d
         r.outcome, r.outcome_confidence = outcome, round(conf * r.winner_confidence, 3)
         added += 1
     return added
+
+
+def _insert_after(rallies: list, contacts: list[Contact], ci: int, block: Contact) -> None:
+    """Put `block` straight after contact ci, keeping rally contact indices right."""
+    pos = ci + 1
+    contacts.insert(pos, block)
+    for x in rallies:                           # indices at or after pos move up by one
+        x.contacts = [i + (i >= pos) for i in x.contacts]
+        if x.serve_contact is not None and x.serve_contact >= pos:
+            x.serve_contact += 1
+    r = next(r for r in rallies if ci in r.contacts)
+    r.contacts.insert(r.contacts.index(ci) + 1, pos)
+
+
+def blocks_from_landing(rallies: list, contacts: list[Contact], cfg: dict) -> int:
+    """An attack whose ball next lands on the ATTACKER's own side, away from the net, was
+    almost certainly blocked straight down (owner, 2026-10-28: attackers don't hit into
+    their own court). A ball dropping right under the net is a net ball instead (attack
+    error), so it has to land at least `min_from_net_m` back. Inserts a block by the other
+    side (confidence `confidence`: these go to review) and re-judges the outcome.
+    Needs 3D landing points (floor contacts with ball_xyz). -> blocks added."""
+    s = cfg["contacts"]["landing_block"]
+    added = 0
+    for r in rallies:
+        idx = list(r.contacts)
+        for a, b in zip(idx, idx[1:], strict=False):
+            attack, land = contacts[a], contacts[b]
+            if attack.kind != "touch" or attack.action != "attack" or attack.team is None or \
+                    land.kind != "floor" or land.ball_xyz is None or \
+                    land.t - attack.t > s["max_s"]:
+                continue
+            y = land.ball_xyz[1]                 # + near side (us), - far side (them)
+            own = y >= s["min_from_net_m"] if attack.team == "us" else y <= -s["min_from_net_m"]
+            if not own:
+                continue
+            blocker = "them" if attack.team == "us" else "us"
+            t = attack.t + s["after_attack_s"]
+            fps = attack.frame / attack.t if attack.t > 0 else 30.0
+            _insert_after(rallies, contacts, a, replace(
+                attack, t=round(t, 4), frame=int(round(t * fps)), team=blocker, track_id=-1,
+                ball_xyz=None, confidence=s["confidence"], serve=False, entry_serve=False,
+                action="block", action_confidence=s["confidence"]))
+            added += 1
+            if r.point_winner is not None:
+                outcome, conf = point_outcome("block", blocker, r.point_winner, s["confidence"])
+                r.outcome, r.outcome_confidence = outcome, round(conf * r.winner_confidence, 3)
+            break                                # indices moved; one per rally is plenty
+    return added

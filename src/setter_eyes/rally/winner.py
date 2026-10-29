@@ -15,7 +15,7 @@ has no next serve: winner unknown.
 
 from __future__ import annotations
 
-from setter_eyes.classify.outcome import point_outcome
+from setter_eyes.classify.outcome import rally_outcome
 from setter_eyes.contacts.events import Contact
 from setter_eyes.rally.segment import Rally
 
@@ -40,8 +40,6 @@ def infer_winners(rallies: list[Rally], contacts: list[Contact], cfg: dict) -> N
             r.outcome, r.outcome_confidence = None, 0.0
             continue
         touches = [contacts[i] for i in r.contacts if contacts[i].kind == "touch"]
-        last = touches[-1] if touches else None
-        outcome, conf = point_outcome(last.action if last else None,
-                                      last.team if last else None, r.point_winner,
-                                      last.action_confidence if last else None)
+        outcome, conf = rally_outcome([(c.team, c.action, c.action_confidence) for c in touches],
+                                      r.point_winner)
         r.outcome, r.outcome_confidence = outcome, round(conf * r.winner_confidence, 3)

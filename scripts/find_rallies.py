@@ -36,13 +36,13 @@ from setter_eyes.ball.arcs import Arc
 from setter_eyes.ball.tracker import BallPath
 from setter_eyes.calibration import load as load_calibration
 from setter_eyes.classify.rules import classify_rally, launch_up
-from setter_eyes.contacts.blocks import add_stuff_blocks
+from setter_eyes.contacts.blocks import add_stuff_blocks, blocks_from_landing
 from setter_eyes.contacts.events import Contact, find_contacts
 from setter_eyes.contacts.scorer import TouchScorer, scored_contacts
 from setter_eyes.db.pipeline import write_video
 from setter_eyes.labels import load_manifest
 from setter_eyes.rally.live import PlayerMotion
-from setter_eyes.rally.segment import segment_from_touches, segment_rallies
+from setter_eyes.rally.segment import flag_gaps, merge_close, segment_from_touches, segment_rallies
 from setter_eyes.rally.serve_entry import find_our_serves
 from setter_eyes.rally.winner import infer_winners
 from setter_eyes.track.people import PeopleTracks
@@ -119,6 +119,11 @@ def main() -> int:
         mark_our_serves(contacts, path, fps, entry.key, cfg, paths)
         rallies = segment_from_touches(path, arcs, contacts, g, fps, cfg,
                                        PlayerMotion(people, fps))
+        n = len(rallies)
+        rallies = merge_close(rallies, contacts, cfg)    # one point cut in two
+        print(f"merged {n - len(rallies)} rallies closer than {cfg['rally']['merge_gap_s']} s; "
+              f"{flag_gaps(rallies, cfg)} after a gap over {cfg['rally']['missed_point_gap_s']} s "
+              "(a point may be missing there)")
     else:
         rallies = segment_rallies(path, arcs, contacts, g, fps, cfg)
     for r in rallies:                                  # actions, once the rally is known
@@ -131,6 +136,8 @@ def main() -> int:
                                      strict=True):
             c.action, c.action_confidence = action, conf
     infer_winners(rallies, contacts, cfg)              # who serves next won the point
+    print(f"blocks from the attack landing on the attacker's side: "
+          f"{blocks_from_landing(rallies, contacts, cfg)}")
     checks_path = cache / f"block_checks{suffix}.json"  # scripts/check_blocks.py (GPU)
     if checks_path.exists():
         checks = {c["frame"]: c for c in

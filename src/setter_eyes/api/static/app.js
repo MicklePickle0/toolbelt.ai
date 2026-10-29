@@ -354,7 +354,7 @@ async function reviewPage(setId, rallyId, params) {
     touches: d.touches.map(x => ({ ...x, delete: false })),
     winner: r.point_winner || (["replay", "not_a_rally"].includes(r.outcome) ? r.outcome : null),
     outcome: r.reviewed ? r.outcome : null,
-    serving: r.serving_team, checked: true, suggested: null,
+    serving: r.serving_team, checked: true, suggested: null, endDetail: r.end_detail || null,
   };
   const t0 = () => Math.max(0, r.start_t - S.before);
   const suffix = showAll ? "?all=1" : "";
@@ -434,21 +434,58 @@ async function reviewPage(setId, rallyId, params) {
       toast("Merged"); route(); } },
     `Merge with ${what} #${x.rally_number} (${x.gap_s} s apart)`);
     // Two points counted as one: split where the second point's serve is.
+    // Two points counted as one: split where the second point's serve is. The start / end
+    // as edited here (e.g. widened back) are applied first.
     const split = h("button", { onclick: async () => {
       const t = now();
-      if (!(t > r.start_t + 0.1 && t < r.end_t - 0.1)) {
-        toast("Go to the second point's serve inside this rally first (play or step the clip).",
-          5000);
+      if (!(t > S.start + 0.1 && t < S.end - 0.1)) {
+        toast(t <= S.start ? "That is before this rally starts. For a point the pipeline " +
+          "missed, use \"Missed point\" below (or move the rally's start back first)."
+          : "Go to the second point's serve inside this rally first.", 7000);
         return;
       }
       if (!confirm(`Split this rally at ${clock(t)}? Touches from there on become a new ` +
-        "rally (the second point). Unsaved edits here are lost.")) return;
+        "rally (the second point). Unsaved touch edits here are lost.")) return;
       try {
-        await api(`/rallies/${rallyId}/split`, { body: { t } });
+        await api(`/rallies/${rallyId}/split`, { body: { t, start_t: S.start, end_t: S.end } });
         toast("Split into two rallies; both are in the review queue"); route();
-      } catch (e) { toast(e.message, 5000); }
+      } catch (e) { toast(e.message, 6000); }
     } }, "Split here: a second point starts at this frame");
-    return h("div", { class: "row" }, b(d.prev, "previous"), b(d.next, "next"), split);
+    return h("div", {}, h("div", { class: "row" }, b(d.prev, "previous"), b(d.next, "next"),
+      split), missedBox());
+  }
+
+  // A point the pipeline missed entirely (taken for downtime): mark it in the clip, add it.
+  function missedBox() {
+    const M = { start: null, end: null, serving: null };
+    const box = h("div", { class: "card", style: "margin-top:8px" });
+    const gapNote = d.prev && d.prev.gap_s > META.missed_point_gap_s
+      ? h("div", { class: "small", style: "color:var(--warn)" }, `${d.prev.gap_s} s since the ` +
+        "previous rally: points rarely take that long to start, so one may be missing here.")
+      : null;
+    const draw = () => box.replaceChildren(
+      h("strong", {}, "Missed point in this clip?"),
+      gapNote,
+      h("div", { class: "small muted" }, "Widen the clip (s before / after) to see it, then " +
+        "mark where it starts (the serve) and ends."),
+      h("div", { class: "row", style: "margin-top:6px" },
+        h("button", { onclick: () => { M.start = now(); draw(); } },
+          "Starts here" + (M.start !== null ? ` (${clock(M.start)})` : "")),
+        h("button", { onclick: () => { M.end = now(); draw(); } },
+          "Ends here" + (M.end !== null ? ` (${clock(M.end)})` : "")),
+        seg([["us", "We serve"], ["them", "They serve"]], M.serving, v => { M.serving = v; draw(); }),
+        h("button", { class: "primary", disabled: M.start === null || M.end === null,
+          onclick: async () => {
+            if (M.end <= M.start) { toast("It has to end after it starts."); return; }
+            try {
+              const res = await api(`/sets/${setId}/rallies`, { body: {
+                start_t: M.start, end_t: M.end, serving_team: M.serving } });
+              toast("Added: now set its touches, winner and how it ended, and save");
+              location.hash = `#/review/${setId}/${res.id}?all=1`;
+            } catch (e) { toast(e.message, 7000); }
+          } }, "Add missed point")));
+    draw();
+    return box;
   }
 
   // touches
@@ -503,6 +540,10 @@ async function reviewPage(setId, rallyId, params) {
       scored ? h("div", { style: "margin-top:8px" },
         h("div", { class: "small" }, `How (suggested from the last touch: ${label(S.suggested)})`),
         select(outcomes, S.outcome || S.suggested, v => { S.outcome = v; })) : null,
+      scored ? h("div", { style: "margin-top:8px" },
+        h("div", { class: "small" }, "Ended abruptly? (a whistle the video can't show)"),
+        select(META.end_details, S.endDetail, v => { S.endDetail = v; },
+          "no: the ball decided it")) : null,
       h("div", { class: "small", style: "margin-top:8px" }, "Serving team"),
       seg([["us", "Us"], ["them", "Them"]], S.serving, v => { S.serving = v; drawPoint(); }),
       h("label", { class: "check small", style: "margin-top:8px" },
@@ -531,7 +572,8 @@ async function reviewPage(setId, rallyId, params) {
       await api(`/rallies/${rallyId}/review`, { body: {
         winner: S.winner, outcome: scored ? (S.outcome || S.suggested) : null,
         serving_team: S.serving, start_t: S.start, end_t: S.end,
-        touches: S.touches, touches_checked: S.checked } });
+        touches: S.touches, touches_checked: S.checked,
+        end_detail: scored ? S.endDetail : null } });
     } catch (e) { toast(e.message, 5000); return; }
     toast("Saved");
     if (goNext && nextId) location.hash = `#/review/${setId}/${nextId}${suffix}`;

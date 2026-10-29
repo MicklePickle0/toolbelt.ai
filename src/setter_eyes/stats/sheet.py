@@ -6,7 +6,9 @@ receive 0-4, overpass = 0, aces = 0). Replays and dismissed rallies count for no
 
 Credit for how a point ended follows the rally's outcome (labelled, or set in review)
 and goes to the touch of ours it is about:
-  kill (we won)               our last attack            -> kills
+  kill (we won)               our last ball sent over    -> kills (attack, or a free ball /
+                                                              overpass / dump they couldn't
+                                                              control: outcome.rally_outcome)
   attack error (we lost)      our last attack            -> attack errors
   block point (we won)        our last block             -> block points
   block point (they won)      our last attack (blocked)  -> attack errors
@@ -15,6 +17,7 @@ and goes to the touch of ours it is about:
   service error (they won)    our serve                  -> service errors
   reception error (they won)  our receive                -> reception errors
   ball-handling error (they won)  our last touch         -> ball-handling errors
+Assists: our set straight before a kill by our attack.
 Hitting efficiency = (kills - attack errors) / attacks.
 """
 
@@ -23,6 +26,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 
+from setter_eyes.classify.outcome import SENT_OVER
 from setter_eyes.labels.events import ContactLabel, RallyLabel
 from setter_eyes.stats.actions import stat_actions
 from setter_eyes.stats.passing import passing_average, receptions
@@ -31,17 +35,18 @@ SKIP = ("replay", "not_a_rally")
 
 # Stat sheet columns in order, and their short headers (scripts/stat_sheet.py, the app).
 COLUMNS = ["serves", "aces", "service_errors", "attacks", "kills", "attack_errors",
-           "hitting_eff", "receptions", "pass_n", "pass_avg", "reception_errors", "digs",
+           "hitting_eff", "assists", "receptions", "pass_n", "pass_avg", "reception_errors", "digs",
            "free_ball_passes", "sets", "blocks", "block_points", "ball_handling_errors"]
 SHORT = {"serves": "Srv", "aces": "Ace", "service_errors": "SE", "attacks": "Att",
-         "kills": "K", "attack_errors": "AE", "hitting_eff": "Eff", "receptions": "Rec",
+         "kills": "K", "attack_errors": "AE", "hitting_eff": "Eff", "assists": "Ast",
+         "receptions": "Rec",
          "pass_n": "PassN", "pass_avg": "PassAvg", "reception_errors": "RE", "digs": "Dig",
          "free_ball_passes": "FBP", "sets": "Set", "blocks": "Blk",
          "block_points": "BlkPt", "ball_handling_errors": "BHE"}
 
 
 _CREDIT = {  # (outcome, did we win) -> (which of our touches, stat)
-    ("kill", True): ("attack", "kills"),
+    ("kill", True): (SENT_OVER, "kills"),
     ("attack_error", False): ("attack", "attack_errors"),
     ("block_point", True): ("block", "block_points"),
     ("block_point", False): ("attack", "attack_errors"),
@@ -61,8 +66,19 @@ def _decider(r: RallyLabel) -> tuple[ContactLabel | None, str | None]:
     action, stat = rule
     ours = [(c, a) for c, a in stat_actions(r) if c.team == "us"]
     if action is not None:
-        ours = [(c, a) for c, a in ours if a == action]
+        wanted = action if isinstance(action, tuple) else (action,)
+        ours = [(c, a) for c, a in ours if a in wanted]
     return (ours[-1][0], stat) if ours else (None, None)
+
+
+def _assist(r: RallyLabel, killer: ContactLabel) -> ContactLabel | None:
+    """Our set straight before our killing attack (the setter's assist), if any."""
+    acts = stat_actions(r)
+    i = next((k for k, (c, _) in enumerate(acts) if c is killer), None)
+    if i is None or acts[i][1] != "attack" or i == 0:
+        return None
+    c, a = acts[i - 1]
+    return c if c.team == "us" and a == "set" else None
 
 
 def stat_rows(rallies: Iterable[RallyLabel], scale: dict, pass_top: int = 4) -> dict:
@@ -87,6 +103,10 @@ def stat_rows(rallies: Iterable[RallyLabel], scale: dict, pass_top: int = 4) -> 
         if c is not None:
             for key in ("team", c.jersey):
                 by[key][stat] += 1
+            setter = _assist(r, c) if stat == "kills" else None
+            if setter is not None:
+                for key in ("team", setter.jersey):
+                    by[key]["assists"] += 1
     team = by["team"]
     us = sum(r.point_winner == "us" for r in rallies)
     them = sum(r.point_winner == "them" for r in rallies)

@@ -25,7 +25,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from setter_eyes.classify.outcome import point_outcome
+from setter_eyes.classify.outcome import rally_outcome
 from setter_eyes.db.pipeline import renumber
 
 REPLAY = "replay"
@@ -86,9 +86,7 @@ def suggest_outcome(edits: list[TouchEdit], winner: str | None,
         return None
     kept = sorted((e for e in edits if not e.delete and (end_t is None or e.t <= end_t)),
                   key=lambda e: e.t)
-    last = kept[-1] if kept else None
-    return point_outcome(last.action if last else None, last.team if last else None,
-                         winner)[0]
+    return rally_outcome([(e.team, e.action, None) for e in kept], winner)[0]
 
 
 def _log(conn, table: str, row_id: int, field: str, old, new, author: str) -> None:
@@ -103,8 +101,10 @@ def _log(conn, table: str, row_id: int, field: str, old, new, author: str) -> No
 def save_review(conn: sqlite3.Connection, rally_id: int, fps: float, winner: str | None,
                 outcome: str | None, serving_team: str | None, end_t: float,
                 edits: list[TouchEdit], touches_checked: bool,
-                author: str = "owner", start_t: float | None = None) -> None:
-    """winner: 'us' | 'them' | REPLAY | NOT_A_RALLY. start_t: None keeps the start."""
+                author: str = "owner", start_t: float | None = None,
+                end_detail: str | None = None) -> None:
+    """winner: 'us' | 'them' | REPLAY | NOT_A_RALLY. start_t: None keeps the start.
+    end_detail: why the point ended when it wasn't the ball (labels.yaml end_details)."""
     point_winner = winner if winner in ("us", "them") else None
     if winner in (REPLAY, NOT_A_RALLY):
         outcome = winner
@@ -149,14 +149,16 @@ def save_review(conn: sqlite3.Connection, rally_id: int, fps: float, winner: str
                           int(touches_checked), e.id))
         for field, new in (("point_winner", point_winner), ("outcome", outcome),
                            ("serving_team", serving_team), ("start_t", round(start_t, 3)),
-                           ("end_t", round(end_t, 3))):
+                           ("end_t", round(end_t, 3)), ("end_detail", end_detail)):
             old_v = round(old[field], 3) if field in ("start_t", "end_t") else old[field]
             _log(conn, "rallies", rally_id, field, old_v, new, author)
         conn.execute("UPDATE rallies SET point_winner = ?, point_winner_source = ?, "
                      "outcome = ?, outcome_confidence = 1.0, serving_team = ?, start_t = ?, "
-                     "start_frame = ?, end_t = ?, end_frame = ?, reviewed = 1 WHERE id = ?",
+                     "start_frame = ?, end_t = ?, end_frame = ?, end_detail = ?, reviewed = 1 "
+                     "WHERE id = ?",
                      (point_winner, "user" if point_winner else None, outcome, serving_team,
-                      start_t, round(start_t * fps), end_t, round(end_t * fps), rally_id))
+                      start_t, round(start_t * fps), end_t, round(end_t * fps), end_detail,
+                      rally_id))
 
 
 def neighbours(rows: list[dict], rally_id: int) -> tuple[dict | None, dict | None]:
@@ -183,6 +185,80 @@ def merge_rallies(conn: sqlite3.Connection, keep_id: int, other_id: int,
              f"+ rally {o['rally_number']} ({o['start_t']:.2f}-{o['end_t']:.2f})", author)
         conn.execute("DELETE FROM rallies WHERE id = ?", (other_id,))
         renumber(conn, k["set_id"])
+        reinfer_winners(conn, k["set_id"])
+
+
+def reinfer_winners(conn: sqlite3.Connection, set_id: int) -> None:
+    """After rallies are added, split or merged: each UNREVIEWED rally's winner is again
+    whoever serves the rally after it (rally/winner.py's rule), its outcome re-judged from
+    its last touch. Reviewed rallies are left alone."""
+    rows = conn.execute("SELECT id, serving_team, reviewed FROM rallies WHERE set_id = ? AND "
+                        "(outcome IS NULL OR outcome NOT IN ('replay', 'not_a_rally')) "
+                        "ORDER BY start_t", (set_id,)).fetchall()
+    for r, nxt in zip(rows, rows[1:], strict=False):
+        if r["reviewed"] or nxt["serving_team"] is None:
+            continue
+        chain = [tuple(x) for x in conn.execute(
+            "SELECT team, action, action_confidence FROM contacts WHERE rally_id = ? "
+            "ORDER BY t", (r["id"],))]
+        outcome, conf = rally_outcome(chain, nxt["serving_team"])
+        conn.execute("UPDATE rallies SET point_winner = ?, point_winner_source = 'next_serve', "
+                     "outcome = ?, outcome_confidence = ? WHERE id = ?",
+                     (nxt["serving_team"], outcome, conf, r["id"]))
+
+
+def set_span(conn: sqlite3.Connection, rally_id: int, start_t: float, end_t: float,
+             author: str = "owner") -> None:
+    """Move a rally's start / end (e.g. widened in review before a split), logged."""
+    if end_t <= start_t:
+        raise ValueError("the rally has to end after it starts")
+    with conn:
+        r = dict(conn.execute("SELECT * FROM rallies WHERE id = ?", (rally_id,)).fetchone())
+        fps = conn.execute("SELECT g.fps FROM games g JOIN sets s ON s.game_id = g.id "
+                           "WHERE s.id = ?", (r["set_id"],)).fetchone()[0]
+        _overlap_check(conn, r["set_id"], start_t, end_t, ignore=rally_id)
+        _log(conn, "rallies", rally_id, "start_t", round(r["start_t"], 3), round(start_t, 3),
+             author)
+        _log(conn, "rallies", rally_id, "end_t", round(r["end_t"], 3), round(end_t, 3), author)
+        conn.execute("UPDATE rallies SET start_t = ?, start_frame = ?, end_t = ?, end_frame = ? "
+                     "WHERE id = ?", (start_t, round(start_t * fps), end_t, round(end_t * fps),
+                                      rally_id))
+
+
+def _overlap_check(conn, set_id: int, start_t: float, end_t: float,
+                   ignore: int | None = None) -> None:
+    hit = [r for r in conn.execute("SELECT id, rally_number, start_t, end_t FROM rallies "
+                                   "WHERE set_id = ?", (set_id,))
+           if r["id"] != ignore and min(end_t, r["end_t"]) > max(start_t, r["start_t"])]
+    if hit:
+        raise ValueError("that time overlaps rally " + ", ".join(
+            f"#{r['rally_number']} ({r['start_t']:.1f}-{r['end_t']:.1f} s)" for r in hit)
+            + ": split or shorten it first")
+
+
+def add_rally(conn: sqlite3.Connection, set_id: int, start_t: float, end_t: float,
+              serving_team: str | None = None, author: str = "owner") -> int:
+    """A point the pipeline missed completely (e.g. a serve into the net it took for
+    downtime), added by hand in a gap between rallies. It starts unreviewed with no
+    touches: add them and save it like any rally. Winners around it are re-inferred."""
+    if end_t <= start_t:
+        raise ValueError("the point has to end after it starts")
+    if serving_team not in (None, "us", "them"):
+        raise ValueError(f"serving team {serving_team!r}")
+    with conn:
+        fps = conn.execute("SELECT g.fps FROM games g JOIN sets s ON s.game_id = g.id "
+                           "WHERE s.id = ?", (set_id,)).fetchone()[0]
+        _overlap_check(conn, set_id, start_t, end_t)
+        new_id = conn.execute(
+            "INSERT INTO rallies (set_id, rally_number, start_frame, end_frame, start_t, end_t, "
+            "segment_confidence, serving_team, reviewed) VALUES (?, ?, ?, ?, ?, ?, 1.0, ?, 0)",
+            (set_id, 800_000 + round(start_t), round(start_t * fps), round(end_t * fps),
+             start_t, end_t, serving_team)).lastrowid
+        _log(conn, "rallies", new_id, "insert", None,
+             f"{start_t:.2f}-{end_t:.2f} served by {serving_team}", author)
+        renumber(conn, set_id)
+        reinfer_winners(conn, set_id)
+    return new_id
 
 
 SPLIT_SLACK_S = 0.05      # a touch this close before the split point goes with the second part
@@ -221,11 +297,9 @@ def split_rally(conn: sqlite3.Connection, rally_id: int, at_t: float,
         if moved:
             conn.execute(f"UPDATE contacts SET rally_id = ? WHERE id IN "
                          f"({','.join('?' * len(moved))})", (new_id, *[m["id"] for m in moved]))
-        last = kept[-1] if kept else None
         winner = second_server
-        outcome, conf = (point_outcome(last["action"] if last else None,
-                                       last["team"] if last else None, winner,
-                                       last["action_confidence"] if last else None)
+        outcome, conf = (rally_outcome([(k["team"], k["action"], k["action_confidence"])
+                                        for k in kept], winner)
                          if winner else (None, 0.0))
         conn.execute("UPDATE rallies SET end_t = ?, end_frame = ?, point_winner = ?, "
                      "point_winner_source = ?, outcome = ?, outcome_confidence = ?, "
@@ -236,6 +310,7 @@ def split_rally(conn: sqlite3.Connection, rally_id: int, at_t: float,
              f"{r['start_t']:.2f}-{r['end_t']:.2f}", f"at {at_t:.2f} -> rally id {new_id}",
              author)
         renumber(conn, r["set_id"])
+        reinfer_winners(conn, r["set_id"])
     return new_id
 
 

@@ -8,7 +8,7 @@ from pathlib import Path
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 # Bump when schema.sql changes in a way CREATE ... IF NOT EXISTS can't apply
 # to an existing file. Stored in PRAGMA user_version.
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 _OLD_SOURCE = "CHECK (point_winner_source IN ('user', 'ocr'))"
 _NEW_SOURCE = "CHECK (point_winner_source IN ('user', 'ocr', 'next_serve'))"
@@ -52,6 +52,14 @@ def _migrate_5_to_6(conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA user_version = 6")
 
 
+def _migrate_6_to_7(conn: sqlite3.Connection) -> None:
+    """v7: rallies.end_detail (why a point ended abruptly: net touch, lift, ...)."""
+    with conn:
+        if "end_detail" not in {r[1] for r in conn.execute("PRAGMA table_info(rallies)")}:
+            conn.execute("ALTER TABLE rallies ADD COLUMN end_detail TEXT")
+        conn.execute("PRAGMA user_version = 7")
+
+
 def connect(db_path: str | Path) -> sqlite3.Connection:
     """Open (and create if needed) the event DB, applying the schema."""
     if str(db_path) != ":memory:":
@@ -70,6 +78,9 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     if has_tables and version == 5:
         _migrate_5_to_6(conn)
         version = 6
+    if has_tables and version == 6:
+        _migrate_6_to_7(conn)
+        version = 7
     if has_tables and version != SCHEMA_VERSION:
         conn.close()
         raise SchemaVersionError(

@@ -98,6 +98,52 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
 - [ ] **Dry run** ~2026-11-03/04: owner on the laptop away from home, full day's flow on DA
       sets.
 
+## Owner's sanity rules (2026-10-28)
+
+Done (out-of-fold on both labelled sets, before -> after: titan-rise actions 73% -> 73%,
+outcome with the true winner 23 -> 21/41 (2 are the convention change below), inferred
+20 -> 18; mac-chrome actions 79% -> 78%, false rallies 5 -> 4, winner 32 -> 33/38,
+outcome 25 -> 24 and 19 -> 19):
+- [x] Missed points in review: "Missed point" box (mark start/end in a widened clip, add
+      it; winners around it re-inferred), split now applies the start/end edited on the
+      page first, and a > 20 s gap before a rally is shown there. Fixes Pakmen Black set
+      1's missing rally between 5 and 6 (see the owner's note: the rally can be added now).
+- [x] Rallies < 4 s apart merged (`rally.merge_gap_s`; labelled points are 10.6+ s apart),
+      unless the later one starts with a sure serve; a no-serve piece right before a serve
+      is dropped as downtime. A > 20 s gap lowers the next rally's confidence (review).
+- [x] A lofted single touch sent straight back is an overpass (first touch only).
+- [x] Kill when the other side can't control the ball we sent over (attack, free ball,
+      overpass, dump) on its first touch (`outcome.rally_outcome`); credited to that touch.
+      **Labels disagree in 4 places** (titan-rise / mac-chrome: attack or dump -> one failed
+      dig labelled ball_handling_error, 3 others labelled kill): relabel to the new rule.
+- [x] Assists: our set right before our killing attack.
+- [x] Block from the landing point: an attack whose ball next lands on the attacker's own
+      side, 1 m+ from the net (closer: a net ball), gets a block by the other side
+      (`contacts.landing_block`, confidence 0.5, review). 1 found on mac-chrome, 0 on titan.
+- [x] Abrupt ends in review: "Ended abruptly?" (net touch, centre line, back-row attack,
+      libero set, lift, double, four touches, antenna, foot fault, rotation, injury,
+      referee); `rallies.end_detail`, schema v7.
+
+Already in before (unchanged): receive only straight after the serve (dig otherwise,
+coverage after a block); one serve per rally; winner from who serves next; inferred serve
+when a receive starts the rally; stuff blocks at 60 Hz for point-ending attacks.
+
+Still to do:
+- [ ] Missed points, pipeline side (on the desktop, GPU): for gaps > 20 s, re-detect the
+      ball there with a full search and a lower threshold, and keep a lone opponent serve
+      that dies (serve into the net) as a low-confidence rally instead of dropping it.
+- [ ] Attack only for spikes, free ball for a volley/bump over: needs pose (arm up and
+      swinging at the touch, RTMPose); today it is the ball's launch (lofted = free ball).
+- [ ] Two-touch side that sends it over: dump (setter) vs free ball vs set-on-1/attack-on-2
+      (then the 1st touch is a set, and an assist on a kill). Needs pose / identity; today
+      runs are counted from the end because ~1 in 8 touches is missed.
+- [ ] Chain check over the whole rally (serve -> receive/set/attack ..., block, dig ...)
+      as a constrained decoder over the classifier's action probabilities.
+- [ ] Touch type from where the ball meets the pose (hands above head = set/attack,
+      forearms = dig/receive): costs pose on every touch, worth measuring.
+- [ ] Block-outs (tooled): already a kill for the attacker by the winner rule; the touch
+      itself isn't marked.
+
 ## Now
 
 - [x] **Label `mac-chrome_set1`** (owner): done, 39 rallies, 246 touches, 20 pass scores.

@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from setter_eyes.classify.outcome import point_outcome
+from setter_eyes.classify.outcome import rally_outcome
 from setter_eyes.labels.events import RallyLabel
 
 TRACED = -2                     # rallies.json serve_contact when traced back from flight
@@ -181,11 +181,10 @@ def evaluate(labels: list[RallyLabel], contacts: list[dict], rallies: list[dict]
             m.pred_outcome_inferred = best.get("outcome")
             touches = [contacts[i] for i in best.get("contacts", [])
                        if i < len(contacts) and contacts[i]["kind"] == "touch"]
-            last = touches[-1] if touches else {}
             if r.point_winner:
-                m.pred_outcome = point_outcome(last.get("action"), last.get("team"),
-                                               r.point_winner,
-                                               last.get("action_confidence"))[0]
+                m.pred_outcome = rally_outcome(
+                    [(c.get("team"), c.get("action"), c.get("action_confidence"))
+                     for c in touches], r.point_winner)[0]
         out.rallies.append(m)
     if labels:
         lo, hi = labels[0].start_frame / fps, labels[-1].end_frame / fps

@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS rallies (
     score_them          INTEGER,
     outcome             TEXT,                 -- kill, attack_error, reception_error, ace, service_error, ...
     outcome_confidence  REAL,
+    -- Why the point ended when it wasn't the ball (net touch, lift, ...): set in review only.
+    end_detail          TEXT,
     reviewed            INTEGER NOT NULL DEFAULT 0,
     UNIQUE (set_id, rally_number)
 );

@@ -14,7 +14,8 @@ counted:
   - from the END for a run that sends the ball over the net with fewer than three
     touches seen: the touch that sends it over is the attack, the one before it the set.
     (Counting from the start there turned attacks into digs and sets into dumps.)
-A receive run of one touch that goes straight back over is an overpass.
+A receive run of one touch that goes straight back over is an overpass, and so is any
+side's single lofted touch sent straight back (overpasses only happen on a first touch).
 
 Stage 2, from the ball's flight after the touch (`launch_up`: the vertical speed at the
 start of the first confident flight after it):
@@ -110,6 +111,10 @@ def classify_rally(touches: Sequence[Contact], serve: Contact | None, serving_te
                 name, conf = "free_ball", rule["free_ball"]
             actions[i] = (name, conf)
         if receive_run and n == 1 and crosses:
+            actions[first] = ("overpass", rule["overpass"])
+        elif n == 1 and crosses and actions[first][0] == "free_ball":
+            # A lofted ball sent straight back on a side's FIRST touch is an overpass (owner:
+            # free balls come on the 2nd/3rd touch, overpasses only on the 1st).
             actions[first] = ("overpass", rule["overpass"])
 
     out = []

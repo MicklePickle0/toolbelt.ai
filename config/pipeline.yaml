@@ -209,6 +209,13 @@ contacts:
     valley_ratio: 1.5        # a peak of its own: this x the lowest turn in between
     min_turn_px_s: 2000      # strong enough (4K px/s): a block
     confidence: 0.6
+  # An attack whose ball next lands on the attacker's own side was blocked (owner): found
+  # from the 3D landing point, no GPU needed (contacts/blocks.py blocks_from_landing).
+  landing_block:
+    max_s: 1.5               # the landing this soon after the attack
+    min_from_net_m: 1.0      # at least this far back from the net (closer: a net ball)
+    after_attack_s: 0.1      # where the block is put (labelled attack -> block 0.03-0.23 s)
+    confidence: 0.5          # untested on labels yet: goes to review
   max_join_gap_samples: 2    # flights this close (samples) join at a shared sample
   max_bridge_s: 0.3          # further apart, up to this long (ball hidden by the toucher):
   bridge_penalty: 0.8        #   still a candidate, mid-gap, at this confidence factor
@@ -252,6 +259,13 @@ rally:
   serve_window_s: 4.0        # a serve must be this close to the start of an episode
   min_arc_confidence: 0.4    # flights trusted to show the ball crossing the net
   base_confidence: 0.4
+  # Owner (2026-10-28): there are usually 10+ s between points. Rallies closer than this are
+  # one point the pipeline cut in two: merged. A gap longer than missed_point_gap_s before a
+  # rally may hide a missed point (flagged in review; labelled gaps: median 16 s, p90 23 s).
+  merge_gap_s: 4.0
+  merge_keeps_serve_conf: 0.8 # ...unless the later one starts with a serve this sure
+  missed_point_gap_s: 20.0
+  missed_point_factor: 0.8
   serve_bonus: 0.3
   floor_bonus: 0.3
   # Point winner = the next rally's serving team (setter_eyes.rally.winner; labelled: 79/79).

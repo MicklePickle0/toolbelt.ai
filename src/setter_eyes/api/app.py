@@ -62,24 +62,34 @@ class Settings:
     clip_pad_s: float = 2.0
     actions: list[str] = field(default_factory=list)
     outcomes: list[str] = field(default_factory=list)
+    end_details: list[str] = field(default_factory=list)
     output_dir: Path | None = None
     accept_auto_calibration: bool = False
     frame_width: int = 1920               # px, frames sent to the calibration page
     step_weights: dict = field(default_factory=dict)
     rosters_dir: Path | None = None
+    missed_point_gap_s: float = 20.0      # a gap this long before a rally: a point may be missing
 
     @classmethod
     def from_config(cls) -> Settings:
         cfg = config.load("pipeline")
         p, a, labels = cfg["paths"], cfg["app"], config.load("labels")
-        return cls(config.repo_path(p["db_path"]), config.repo_path(p["labels_db_path"]),
-                   config.repo_path(p["manifest_path"]), config.repo_path(p["calibration_dir"]),
-                   config.repo_path(p["cache_dir"]), config.repo_path(a["log_dir"]),
-                   a["steps"], a["needs_calibration"], a["clip_width"], a["clip_pad_s"],
-                   labels["actions"], labels["outcomes"], config.repo_path(p["output_dir"]),
-                   a.get("accept_auto_calibration", False),
-                   a.get("calibration_frame_width", 1920), a.get("step_weights", {}),
-                   config.repo_path(p["rosters_dir"]))
+        return cls(db_path=config.repo_path(p["db_path"]),
+                   labels_db_path=config.repo_path(p["labels_db_path"]),
+                   manifest_path=config.repo_path(p["manifest_path"]),
+                   calibration_dir=config.repo_path(p["calibration_dir"]),
+                   cache_dir=config.repo_path(p["cache_dir"]),
+                   log_dir=config.repo_path(a["log_dir"]),
+                   steps=a["steps"], needs_calibration=a["needs_calibration"],
+                   clip_width=a["clip_width"], clip_pad_s=a["clip_pad_s"],
+                   actions=labels["actions"], outcomes=labels["outcomes"],
+                   end_details=labels.get("end_details", []),
+                   output_dir=config.repo_path(p["output_dir"]),
+                   accept_auto_calibration=a.get("accept_auto_calibration", False),
+                   frame_width=a.get("calibration_frame_width", 1920),
+                   step_weights=a.get("step_weights", {}),
+                   rosters_dir=config.repo_path(p["rosters_dir"]),
+                   missed_point_gap_s=cfg["rally"].get("missed_point_gap_s", 20.0))
 
 
 class Touch(BaseModel):
@@ -98,6 +108,7 @@ class Review(BaseModel):
     end_t: float
     touches: list[Touch]
     touches_checked: bool = True
+    end_detail: str | None = None         # why it ended, when it wasn't the ball
 
 
 class Suggest(BaseModel):
@@ -112,6 +123,14 @@ class Merge(BaseModel):
 
 class Split(BaseModel):
     t: float                              # seconds into the video: the second point's serve
+    start_t: float | None = None          # the rally's start / end as edited on the page
+    end_t: float | None = None            # (applied first, so a widened rally can be split)
+
+
+class NewRally(BaseModel):
+    start_t: float
+    end_t: float
+    serving_team: str | None = None
 
 
 class Clicks(BaseModel):
@@ -199,6 +218,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         m = manifest()
         return {"team": m.team, "actions": s.actions, "outcomes": s.outcomes,
                 "steps": s.steps, "winners": list(WINNERS), "clip_pad_s": s.clip_pad_s,
+                "missed_point_gap_s": s.missed_point_gap_s, "end_details": s.end_details,
                 "roster": [{"number": r.number, "name": r.name} for r in m.roster]}
 
     @app.get("/api/videos")
@@ -338,6 +358,8 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             raise HTTPException(400, "the rally has to end after it starts")
         if body.outcome is not None and body.outcome not in s.outcomes:
             raise HTTPException(400, f"unknown outcome {body.outcome!r}")
+        if body.end_detail is not None and body.end_detail not in s.end_details:
+            raise HTTPException(400, f"unknown end detail {body.end_detail!r}")
         for t in body.touches:
             if t.team not in ("us", "them", None) or (t.action and t.action not in s.actions):
                 raise HTTPException(400, f"bad touch {t}")
@@ -346,7 +368,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             rv.save_review(c, rally_id, r["fps"], body.winner, body.outcome, body.serving_team,
                            body.end_t, _edits(body.touches),
                            body.touches_checked and body.winner != rv.NOT_A_RALLY,
-                           start_t=body.start_t)
+                           start_t=body.start_t, end_detail=body.end_detail)
         return {"ok": True}
 
     @app.post("/api/rallies/{rally_id}/merge")
@@ -361,12 +383,24 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     @app.post("/api/rallies/{rally_id}/split")
     def split(rally_id: int, body: Split) -> dict:
         with conn() as c:
-            _rally(c, rally_id)
+            r = _rally(c, rally_id)
             try:
+                start = body.start_t if body.start_t is not None else r["start_t"]
+                end = body.end_t if body.end_t is not None else r["end_t"]
+                if (start, end) != (r["start_t"], r["end_t"]):
+                    rv.set_span(c, rally_id, start, end)
                 new_id = rv.split_rally(c, rally_id, body.t)
             except ValueError as e:
                 raise HTTPException(400, str(e)) from e
         return {"ok": True, "new_id": new_id}
+
+    @app.post("/api/sets/{set_id}/rallies")
+    def add_rally(set_id: int, body: NewRally) -> dict:
+        with conn() as c:
+            try:
+                return {"id": rv.add_rally(c, set_id, body.start_t, body.end_t, body.serving_team)}
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
 
     # ---- calibration -----------------------------------------------------------------------
     def _entry(key: str):
