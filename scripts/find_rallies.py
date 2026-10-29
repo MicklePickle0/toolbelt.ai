@@ -37,12 +37,18 @@ from setter_eyes.ball.tracker import BallPath
 from setter_eyes.calibration import load as load_calibration
 from setter_eyes.classify.rules import classify_rally, launch_up
 from setter_eyes.contacts.blocks import add_stuff_blocks, blocks_from_landing
-from setter_eyes.contacts.events import Contact, find_contacts
+from setter_eyes.contacts.events import Contact, add_hidden_touches, find_contacts
 from setter_eyes.contacts.scorer import TouchScorer, scored_contacts
 from setter_eyes.db.pipeline import write_video
 from setter_eyes.labels import load_manifest
 from setter_eyes.rally.live import PlayerMotion
-from setter_eyes.rally.segment import flag_gaps, merge_close, segment_from_touches, segment_rallies
+from setter_eyes.rally.segment import (
+    SERVE_FROM_FLIGHT,
+    flag_gaps,
+    merge_close,
+    segment_from_touches,
+    segment_rallies,
+)
 from setter_eyes.rally.serve_entry import find_our_serves
 from setter_eyes.rally.winner import infer_winners
 from setter_eyes.track.people import PeopleTracks
@@ -126,15 +132,27 @@ def main() -> int:
               "(a point may be missing there)")
     else:
         rallies = segment_rallies(path, arcs, contacts, g, fps, cfg)
+    hidden = []                                        # touches the timing says were hidden
     for r in rallies:                                  # actions, once the rally is known
-        touches = [contacts[i] for i in r.contacts if contacts[i].kind == "touch"]
+        idx = [i for i in r.contacts if contacts[i].kind == "touch"]
+        touches = [contacts[i] for i in idx]
         serve = contacts[r.serve_contact] if r.serve_contact is not None and \
             r.serve_contact >= 0 else None
         launches = [launch_up(c, arcs, cfg["classify"]) for c in touches]
+        # A serve traced back from the ball's flight (not seen as a touch) starts the rally.
+        serve_t = r.start_t if serve is None and r.serve_contact == SERVE_FROM_FLIGHT else None
+        missing = []
         for c, (action, conf) in zip(touches, classify_rally(touches, serve, r.serving_team,
-                                                             cfg["classify"], launches),
+                                                             cfg["classify"], launches,
+                                                             serve_t=serve_t,
+                                                             missing_out=missing),
                                      strict=True):
             c.action, c.action_confidence = action, conf
+        hidden += [(idx[k], action, team, t) for k, action, team, t in missing]
+    n_hidden = add_hidden_touches(rallies, contacts, hidden, fps,
+                                  cfg["classify"]["inferred_touch_confidence"])
+    print(f"hidden touches added (a receive before a late first touch, a set in a long gap): "
+          f"{n_hidden}")
     infer_winners(rallies, contacts, cfg)              # who serves next won the point
     print(f"blocks from the attack landing on the attacker's side: "
           f"{blocks_from_landing(rallies, contacts, cfg)}")

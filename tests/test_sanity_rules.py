@@ -156,3 +156,27 @@ def test_end_detail_is_saved_with_the_review(tmp_path):
                    True, end_detail="net_touch")
     assert conn.execute("SELECT end_detail FROM rallies WHERE id = ?",
                         (r["id"],)).fetchone()[0] == "net_touch"
+
+
+def test_hidden_receive_and_set_are_found_from_the_timing():
+    """Owner, 2026-10-29: their receive (far side) is often missed, so their set looked like
+    the receive; and a set hidden by the net, with their attack seen after it, still
+    happened."""
+    from setter_eyes.contacts.events import add_hidden_touches
+
+    serve, their_set, their_attack = _c(10.0, "us"), _c(12.6, "them"), _c(13.9, "them")
+    dig, attack = _c(15.0, "us"), _c(18.1, "us")      # 3.1 s apart: our set was hidden
+    touches = [serve, their_set, their_attack, dig, attack, _c(19.0, "them")]
+    missing = []
+    acts = [a for a, _ in classify_rally(touches, serve, "us", CFG["classify"],
+                                         missing_out=missing)]
+    assert acts[:5] == ["serve", "set", "attack", "dig", "attack"]
+    assert sorted((k, a, t) for k, a, t, _ in missing) == [(1, "receive", "them"),
+                                                           (4, "set", "us")]
+    rally = _rally(1, 10, 19, list(range(6)), serve=0)
+    contacts = list(touches)
+    add_hidden_touches([rally], contacts, missing, 60.0, 0.3)
+    got = [(round(c.t, 2), c.team, c.inferred) for c in contacts]
+    assert got[1] == (11.05, "them", True) and got[5] == (16.55, "us", True)
+    assert rally.contacts == list(range(8))
+    assert [c.t for c in contacts] == sorted(c.t for c in contacts)

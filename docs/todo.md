@@ -140,6 +140,18 @@ outcome 25 -> 24 and 19 -> 19):
       libero set, lift, double, four touches, antenna, foot fault, rotation, injury,
       referee); `rallies.end_detail`, schema v7.
 
+- [x] Hidden touches from the timing (owner, 2026-10-29: the far receive is often missed
+      at the Durham Attack corner angle, so their set looked like the receive; a set hidden
+      behind the net still happened). Labelled: serve -> receive 0.75-1.50 s, two touches
+      of one side in a row at most 2.17 s apart. A receiving side's first touch > 1.6 s
+      after the serve (seen, or traced back from the flight) is its set (> 3.5 s: attack),
+      and the missed receive is added as an inferred touch; a gap > 2.3 s inside a side's
+      run adds the hidden touch (usually the set). Inferred touches: confidence 0.3
+      (review), `contacts[].inferred`. OOF: titan actions 71% (same), mac 79 -> 81% (both
+      "our set called a receive" fixed). pakmen-black_set1: 3 of 29 receiving sides
+      shifted, 6 hidden touches added. Tried and dropped: "a 2nd touch going over is never
+      a set" (cost 4-6 sets: usually the attack after it was the one missed).
+      Root cause stays: far-side touches go undetected at corner angles -> DA labels (A9).
 Already in before (unchanged): receive only straight after the serve (dig otherwise,
 coverage after a block); one serve per rally; winner from who serves next; inferred serve
 when a receive starts the rally; stuff blocks at 60 Hz for point-ending attacks.

@@ -46,6 +46,7 @@ class Contact:
     action: str | None = None                # classify/rules.py, after the rally is built
     entry_serve: bool = False                # our serve, from how the ball entered the frame
     action_confidence: float | None = None
+    inferred: bool = False                   # not seen: added because the timing says it was hidden
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -215,3 +216,29 @@ def _image_velocity_change(path: BallPath, k_end: int, k_start: int, fps: float,
     v2 = (path.uv[hi] - path.uv[k_start]) / max(1e-6, t[hi] - t[k_start])
     dv_px = float(np.linalg.norm(v2 - v1))
     return 0.0 if not np.isfinite(dv_px) else dv_px * c["metres_per_px_at_typical_depth"]
+
+
+def insert_before(rallies: list, contacts: list[Contact], at: int, contact: Contact) -> None:
+    """Put `contact` into the contacts list at position `at` (before contacts[at]) and into
+    the rally that holds contacts[at], keeping every rally's indices right."""
+    owner = next((r for r in rallies if at in r.contacts), None)
+    contacts.insert(at, contact)
+    for r in rallies:
+        r.contacts = [i + (i >= at) for i in r.contacts]
+        if r.serve_contact is not None and r.serve_contact >= at:
+            r.serve_contact += 1
+    if owner is not None:
+        owner.contacts.insert(owner.contacts.index(at + 1), at)
+
+
+def add_hidden_touches(rallies: list, contacts: list[Contact], hidden: list[tuple],
+                       fps: float, confidence: float) -> int:
+    """hidden: (index of the contact it comes before, action, team, t) from
+    classify.rules.classify_rally(missing_out=...). Adds them as inferred touches. -> n"""
+    for at, action, team, t in sorted(hidden, key=lambda h: (h[0], h[3]), reverse=True):
+        ref = contacts[at]
+        insert_before(rallies, contacts, at, Contact(
+            ref.path_index, int(round(t * fps)), t, "touch", team, -1, None,
+            list(ref.ball_uv), 0.0, float("inf"), confidence, action=action,
+            action_confidence=confidence, inferred=True))
+    return len(hidden)
