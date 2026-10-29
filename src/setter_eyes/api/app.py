@@ -110,6 +110,10 @@ class Merge(BaseModel):
     other_id: int
 
 
+class Split(BaseModel):
+    t: float                              # seconds into the video: the second point's serve
+
+
 class Clicks(BaseModel):
     frame: int
     clicks: dict[str, list[float]]
@@ -353,6 +357,16 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 raise HTTPException(400, "rallies are from different sets")
             rv.merge_rallies(c, rally_id, body.other_id)
         return {"ok": True}
+
+    @app.post("/api/rallies/{rally_id}/split")
+    def split(rally_id: int, body: Split) -> dict:
+        with conn() as c:
+            _rally(c, rally_id)
+            try:
+                new_id = rv.split_rally(c, rally_id, body.t)
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
+        return {"ok": True, "new_id": new_id}
 
     # ---- calibration -----------------------------------------------------------------------
     def _entry(key: str):

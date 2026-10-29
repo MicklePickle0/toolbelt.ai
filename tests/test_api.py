@@ -209,3 +209,13 @@ def test_rosters_in_the_app(client, tmp_path):
     assert client.delete(f"/api/rosters/{slug}").status_code == 400      # still applied
     client.put("/api/videos/v1/roster", json={"roster": None})
     assert client.delete(f"/api/rosters/{slug}").status_code == 200
+
+
+def test_split_from_the_review_page(client):
+    set_id = client.get("/api/videos").json()[0]["set_id"]
+    rid = client.get(f"/api/sets/{set_id}/rallies").json()["rallies"][0]["id"]
+    assert client.post(f"/api/rallies/{rid}/split", json={"t": 99.0}).status_code == 400
+    new = client.post(f"/api/rallies/{rid}/split", json={"t": 12.5}).json()["new_id"]
+    rows = client.get(f"/api/sets/{set_id}/rallies").json()["rallies"]
+    assert [r["id"] for r in rows] == [rid, new]
+    assert len(client.get(f"/api/rallies/{new}").json()["touches"]) == 1

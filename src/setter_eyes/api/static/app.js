@@ -433,7 +433,22 @@ async function reviewPage(setId, rallyId, params) {
       await api(`/rallies/${rallyId}/merge`, { body: { other_id: x.id } });
       toast("Merged"); route(); } },
     `Merge with ${what} #${x.rally_number} (${x.gap_s} s apart)`);
-    return h("div", { class: "row" }, b(d.prev, "previous"), b(d.next, "next"));
+    // Two points counted as one: split where the second point's serve is.
+    const split = h("button", { onclick: async () => {
+      const t = now();
+      if (!(t > r.start_t + 0.1 && t < r.end_t - 0.1)) {
+        toast("Go to the second point's serve inside this rally first (play or step the clip).",
+          5000);
+        return;
+      }
+      if (!confirm(`Split this rally at ${clock(t)}? Touches from there on become a new ` +
+        "rally (the second point). Unsaved edits here are lost.")) return;
+      try {
+        await api(`/rallies/${rallyId}/split`, { body: { t } });
+        toast("Split into two rallies; both are in the review queue"); route();
+      } catch (e) { toast(e.message, 5000); }
+    } }, "Split here: a second point starts at this frame");
+    return h("div", { class: "row" }, b(d.prev, "previous"), b(d.next, "next"), split);
   }
 
   // touches

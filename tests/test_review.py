@@ -1,3 +1,5 @@
+import pytest
+
 from setter_eyes import db
 from setter_eyes.db.pipeline import write_video
 from setter_eyes.labels.manifest import Manifest, VideoEntry
@@ -119,3 +121,38 @@ def test_reviewed_rallies_become_training_labels(tmp_path):
     rv.save_review(conn, rally["id"], 60.0, rv.NOT_A_RALLY, None, None, 16.5, edits, False)
     (r,) = reviewed_for_training(conn, "v1")
     assert r.contacts == []                                           # all false touches
+
+
+def test_split_two_points_counted_as_one(tmp_path):
+    conn = db.connect(":memory:")
+    manifest = Manifest(tmp_path / "manifest.yaml", "Venom", [], [])
+    entry = VideoEntry("v1", tmp_path / "v1.mp4", venue="Humber", ball="mikasa")
+
+    def touch(t, team, action):
+        return {"kind": "touch", "t": t, "frame": int(t * 60), "confidence": 0.6, "team": team,
+                "ball_xyz": None, "action": action, "action_confidence": 0.5}
+
+    # point 1: their serve, our dig... point 2 from 20 s: our serve, their dig
+    contacts = [touch(10.0, "them", "serve"), touch(11.0, "us", "receive"),
+                touch(12.0, "us", "attack"), touch(20.0, "us", "serve"),
+                touch(21.0, "them", "receive")]
+    rally = {"index": 1, "start_frame": 600, "end_frame": 1500, "start_t": 10.0,
+             "end_t": 25.0, "confidence": 0.4, "serving_team": "them",
+             "contacts": [0, 1, 2, 3, 4], "point_winner": "them", "outcome": "other"}
+    write_video(conn, manifest, entry, 60.0, [rally], contacts)
+    g = rv.games(conn)[0]
+    rid = rv.rallies(conn, g["set_id"])[0]["id"]
+    with pytest.raises(ValueError):
+        rv.split_rally(conn, rid, 30.0)                  # outside the rally
+    new = rv.split_rally(conn, rid, 19.99)               # 10 ms after the serve still works
+    rows = rv.rallies(conn, g["set_id"])
+    assert [r["id"] for r in rows] == [rid, new] and [r["rally_number"] for r in rows] == [1, 2]
+    first, second = rows
+    assert (first["end_t"], second["start_t"], second["end_t"]) == (19.99, 19.99, 25.0)
+    assert [x["action"] for x in rv.touches(conn, rid)] == ["serve", "receive", "attack"]
+    assert [x["action"] for x in rv.touches(conn, new)] == ["serve", "receive"]
+    # we serve the second point, so we won the first: our attack was a kill
+    assert (first["point_winner"], first["outcome"]) == ("us", "kill")
+    assert (second["serving_team"], second["point_winner"]) == ("us", "them")
+    assert not first["reviewed"] and not second["reviewed"]
+    assert conn.execute("SELECT field FROM corrections").fetchone()[0] == "split"

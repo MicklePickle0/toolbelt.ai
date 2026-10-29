@@ -48,6 +48,10 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
             it) and is resumed from the page. Automatic fits no longer count as calibrated
             (`app.accept_auto_calibration: false`), which also covers A6 for now.
             Phone layout still to check on a phone.
+      - [x] Split a rally in review (2026-10-28, owner: two points counted as one): play to
+            the second point's serve, "Split here"; touches from there move to a new rally,
+            whoever serves it won the first part (outcome re-judged), both go back to the
+            review queue, logged in `corrections`. Web app only (not the Streamlit review).
       - [ ] Clips per stat; one-key point us/them on the review page.
       - [x] Passing average on a 4- or 3-point scale (a 4 counts as 3), picked on the
             stats page; passes are always stored 0-4.

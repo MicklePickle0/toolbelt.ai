@@ -13,7 +13,8 @@ Saving a rally's review, in one transaction:
     all right. Re-running the pipeline keeps reviewed rallies (db/pipeline.py).
 
 A point the pipeline split in two is put back together with merge_rallies() (the
-neighbour's touches move over, the time span covers both, the neighbour goes).
+neighbour's touches move over, the time span covers both, the neighbour goes); two points
+it joined into one are pulled apart with split_rally() at the second point's serve.
 """
 
 from __future__ import annotations
@@ -182,6 +183,60 @@ def merge_rallies(conn: sqlite3.Connection, keep_id: int, other_id: int,
              f"+ rally {o['rally_number']} ({o['start_t']:.2f}-{o['end_t']:.2f})", author)
         conn.execute("DELETE FROM rallies WHERE id = ?", (other_id,))
         renumber(conn, k["set_id"])
+
+
+SPLIT_SLACK_S = 0.05      # a touch this close before the split point goes with the second part
+
+
+def split_rally(conn: sqlite3.Connection, rally_id: int, at_t: float,
+                author: str = "owner") -> int:
+    """Two points the pipeline joined into one: the second starts at `at_t` (its serve).
+    Touches from there on move to a new rally that keeps the original's end, winner and
+    outcome (the winner was inferred from the rally after it). The first part ends at
+    `at_t`; whoever serves the second part won it (the same rule as rally/winner.py), and
+    its outcome follows from its last touch. Both parts stay unreviewed, so they come up
+    in the review queue. Returns the new rally's id."""
+    with conn:
+        r = dict(conn.execute("SELECT * FROM rallies WHERE id = ?", (rally_id,)).fetchone())
+        if not r["start_t"] < at_t < r["end_t"]:
+            raise ValueError(f"split time {at_t:.2f} s is outside the rally "
+                             f"({r['start_t']:.2f}-{r['end_t']:.2f} s)")
+        fps = conn.execute("SELECT g.fps FROM games g JOIN sets s ON s.game_id = g.id "
+                           "WHERE s.id = ?", (r["set_id"],)).fetchone()[0]
+        moved = [dict(x) for x in conn.execute(
+            "SELECT id, team, action, action_confidence FROM contacts "
+            "WHERE rally_id = ? AND t >= ? ORDER BY t", (rally_id, at_t - SPLIT_SLACK_S))]
+        kept = [dict(x) for x in conn.execute(
+            "SELECT team, action, action_confidence FROM contacts "
+            "WHERE rally_id = ? AND t < ? ORDER BY t", (rally_id, at_t - SPLIT_SLACK_S))]
+        serve = next((m for m in moved if m["action"] == "serve"), None)
+        second_server = serve["team"] if serve else (moved[0]["team"] if moved else None)
+        new_id = conn.execute(
+            "INSERT INTO rallies (set_id, rally_number, start_frame, end_frame, start_t, end_t, "
+            "segment_confidence, serving_team, point_winner, point_winner_source, outcome, "
+            "outcome_confidence, reviewed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+            (r["set_id"], 900_000 + rally_id, round(at_t * fps), r["end_frame"], at_t,
+             r["end_t"], r["segment_confidence"], second_server, r["point_winner"],
+             r["point_winner_source"], r["outcome"], r["outcome_confidence"])).lastrowid
+        if moved:
+            conn.execute(f"UPDATE contacts SET rally_id = ? WHERE id IN "
+                         f"({','.join('?' * len(moved))})", (new_id, *[m["id"] for m in moved]))
+        last = kept[-1] if kept else None
+        winner = second_server
+        outcome, conf = (point_outcome(last["action"] if last else None,
+                                       last["team"] if last else None, winner,
+                                       last["action_confidence"] if last else None)
+                         if winner else (None, 0.0))
+        conn.execute("UPDATE rallies SET end_t = ?, end_frame = ?, point_winner = ?, "
+                     "point_winner_source = ?, outcome = ?, outcome_confidence = ?, "
+                     "reviewed = 0 WHERE id = ?",
+                     (at_t, round(at_t * fps), winner, "next_serve" if winner else None,
+                      outcome, round(conf, 3) if winner else None, rally_id))
+        _log(conn, "rallies", rally_id, "split",
+             f"{r['start_t']:.2f}-{r['end_t']:.2f}", f"at {at_t:.2f} -> rally id {new_id}",
+             author)
+        renumber(conn, r["set_id"])
+    return new_id
 
 
 def rally_clip(src: Path, out: Path, t0: float, t1: float, width: int = 1280) -> Path:
