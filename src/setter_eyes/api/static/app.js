@@ -345,7 +345,20 @@ async function reviewPage(setId, rallyId, params) {
     location.replace(`#/review/${setId}/${order[0]}` + (showAll ? "?all=1" : ""));
     return;
   }
-  const d = await api(`/rallies/${rallyId}`);
+  let d;
+  try {
+    d = await api(`/rallies/${rallyId}`);
+  } catch (e) {
+    // A pipeline re-run replaces unreviewed rallies with new ones (new ids): an old link
+    // points at nothing. Reviewed rallies keep their ids.
+    if (!byId[rallyId]) {
+      toast("That rally was rebuilt by a pipeline re-run (it has a new number now): " +
+        "showing this set's review queue.", 6000);
+      location.replace(`#/review/${setId}` + (showAll ? "?all=1" : ""));
+      return;
+    }
+    throw e;
+  }
   const r = d.rally, fps = r.fps;
   const pad = META.clip_pad_s;
   const S = {                                 // this page's editable state
