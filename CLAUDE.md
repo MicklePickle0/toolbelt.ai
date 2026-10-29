@@ -1,5 +1,35 @@
 # Volleyball Stat Tracker (one-end-of-court, offline video analysis)
 
+## Remote access: desktop from the laptop (VS Code Remote Tunnel; checked 2026-10-29)
+The desktop (`DESKTOP-6LEKOOH`, user `michael`, has the footage and the GPU) is driven from the laptop through a **VS Code Remote Tunnel**: it goes out through Microsoft's relay, so no port forwarding, Tailscale or SSH server is needed. The OpenSSH server is NOT installed on the desktop, so VS Code Remote-SSH will not connect.
+
+State on 2026-10-29:
+- **Tunnel:** `desktop-6lekooh`, connected, but started from the VS Code window, not installed as a service. It stops when that window closes or the PC restarts, until the one-time step below is done.
+- **Sleep:** sleep and hibernate are off on AC power (good).
+
+One-time setup on the desktop:
+1. Make the tunnel survive restarts. In a terminal on the desktop run `code tunnel service install`, and sign in with the same GitHub or Microsoft account the laptop will use. `code tunnel status` should then show `"service_installed": true`.
+2. Keep the PC awake: Settings > System > Power, Sleep = Never (already set). Avoid surprise restarts: Settings > Windows Update > set active hours, or pause updates for the tournament week.
+3. The tunnel service starts only after Windows logs in, so after a restart someone has to log in at the desktop (or set up automatic login).
+
+From the laptop, each time:
+1. **Connect:**
+   - In VS Code, install the **Remote - Tunnels** extension (Microsoft), then press F1 and run "Remote-Tunnels: Connect to Tunnel...".
+   - Sign in with the same account and pick `desktop-6lekooh`.
+   - Or, without installing VS Code, open `https://vscode.dev/tunnel/desktop-6lekooh` in a browser.
+2. **Open the repo:** File > Open Folder, then `C:\Users\Michael\Setter-Eyes`. The window's bottom-left corner shows "Tunnel: desktop-6lekooh".
+3. **Claude Code:** install the Claude Code extension when VS Code offers to install it "in Tunnel: desktop-6lekooh" (it runs on the desktop and sees `data/`, the GPU and the event DB), and log in once. Running `claude` in the remote terminal also works.
+4. **Web app:**
+   - In the remote terminal, run `.venv\Scripts\activate`, then `python scripts/serve_app.py`.
+   - VS Code forwards port 8000 by itself (Ports tab), so open `http://localhost:8000` on the laptop.
+   - Leave it running in that terminal. Closing the laptop doesn't stop it, but stopping the tunnel does.
+5. **Long jobs:** run them through the app's queue, or in a terminal that stays open. The work runs on the desktop, so a dropped connection doesn't kill a job the app started. Reconnect and check the Queue page.
+
+If it won't connect:
+- **Tunnel down:** the desktop restarted or the tunnel service isn't installed. Someone at the desktop runs `code tunnel status`, then `code tunnel service install`, or just opens VS Code.
+- **Wrong account:** the laptop must sign in with the account the tunnel was registered with.
+- **Port 8000 not reachable:** in the Ports tab, add port 8000 by hand.
+
 Product name: **Toolbelt** (owner, 2026-10-28; formerly Setter Eyes). Use it in anything a user sees (web app, docs, exports). The repo folder and the Python package `setter_eyes` keep the old name for now; renaming them is a separate change to ask about.
 
 An automated alternative to Hudl / DataVolley / VolleyStation. Input: a match or training video filmed from low, behind one end of the court. Output: per-player stats for ONE team (the near side), a ball-path overlay, and an editable event database.
