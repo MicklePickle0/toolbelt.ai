@@ -114,6 +114,45 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
 - [ ] **Dry run** ~2026-11-03/04: owner on the laptop away from home, full day's flow on DA
       sets.
 
+## pakmen-black_set2 reviewed (owner, 2026-10-29..31): what the corrections show
+
+All 46 rallies reviewed in the web app (event DB, no events.csv; 5 missed points added, 4
+merges). Pipeline output came from ONE run (2026-10-29 01:39, scorer trained on titan-rise_set1
++ mac-chrome_set1 only); nothing retrains during review, so later rallies were not helped by
+earlier fixes (only `reinfer_winners` re-guesses unreviewed winners after an add/merge/split).
+Measured from `corrections` (first half / second half of the set):
+- Pipeline touches 114 / 103; deleted 33 / 38; added 41 / 68; action fixes 28 / 28; team
+  fixes 11 / 12. Not better later on; quality follows the 3D fit (below), not the order.
+- Of 78 deleted pipeline touches, 36 were re-added within 0.4 s (mostly the same time, other
+  action/team: the owner's delete-and-re-add, effectively an edit); 42 were false, 23 of them
+  "us attack", nearly all with no 3D and an image-only velocity change.
+- 73 touches missed: their serve 11, our attack 11, our receive 8, our set 8, their attack 7,
+  our block 6 (attack+block merge at 30 Hz, known).
+- **Action rules are not the main problem:** in rallies whose touches and teams were all right,
+  actions were 20/20; in rallies with a missed/false/wrong-team touch, 70/126.
+- **This set's 3D is weak:** touches with a 3D position 30% (titan 76%, mac 70%, pakmen-black_set1
+  68%, same gym); confident flights 6% vs ~20%; floor contacts 16 vs 46-62. By 2-min window
+  the confident-flight share collapses at 6-8 min and 12-18 min (0-20%, flight fit error
+  13-16 px) and is fine elsewhere (40-73%); set 1 stays 70-90% throughout. Camera rotation
+  doesn't jump there; cause not found yet (ball path on a wrong object? see plan step 1).
+- **Bug: pixel features aren't scaled for 1080p.** `contacts/features.py` passes `size_px`,
+  `speed_in/out`, `vy_in/out` as raw pixels; the scorer was trained on 4K. Ball size median
+  45.9 px (titan 4K) vs 24.5 (same video at 1080p) / 25.8 (pakmen-black_set2): at 1080p every
+  ball looks twice as far away to the scorer (size is its depth cue).
+
+Proposed plan (to agree with the owner) for the other DA gym 1 sets (pakmen-black 1/3,
+mac-platinum 1-2, 416-knight 1-3):
+1. Find why set 2's flights fail at 6-8 and 12-18 min (overlay those minutes).
+2. Scale pixel features to `video.reference_width`; measure on titan-rise_set1_1080p (OOF).
+3. Export set 2's reviewed rallies to `data/labels/pakmen-black_set2/events.csv`, so
+   `eval_contacts.py` scores it; record today's baseline.
+4. Owner decision: DA gym 1 becomes a training venue (manifest pins it to `test`); the
+   new-gym test moves to DA gyms 2/3 (pakmen-gold).
+5. Retrain the touch scorer with set 2; test on pakmen-black_set1's reviewed rallies.
+6. Ball detector: self-labels from set 2's reviewed rallies (C1) + ~50 hand boxes from the
+   failing stretches (A9); retrain at 1080p.
+7. Re-run DA gym 1, review one more set, retrain, repeat (the scorer only learns between sets).
+
 ## Owner's sanity rules (2026-10-28)
 
 Done (out-of-fold on both labelled sets, before -> after: titan-rise actions 73% -> 73%,
