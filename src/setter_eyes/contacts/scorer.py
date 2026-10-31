@@ -119,5 +119,6 @@ def scored_contacts(path, arcs, g, fps, people, roles, cfg: dict, scorer: TouchS
         x = touches[j]
         x.confidence = round(float(p_touch[j]), 3)
         x.team = "us" if p_ours[j] >= 0.5 else "them"
+        x.p_ours = round(float(p_ours[j]), 3)
         kept.append(x)
     return sorted(kept + floors, key=lambda x: x.t)

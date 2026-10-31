@@ -47,6 +47,7 @@ class Contact:
     entry_serve: bool = False                # our serve, from how the ball entered the frame
     action_confidence: float | None = None
     inferred: bool = False                   # not seen: added because the timing says it was hidden
+    p_ours: float | None = None              # touch scorer's P(our side touched it), if scored
 
     def to_dict(self) -> dict:
         d = asdict(self)

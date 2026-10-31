@@ -156,6 +156,19 @@ Already in before (unchanged): receive only straight after the serve (dig otherw
 coverage after a block); one serve per rally; winner from who serves next; inferred serve
 when a receive starts the rally; stuff blocks at 60 Hz for point-ending attacks.
 
+- [ ] **At most 3 touches a side in a row, plus a block** (owner, 2026-10-29; built on the
+      laptop, NOT yet measured). In the event DB, 91 of 581 pipeline rallies (16%) had one
+      side touching 4+ times in a row (blocks excluded; 5-12 per set, runs up to 9): a
+      touch given the wrong team, so the ball "never crossed". The old prior only halved a
+      5th touch's confidence. Now `_apply_touch_prior` decodes each rally's teams as a
+      whole (Viterbi over the scorer's `p_ours`, kept on `Contact.p_ours`): a 4th touch in
+      a row costs `contacts.team_decoder.fourth_touch_cost` (a block first), a 5th is
+      impossible, and the serving side can't touch right after its serve; a flipped touch
+      keeps `over_limit_penalty` of its confidence (review). **On the desktop:**
+      `find_rallies.py` + `eval_contacts.py --oof` on titan-rise_set1 and mac-chrome_set1
+      (team right, actions, rallies, winners, outcomes before -> after), tune the cost,
+      then re-run the rally step on every processed set.
+
 Still to do:
 - [ ] Missed points, pipeline side (on the desktop, GPU): for gaps > 20 s, re-detect the
       ball there with a full search and a lower threshold, and keep a lone opponent serve

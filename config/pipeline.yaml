@@ -203,7 +203,11 @@ identity:
 contacts:
   # Touches and floor contacts from soft evidence (setter_eyes.contacts.events).
   max_contacts_per_side: 3   # plus a block
-  over_limit_penalty: 0.5    # confidence factor for a touch beyond that in a row
+  over_limit_penalty: 0.5    # confidence factor for a touch whose team the decoder changed
+  team_decoder:              # rally/segment.py, _apply_touch_prior: teams decoded per rally
+    fourth_touch_cost: 2.0   # -log odds for a 4th touch in a row (needs a block first)
+    p_clip: 0.02             # the scorer's p_ours is clipped to [p_clip, 1 - p_clip]
+    unscored_p: 0.75         # how sure a team is without a scorer probability (heuristic path)
   # Stuff blocks (setter_eyes.contacts.blocks, scripts/check_blocks.py): a point-ending
   # attack the attacker lost, re-detected at full frame rate; a second sharp turn right
   # after it = the ball came back off a block. Labelled: 2/2 stuff blocks >= 2169 px/s,

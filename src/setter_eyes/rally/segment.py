@@ -59,6 +59,7 @@ from setter_eyes.rally.live import PlayerMotion, dead_from
 
 SERVE_FROM_FLIGHT = -2          # Rally.serve_contact when the serve was traced back
 SERVE_INFERRED = -3             # ...when it wasn't seen at all but the rally shows it
+TEAMS = ("us", "them")
 
 
 @dataclass
@@ -149,7 +150,7 @@ def segment_rallies(path: BallPath, arcs: list[Arc], contacts: list[Contact], g:
         if crossings == 0:
             continue                                     # warm-up, a toss, a ball rolled back
         members = [i for i in in_ep if start_t <= contacts[i].t <= end_t]
-        _apply_touch_prior(contacts, members, cfg)
+        _apply_touch_prior(contacts, members, cfg, serving)
         conf = r["base_confidence"] + r["serve_bonus"] * (start_i is not None) + \
             r["floor_bonus"] * bool(floors)
         rallies.append(Rally(
@@ -249,7 +250,7 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
                 end_t - start_t < cfg["rally"]["our_serve"]["min_flight_s"]:
             continue                               # big ball at the top, then no flight
         members = [i for i, c in enumerate(contacts) if start_t <= c.t <= end_t]
-        _apply_touch_prior(contacts, members, cfg)
+        _apply_touch_prior(contacts, members, cfg, serving)
         inferred = serve_i == SERVE_INFERRED
         conf = r["base_confidence"] + r["serve_bonus"] * (not inferred) + \
             r["exchange_bonus"] * (change is not None) + r["floor_bonus"] * bool(floors)
@@ -313,20 +314,51 @@ def traced_serve(arcs: list[Arc], g: np.ndarray, t0: float, t1: float,
     return None
 
 
-def _apply_touch_prior(contacts: list[Contact], members: list[int], cfg: dict) -> None:
-    """More than `max_contacts_per_side` touches by one side in a row is implausible (a
-    block doesn't count, but blocks aren't classified yet): lower those touches."""
-    limit = cfg["contacts"]["max_contacts_per_side"]
-    run_team, run = None, 0
-    for i in members:
+def _apply_touch_prior(contacts: list[Contact], members: list[int], cfg: dict,
+                       serving: str | None = None) -> None:
+    """At most `max_contacts_per_side` touches by one side in a row, plus a block (owner,
+    2026-10-29). Each touch's team is a guess on its own (the scorer's p_ours); here the
+    rally's team sequence is decoded as a whole (Viterbi): the most likely teams under that
+    rule. A 4th touch in a row costs `fourth_touch_cost` (it needs a block first, and blocks
+    aren't classified yet); a 5th is impossible, and so is the serving side touching right
+    after its serve. A touch whose team changes keeps `over_limit_penalty` of its confidence
+    (review queue)."""
+    c_cfg = cfg["contacts"]
+    td = c_cfg["team_decoder"]
+    limit = c_cfg["max_contacts_per_side"] + 1               # +1: allow one block
+    seq = [i for i in members if contacts[i].kind == "touch" and not contacts[i].serve
+           and contacts[i].team in TEAMS]
+    if not seq:
+        return
+    lo = td["p_clip"]
+    cost = []                                                # per touch: {team: -log p}
+    for i in seq:
         c = contacts[i]
-        if c.kind != "touch" or c.serve:
-            run_team, run = c.team, 1 if c.serve else 0
-            continue
-        run = run + 1 if c.team == run_team else 1
-        run_team = c.team
-        if run > limit + 1:                               # +1: allow one block
-            c.confidence = round(c.confidence * cfg["contacts"]["over_limit_penalty"], 3)
+        p = c.p_ours if c.p_ours is not None else \
+            (td["unscored_p"] if c.team == "us" else 1 - td["unscored_p"])
+        p = min(max(p, lo), 1 - lo)
+        cost.append({"us": -np.log(p), "them": -np.log(1 - p)})
+    # State (team, touches in a row). The serve counts as a full run for the serving side.
+    best: dict[tuple[str, int], tuple[float, list[str]]] = {}
+    start = {(serving, limit): (0.0, [])} if serving in TEAMS else {None: (0.0, [])}
+    for k in range(len(seq)):
+        best = {}
+        for state, (total, path) in start.items():
+            for team in TEAMS:
+                run = state[1] + 1 if state is not None and state[0] == team else 1
+                if run > limit:
+                    continue
+                step = cost[k][team] + (td["fourth_touch_cost"] if run == limit else 0.0)
+                key = (team, run)
+                if key not in best or total + step < best[key][0]:
+                    best[key] = (total + step, [*path, team])
+        start = best
+    teams = min(best.values(), key=lambda v: v[0])[1]
+    for i, team in zip(seq, teams, strict=True):
+        c = contacts[i]
+        if c.team != team:
+            c.team = team
+            c.confidence = round(c.confidence * c_cfg["over_limit_penalty"], 3)
 
 
 def merge_close(rallies: list[Rally], contacts: list[Contact], cfg: dict) -> list[Rally]:

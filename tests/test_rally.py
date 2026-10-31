@@ -102,3 +102,43 @@ def test_touches_after_the_ball_lands_are_dead():
     (r,) = segment_from_touches(_path(), [], contacts, G, 60.0, CFG)
     assert (r.end_t, r.end_reason) == (15.0, "floor")
     assert 3 not in r.contacts and 4 not in r.contacts
+
+
+def _scored(t, p):
+    c = _touch(t, "us" if p >= 0.5 else "them")
+    c.p_ours = p
+    return c
+
+
+def _decode(contacts, serving):
+    from setter_eyes.rally.segment import _apply_touch_prior
+
+    _apply_touch_prior(contacts, list(range(len(contacts))), CFG, serving)
+    return [c.team for c in contacts]
+
+
+def test_four_in_a_row_flips_the_least_sure_touch():
+    # Their serve, then our receive, set, attack and a "dig" the scorer half-believes is
+    # ours: the ball went over, so the 4th is theirs.
+    cs = [_scored(1.0, 0.9), _scored(1.8, 0.95), _scored(2.4, 0.9), _scored(3.0, 0.6),
+          _scored(3.9, 0.2)]
+    assert _decode(cs, "them") == ["us", "us", "us", "them", "them"]
+    assert cs[3].confidence == 0.4 and cs[0].confidence == 0.8   # flipped: to review
+
+
+def test_a_sure_fourth_touch_stays_but_never_a_fifth():
+    cs = [_scored(t, 0.99) for t in (1.0, 1.8, 2.4, 3.0)]
+    assert _decode(cs, "them") == ["us"] * 4                     # block + 3, allowed
+    cs = [_scored(t, 0.99) for t in (1.0, 1.8, 2.4, 3.0, 3.6)]
+    assert _decode(cs, "them").count("them") == 1
+
+
+def test_serving_side_cannot_touch_right_after_its_serve():
+    cs = [_scored(1.0, 0.7), _scored(1.6, 0.1)]
+    assert _decode(cs, "us") == ["them", "them"]
+
+
+def test_plausible_teams_are_left_alone():
+    cs = [_scored(1.0, 0.8), _scored(1.7, 0.7), _scored(2.3, 0.9), _scored(3.0, 0.1)]
+    assert _decode(cs, "them") == ["us", "us", "us", "them"]
+    assert all(c.confidence == 0.8 for c in cs)
