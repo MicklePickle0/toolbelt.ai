@@ -14,6 +14,9 @@ standing near a passing ball), so the scorer learns from these instead:
   - timing: time to the previous and next candidate (a touch has one break; a split flight
     has two close together)
   - the heuristic's own team call (1 us, 0 them, 0.5 unknown), for the team model
+Pixel features (image speeds, ball size) are in 4K pixels whatever the video's size:
+divided by `unit_px` (contacts.feature_unit_px, which scales with the width: 0.5 at
+1080p). Raw 1080p pixels made every ball look twice as far away to a scorer trained on 4K.
 """
 
 from __future__ import annotations
@@ -40,8 +43,10 @@ def _rows_by_frame(people: PeopleTracks) -> dict[int, np.ndarray]:
 
 
 def candidate_features(cands: list[Contact], path: BallPath, people: PeopleTracks,
-                       fps: float, overhead_bodies: float = 0.6) -> np.ndarray:
-    """(N, len(NAMES)) features; cands in time order."""
+                       fps: float, overhead_bodies: float = 0.6,
+                       unit_px: float = 1.0) -> np.ndarray:
+    """(N, len(NAMES)) features; cands in time order. unit_px: one 4K pixel in this
+    video's pixels (contacts.feature_unit_px after config.for_video)."""
     t = path.frames / fps
     ct = np.array([c.t for c in cands])
     rows_at = _rows_by_frame(people)
@@ -49,7 +54,7 @@ def candidate_features(cands: list[Contact], path: BallPath, people: PeopleTrack
     def vel(k0: int, k1: int) -> np.ndarray:
         if k0 < 0 or k1 >= len(t) or k1 <= k0:
             return np.full(2, np.nan)
-        return (path.uv_ref[k1] - path.uv_ref[k0]) / (t[k1] - t[k0])
+        return (path.uv_ref[k1] - path.uv_ref[k0]) / (t[k1] - t[k0]) / unit_px
 
     out = np.full((len(cands), len(NAMES)), np.nan)
     for i, c in enumerate(cands):
@@ -75,5 +80,5 @@ def candidate_features(cands: list[Contact], path: BallPath, people: PeopleTrack
                   vin[1], vout[1], float(vin[1] > 0 and vout[1] < 0), best, on_body, close,
                   person_y, min(ct[i] - ct[i - 1], _GAP_CAP) if i else _GAP_CAP,
                   min(ct[i + 1] - ct[i], _GAP_CAP) if i + 1 < len(ct) else _GAP_CAP,
-                  float(np.nan_to_num(path.size_px[k], nan=0.0)), team]
+                  float(np.nan_to_num(path.size_px[k], nan=0.0)) / unit_px, team]
     return out

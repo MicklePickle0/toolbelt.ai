@@ -252,6 +252,9 @@ conversations that don't see each other. The shared state is the repo, so:
 - Build one milestone at a time; add a visual verification script (overlay video/images) for each.
 - Split train/val/test BY VIDEO, never by frame.
 - Keep everything configurable and every automated output confidence-scored.
+- Document every issue run into and how it was fixed (owner, 2026-10-31): a row in
+  `docs/issues-log.md` (problem, cause, fix, where) as soon as it is understood, including
+  dead ends and causes not found yet (left under "Still open" until fixed).
 - Ask before adding audio, live processing, or far-side analysis; those are out of scope.
 - Protect `data/` and `models/` (2026-10-26: a junction inside a temporary git worktree plus
   `git worktree remove --force` deleted both; only a Windows snapshot saved the hand

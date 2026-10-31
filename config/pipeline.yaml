@@ -170,7 +170,8 @@ ball:
   max_misses: 10             # samples (1/3 s at 30 Hz) before a track ends
   tentative_max_misses: 2
   bridge_samples: 3          # fill gaps up to this long (smoothed between neighbours)
-  static_spread_px: 60       # a track that never moves further is a spare ball / wall mark
+  static_spread_px: 60       # a ball that moves less than this within still_window_s either
+  still_window_s: 1.0        # side is still there (spare ball, wall mark, printed ball): not play
   kalman:
     jerk_px_s3: 20000
     init_sigma_px: {pos: 5.0, vel: 3000.0, acc: 3000.0}
@@ -242,6 +243,8 @@ contacts:
   reach_scale_m: 1.0         # person within reach -> evidence: exp(-distance / scale)
   reach_scale_bodies: 0.5    # ...the same in body heights when only the image is known
   overhead_reach_bodies: 0.6 # the reach zone extends this far above the head (sets, attacks)
+  feature_unit_px: 1.0       # scorer's pixel features are in 4K pixels: this scales with the
+                             # width (1080p: 0.5) and features divide by it (contacts/features.py)
   max_reach_m: 3.6           # a touch higher than this isn't by a person (blocks reach ~3.4)
   no_person_prior: 0.2       # nobody near: a course change can still be a touch (occlusion)
   floor_height_m: 0.35       # ball this low after falling = floor contact

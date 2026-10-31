@@ -7,9 +7,10 @@
    track within its gate (greedy, by normalised distance); strong unmatched detections
    start tentative tracks; tracks die after `max_misses` samples without a detection.
 3. Match ball: per sample, the live track with the best quality: long, confident and
-   moving. Tracks that never move (spare balls on the floor, marks on the wall) are
-   never chosen. Short gaps (<= `bridge_samples`) are filled by smoothing between the
-   samples on either side (offline, so both sides are known).
+   moving. Where a track stands still (spare balls on the floor, marks on the wall, a
+   ball printed on a poster) it is never chosen. Short gaps (<= `bridge_samples`) are
+   filled by smoothing between the samples on either side (offline, so both sides are
+   known).
 """
 
 from __future__ import annotations
@@ -169,21 +170,23 @@ def track_ball(dets: Detections, camera_at, ref: Camera, cfg: dict) -> BallPath:
     # Offline: a track's whole history counts once it proves to be the ball (including
     # samples from before it was confirmed). Gaps of <= bridge_samples are filled by a
     # quadratic through the neighbouring samples (smoothing, not forward prediction).
-    quality = {tr.id: _quality(tr, cfg) for tr in finished}
     k_of = {int(f): k for k, f in enumerate(dets.frames)}
     cover: dict[int, list[tuple[float, bool, int, np.ndarray, int]]] = {}
     for tr in finished:
-        q = quality[tr.id]
+        s = sorted(tr.samples)
+        moving = _moving(s, fps, cfg)
+        q = _quality(tr, s, moving)
         if q <= 0:
             continue
-        s = sorted(tr.samples)
         ks = np.array([k_of[int(x[0])] for x in s])
         uvs = np.array([x[1:3] for x in s], float)
-        for (f, u, v, _, di) in s:
-            cover.setdefault(k_of[int(f)], []).append((q, True, tr.id, np.array([u, v]), di))
+        for (f, u, v, _, di), m in zip(s, moving, strict=True):
+            if m:
+                cover.setdefault(k_of[int(f)], []).append((q, True, tr.id, np.array([u, v]), di))
         for a in range(len(s) - 1):
             missing = range(ks[a] + 1, ks[a + 1])
-            if not missing or len(missing) > cfg["bridge_samples"]:
+            if not missing or len(missing) > cfg["bridge_samples"] or \
+                    not (moving[a] and moving[a + 1]):
                 continue
             w = slice(max(0, a - 2), min(len(s), a + 4))
             tt = dets.frames[ks[w]] / fps
@@ -210,19 +213,34 @@ def track_ball(dets: Detections, camera_at, ref: Camera, cfg: dict) -> BallPath:
     return path
 
 
-def _quality(tr: Track, cfg: dict) -> float:
-    """Long, confident, moving tracks are the match ball; static ones (spare balls,
-    marks on the wall) score near zero."""
-    if not tr.confirmed:
+def _moving(samples: list[tuple], fps: float, cfg: dict) -> np.ndarray:
+    """Per sample (time order): is the ball moving there? Still = every sample of the
+    track within `still_window_s` either side stays within `static_spread_px` of their
+    median. Judged locally, not over the track's life: a ball printed on a poster
+    (pakmen-black_set2) wobbles 30-45 px over a minute with camera-track noise but < 21 px
+    within a second, and a track sitting on it can later take over the real ball."""
+    if len(samples) < 3:
+        return np.ones(len(samples), bool)
+    s = np.array(samples, float)
+    t, uv = s[:, 0] / fps, s[:, 1:3]
+    w = cfg["still_window_s"]
+    out = np.ones(len(s), bool)
+    for i in range(len(s)):
+        near = np.flatnonzero(np.abs(t - t[i]) <= w)
+        if len(near) < 3:
+            continue
+        d = np.linalg.norm(uv[near] - np.median(uv[near], axis=0), axis=1).max()
+        out[i] = d >= cfg["static_spread_px"]
+    return out
+
+
+def _quality(tr: Track, samples: list[tuple], moving: np.ndarray) -> float:
+    """Long, confident, moving tracks are the match ball: the summed score of the samples
+    where it moves. Still stretches (spare balls, marks on the wall, a printed ball, a
+    ball held between points) count for nothing."""
+    if not tr.confirmed or len(samples) < 2 or not moving.any():
         return 0.0
-    s = np.array(tr.samples)
-    if len(s) < 2:
-        return 0.0
-    uv, score = s[:, 1:3], s[:, 3]
-    spread = float(np.linalg.norm(np.ptp(uv, axis=0)))
-    if spread < cfg["static_spread_px"]:
-        return 0.0                         # never moves: a spare ball or a mark, not play
-    return float(len(s) * score.mean())
+    return float(np.array(samples, float)[moving, 3].sum())
 
 
 def path_cameras(path: BallPath, camera_at) -> list[Camera]:

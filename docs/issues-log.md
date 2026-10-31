@@ -75,6 +75,7 @@ Fixed: `mac-chrome_set1`, `mac-chrome_set2` (first jump), `niagara-rtw_set2` (tw
 | Few touches had a 3D ball position | Flights between touches are short and often seen on one side only | Change-point thinning of flight splits; 3D from one confident side | `ball/arcs.py`, `contacts/events.py` |
 | Serves were rarely seen being hit | Motion blur right in front of the camera, and a tiny ball 25 m away | Trace the first net-crossing flight back to just behind the end line; accept it at a hitting height and serve speed | `rally/segment.py` (`traced_serve`) |
 | Trail drew straight jumps | Ball lost or tracker switched to another ball | Trail split at gaps and track switches | `ball/overlay.py` |
+| pakmen-black_set2: 3D on 30% of touches (68-76% elsewhere), confident flights collapsing to 0-20% at 6-8 and 12-18 min, false "us attack" touches with image speeds of 57-139 m/s (2026-10-31) | A volleyball printed on a player poster on the gym wall, in view from that corner: 42% of the set's ball detections (score ~0.71). The "never moves" check judged a track's whole life: the poster's pan-free position wobbles 33-46 px over a minute with camera-track noise, over the 30 px limit at 1080p, and a track sitting on it for 40-100 s later picked up the real ball and outranked it (quality = samples x score). Detection itself was fine: the real ball was found as often there as elsewhere | Stillness judged per sample: still if within `static_spread_px` of its neighbours over +-`still_window_s` (1 s); poster wobble there is 7 px median, 21 px at the 95th percentile, real ball 37+ px at the 5th. Still samples add nothing to a track's quality and never enter the path. Re-tracked from the cached detections (no GPU): confident long flights 52-79% in every 2-min window; set 2 touches found 76 -> 87%, real 78 -> 88%, rallies 40 -> 45/45. Humber sets: no loss (titan actions 72 -> 77%, rallies 41 -> 42/42) | `ball/tracker.py` (`_moving`, `_quality`), `ball.still_window_s`; test `test_tracker_ignores_a_printed_ball_that_drifts` |
 
 ## 7. People tracking (Milestone 2)
 
@@ -99,6 +100,7 @@ Fixed: `mac-chrome_set1`, `mac-chrome_set2` (first jump), `niagara-rtw_set2` (tw
 | No way to measure touch quality | No ground truth | Hand-labelled `events.csv` plus a scorer: recall, precision, team, timing, misses by action, rally and serve errors | `contacts/evaluate.py`, `scripts/eval_contacts.py` |
 | Fake rallies in timeouts went unnoticed | The scorer only judged predictions inside labelled rallies | Predicted rallies between labelled ones are now counted as false rallies | `contacts/evaluate.py` |
 | Scoring a video the model trained on looked too good | In-sample | The report warns when the video was in the training set | `scripts/eval_contacts.py` |
+| Team 78% and actions 50% on 1080p pakmen-black_set2 (2026-10-31) | The scorer's pixel features (ball size, image speeds) were raw pixels; it was trained on 4K, where the ball is twice as big (median 45.9 vs 24.5 px on the same video), so at 1080p every ball looked twice as far away (size is the team model's depth cue). The config scaling covered thresholds, not features | Pixel features are in 4K pixels: divided by `contacts.feature_unit_px`, which scales with the width. 4K unchanged (no retrain). Set 2: team 78 -> 85%, actions 50 -> 60%, winner 33 -> 39/44, outcome (inferred winner) 14 -> 21/44, but false rallies 2 -> 5. titan-rise_set1 at 1080p (mac-only scorer) now matches 4K on every line: found 83 -> 86% (4K 85%), outcome 21 -> 14/38 (4K 15/41) | `contacts/features.py`, `contacts.feature_unit_px` |
 
 ## 9. Labelling touches and rallies
 
@@ -106,6 +108,8 @@ Fixed: `mac-chrome_set1`, `mac-chrome_set2` (first jump), `niagara-rtw_set2` (tw
 |---|---|---|---|
 | VLC couldn't find the contact frame | No frame stepping backwards, no frame numbers | Keyboard labeller: frame-by-frame stepping, slow motion, frame number and time on screen, writes `events.csv` as you go | `scripts/label_events.py`, `labels/event_editor.py` |
 | Seeking 4K AV1 frame by frame was too slow | Long gaps between keyframes in the original | A 1280-wide preview copy with a keyframe every 15 frames, checked to match the original frame for frame | `data/cache/<id>/proxy.mp4` |
+| A set reviewed in the web app (pakmen-black_set2) couldn't be scored by `eval_contacts.py` | Reviews live in the event DB; the evaluation reads `events.csv` | `export_reviewed.py` writes the reviewed rallies (every touch confirmed) as `events.csv`; never overwrites. Rallies with no touches (a missed point added without them) are left out, so the pipeline's rally there counts as false | `scripts/export_reviewed.py` |
+| Labels from review lean toward the pipeline: timing error 0.00 s | Proposed touches at the right time were kept as they were | Recall, precision and team are still fair; timing and rally start/end errors from reviewed sets aren't | - |
 
 Labelling conventions decided along the way (also in `docs/labelling.md`, "Judgement calls"):
 
@@ -144,6 +148,7 @@ Labelling conventions decided along the way (also in `docs/labelling.md`, "Judge
 | 2026-10-26: `data/` and `models/` deleted. Claude linked them (Windows junctions) into a temporary git worktree to compare old code, then `git worktree remove --force` followed the links. The SSD's TRIM made file-recovery tools useless (zeros) | Restored in full from a Windows Previous Versions snapshot (7:09 pm), copied out with robocopy (Explorer crashed on the many small files) and checked file by file. Labels, calibrations, the event DB and the models in use are now in git (detector via LFS); the rule against linking data into disposable folders is in CLAUDE.md |
 | Small bugs: a shadowed variable (`plausible`), a dropped line (`finished += tracks`), `load_roles` needing a `Path` | Caught by tests or by checking output, and fixed |
 | An unwanted change to `video.py` (log flushing) | Reverted at the owner's request |
+| `data/setter_eyes.db` showed as changed after `--no-db` runs (2026-10-31) | Opening it (`db.connect`'s schema check) bumps SQLite's header change counter. Content compared row for row with the committed DB: identical; the committed bytes were restored |
 
 ---
 
@@ -164,3 +169,4 @@ Labelling conventions decided along the way (also in `docs/labelling.md`, "Judge
 - **People:** a line judge on our sideline can get a ring; track ids break between points (player identity, Milestone 7, will re-link them).
 - **Depth:** far-side and floor contacts have larger position errors.
 - **Label check:** rally 1 of `titan-rise_set1` (0:19-0:25) has four touches in a row by them and their point by ball-handling error; probably a missing block.
+- **pakmen-black_set2 after the poster and 1080p fixes:** 4 false rallies (one more is a real rally with no touches labelled, 7:39), actions 60%, team 85%. The poster should also become a hard negative for the ball detector (unboxed frames from this corner, A9).

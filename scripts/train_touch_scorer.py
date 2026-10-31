@@ -82,7 +82,8 @@ def video_dataset(entry, manifest, cfg: dict, paths: dict, reviewed_db=None) -> 
     floors = _merge([x for x in every if x.kind == "floor"
                      and x.confidence >= c["min_confidence"]], c["merge_window_s"])
     cands = [x for x in every if x.kind == "touch"]
-    X = candidate_features(cands, path, people, fps, cfg["contacts"]["overhead_reach_bodies"])
+    X = candidate_features(cands, path, people, fps, c["overhead_reach_bodies"],
+                           c["feature_unit_px"])
     t = np.array([c.t for c in cands])
     windows = [(r.start_frame / fps - 1, r.end_frame / fps + 1) for r in rallies]
     rally = np.array([next((j for j, (a, b) in enumerate(windows) if a <= x <= b), -1)

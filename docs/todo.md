@@ -133,21 +133,47 @@ Measured from `corrections` (first half / second half of the set):
 - **This set's 3D is weak:** touches with a 3D position 30% (titan 76%, mac 70%, pakmen-black_set1
   68%, same gym); confident flights 6% vs ~20%; floor contacts 16 vs 46-62. By 2-min window
   the confident-flight share collapses at 6-8 min and 12-18 min (0-20%, flight fit error
-  13-16 px) and is fine elsewhere (40-73%); set 1 stays 70-90% throughout. Camera rotation
-  doesn't jump there; cause not found yet (ball path on a wrong object? see plan step 1).
+  13-16 px) and is fine elsewhere (40-73%); set 1 stays 70-90% throughout. Cause: a ball
+  printed on a wall poster (fixed, below).
 - **Bug: pixel features aren't scaled for 1080p.** `contacts/features.py` passes `size_px`,
   `speed_in/out`, `vy_in/out` as raw pixels; the scorer was trained on 4K. Ball size median
   45.9 px (titan 4K) vs 24.5 (same video at 1080p) / 25.8 (pakmen-black_set2): at 1080p every
   ball looks twice as far away to the scorer (size is its depth cue).
 
-Proposed plan (to agree with the owner) for the other DA gym 1 sets (pakmen-black 1/3,
-mac-platinum 1-2, 416-knight 1-3):
-1. Find why set 2's flights fail at 6-8 and 12-18 min (overlay those minutes).
-2. Scale pixel features to `video.reference_width`; measure on titan-rise_set1_1080p (OOF).
-3. Export set 2's reviewed rallies to `data/labels/pakmen-black_set2/events.csv`, so
-   `eval_contacts.py` scores it; record today's baseline.
-4. Owner decision: DA gym 1 becomes a training venue (manifest pins it to `test`); the
-   new-gym test moves to DA gyms 2/3 (pakmen-gold).
+Plan for the other DA gym 1 sets (pakmen-black 1/3, mac-platinum 1-2, 416-knight 1-3).
+Note: set 1 and set 2 are filmed from different corners of that gym.
+1. [x] Set 2's flight failures (2026-10-31): a volleyball printed on a player poster on the
+   wall, 42% of the set's ball detections; the tracker's whole-track "never moves" check
+   let it through. Stillness now judged per second (`ball/tracker.py`, issues-log s6).
+2. [x] Pixel features in 4K units (`contacts.feature_unit_px`, issues-log s8).
+3. [x] `scripts/export_reviewed.py` -> `data/labels/pakmen-black_set2/events.csv` (45 of
+   46 rallies; rally 16 at 7:39 has no touches). Label check warnings for the owner:
+   0:10.28 rally starts with their dig (recording started mid-rally?), 0:37.24 starts with
+   our attack (serve missing?), 9:05.48 four touches by us in a row, 21:00.96 our receive
+   with no serve before it.
+   Results on set 2 (scorer trained on titan + mac, not on set 2):
+   | | before | poster fix | + 1080p fix |
+   |---|---|---|---|
+   | touches found / real | 76% / 78% | 87% / 88% | 89% / 87% |
+   | team right | 77% | 78% | 85% |
+   | actions right (found touches) | 51% | 50% | 60% |
+   | rallies found / false | 40/45 / 1 | 45/45 / 2 | 44/45 / 5 (one is 7:39) |
+   | winner from next serve | 34/40 | 33/45 | 39/44 |
+   | outcome, true / inferred winner | 12 / 10 of 40 | 19 / 14 of 45 | 23 / 21 of 44 |
+   Out-of-fold on the Humber sets with the poster fix (current code, so this is also the
+   first measurement of the team decoder above), titan-rise / mac-chrome before -> after:
+   found 88 -> 89% / 87 -> 86%, real 93 -> 96% / 91 -> 89%, team 86 -> 89% / 91 -> 92%,
+   actions 72 -> 77% / 78 -> 78%, rallies 41 -> 42/42 / 38/39 (4 false either way),
+   outcome (inferred winner) 17/41 -> 18/42 / 15 -> 18/38. The touch scorer was retrained
+   on the re-tracked titan + mac (`models/contacts/touch_scorer.pkl`).
+   Only titan-rise_set1(+1080p), mac-chrome_set1 and pakmen-black_set2 were re-tracked, all
+   with `--no-db`; every other set still has the old ball path and event DB rows. Backups of
+   the replaced cache files: `data/cache/<id>/backup_2026-10-31/`; the old scorer and DB:
+   `data/backups/2026-10-31/`, `data/setter_eyes.db.backup_2026-10-31`.
+4. [ ] Owner OK'd (2026-10-31), on condition that no data is deleted: DA gym 1 becomes a training
+   venue (manifest pins it to `test`); the new-gym test moves to DA gyms 2/3 (pakmen-gold).
+   Before writing the event DB for set 1/2 again, check that `db/pipeline.py` keeps every
+   reviewed rally and its touches (back up the DB first).
 5. Retrain the touch scorer with set 2; test on pakmen-black_set1's reviewed rallies.
 6. Ball detector: self-labels from set 2's reviewed rallies (C1) + ~50 hand boxes from the
    failing stretches (A9); retrain at 1080p.
