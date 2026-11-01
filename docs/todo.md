@@ -111,11 +111,23 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
       - *Readable by eye:* most back views in contact sheets of `pakmen-black_set2` and `titan-rise_set1_1080p` (12, 13, 14, 17, 23, 5, 8). Front views, side views and players behind teammates are not.
       - *Crop filter:* about half the "near-side" boxes were coaches, spectators and bench players along the sideline, so crops must come from player roles only.
       - *The roster helps:* it is a fixed set of ~12 numbers, so reading is a choice among the roster numbers, not free OCR.
+- [x] **Jersey numbers + who touched it, built 2026-10-31** (owner OK'd PARSeq). New app step `pose_people` after `track_people`.
+      - *Pose:* RTMPose on everyone on our court at that moment (`ours_now`; a track's lifetime role missed the setter and hitters at the net), 10 Hz, batched on the GPU: ~4-5 min a 20-min 1080p set.
+      - *Numbers:* back views read by PARSeq, limited to the roster.
+      - *Who touched it:* `find_rallies.py` picks the toucher by forearms/hands at the ball (`identity/toucher.py`). The number comes from that track's reads within +-4 s (`identity/numbers.py` NumberIndex); the tracker passes ids between players. A number another track shows more strongly then loses confidence (one player per number).
+      - *Measured on titan-rise_set1_1080p* (`eval_players.py`, 115 labelled touches of ours with a jersey):
+        - at the labelled moments: 67% named, 83% right; confidence >= 0.5: 54% named, 92% right;
+        - through the pipeline's own touches: 50% named, 91% right; the rest left for review.
+      - *Error split:* toucher wrong 7, the track's number wrong/missing then 37, nobody posed near 4.
+      - Next: mac-chrome_set1 / titan 4K / a Durham Attack set by eye; the libero (white #6) reads poorly.
 - [ ] **Pass scores at 1080p, 2026-10-31** (`eval_passes.py`, labelled touches, setter's feet):
       - titan-rise_set1 4K: exact 56%, within 1 83%;
       - the same video at 1080p: exact 58%, within 1 79%;
       - mac-chrome_set1: exact 60%, within 1 100%.
-      So 1080p doesn't hurt. The big misses (a 4 scored as 1) come from the wrong next player or the wrong touch. There are no Durham Attack pass labels yet: the web review can't enter pass scores (A16).
+      So 1080p doesn't hurt. The big misses (a 4 scored as 1) come from the wrong next player or the wrong touch.
+      **Done 2026-10-31:** pass scores in processing (`score_passes`, with a confidence), and pass score + player editable in review (A16). A pipeline guess counts as a label only once set or ticked (✓).
+      End to end, touches from models that never saw the rally: titan 4K 17/20 scored, 53% exact, 94% within 1; mac 15/20, 53%, 93%; titan 1080p 14/20, 43%, 71%. The 1080p misses come from upstream (receives taken as our serve, or outside a rally).
+      Owner: tick or set pass scores while reviewing Durham Attack sets, to tune the thresholds there.
 - [ ] **P1 Third-set side switch** (A10). Seen in `pakmen-black_set3` and `416-knight_set3`
       (2026-10-28): one continuous recording; at ~8 points the phone is carried to the other
       end (30-45 s of walls and floor), then a completely different view (other corner, other

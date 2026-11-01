@@ -14,11 +14,10 @@ number takes `min_share` of the roster posterior.
 
 A track is NOT one player throughout: the tracker hands an id from one player to another
 between points (pakmen-black_set2 track 0: the libero #6 for 3 s, then #14 for 16 s, then
-#17, every read right). So each track is cut into stretches where its reads agree
-(`stretches`: a new number needs `switch_reads` reads in a row), and a touch takes the
-number of the stretch it falls in (`number_at`), with confidence top / (all + vote_prior)
-of that stretch's votes, lower the further the touch is from its nearest read. The
-binding holds through the stretch, also when the number is hidden.
+#17, every read right). So a touch takes the number its track's reads show around that
+moment (`NumberIndex`), not one number for the whole track; a jersey is on one player at
+a time, so a number another track shows more strongly then loses confidence.
+`stretches` cuts each track where its reads change number, for the numbers.json summary.
 """
 
 from __future__ import annotations
@@ -164,19 +163,48 @@ def stretches(track_ids: np.ndarray, frames: np.ndarray, log_scores: np.ndarray,
 
 
 class NumberIndex:
-    """number_at(track, frame) over a video's stretches."""
+    """The number of a track at a moment, from its counted reads within +-`window_s`: each
+    votes its share x exp(-|dt| / `tau_s`), confidence = top / (all + `vote_prior`). Local
+    in time, so a track handed to another player a few seconds away doesn't matter
+    (titan-rise_set1_1080p, at the labelled touches: 67% named, 83% right; whole-stretch
+    binding 29% at 91%, 75% at 77%). One player per number: if another track has more
+    weight for the same number then and there, ours x `conflict_factor`."""
 
-    def __init__(self, items: list[Stretch], fps: float, cfg: dict):
-        self.by_track: dict[int, list[Stretch]] = defaultdict(list)
-        for s in items:
-            self.by_track[s.track_id].append(s)
+    def __init__(self, track_ids: np.ndarray, frames: np.ndarray, log_scores: np.ndarray,
+                 roster: list[int], fps: float, cfg: dict):
+        ok, top = counted(log_scores, cfg)
+        share = shares(log_scores).max(axis=1) if len(log_scores) else np.zeros(0)
+        rows = np.flatnonzero(ok)
+        rows = rows[np.argsort(frames[rows], kind="stable")]
+        self.frames, self.tracks = frames[rows], track_ids[rows]
+        self.numbers = np.array(roster)[top[rows]] if len(rows) else np.zeros(0, int)
+        self.share = share[rows]
         self.fps, self.cfg = fps, cfg
 
+    def _votes(self, frame: int) -> dict[int, dict[int, float]]:
+        """{track: {number: weight}} of every track's reads near `frame`."""
+        w = self.cfg["window_s"] * self.fps
+        lo, hi = np.searchsorted(self.frames, [frame - w, frame + w + 1])
+        out: dict[int, dict[int, float]] = defaultdict(lambda: defaultdict(float))
+        dt = np.abs(self.frames[lo:hi] - frame) / self.fps
+        for t, n, s, x in zip(self.tracks[lo:hi], self.numbers[lo:hi], self.share[lo:hi], dt,
+                              strict=True):
+            out[int(t)][int(n)] += float(s * np.exp(-x / self.cfg["tau_s"]))
+        return out
+
     def number_at(self, track_id: int, frame: int) -> tuple[int, float] | None:
-        for s in self.by_track.get(int(track_id), []):
-            if s.first <= frame <= s.last:
-                gap_s = float(np.min(np.abs(s.reads - frame))) / self.fps
-                fade = float(np.exp(-max(0.0, gap_s - self.cfg["fade_after_s"])
-                                    / self.cfg["fade_s"]))
-                return s.number, round(s.confidence * fade, 3)
-        return None
+        votes = self._votes(frame)
+        mine = votes.get(int(track_id))
+        if not mine:
+            return None
+        number, weight = max(mine.items(), key=lambda kv: kv[1])
+        conf = weight / (sum(mine.values()) + self.cfg["vote_prior"])
+        if any(v.get(number, 0.0) > weight for t, v in votes.items() if t != int(track_id)):
+            conf *= self.cfg["conflict_factor"]    # someone else on court is this number
+        return number, round(float(conf), 3)
+
+
+def load_numbers(reads_path, fps: float, cfg: dict) -> NumberIndex:
+    """The NumberIndex of a video from pose_people.py's number_reads.npz."""
+    d = np.load(reads_path)
+    return NumberIndex(d["track_id"], d["frame"], d["log_p"], d["roster"].tolist(), fps, cfg)

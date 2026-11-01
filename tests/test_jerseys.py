@@ -4,8 +4,8 @@ from setter_eyes.identity.numbers import NumberIndex, back_crop, stretches
 from setter_eyes.identity.toucher import Poses, TouchPicker, assign_players
 
 ROSTER = [6, 14, 17]
-NUM_CFG = {"min_log_p": -1.5, "min_share": 0.6, "switch_reads": 2, "vote_prior": 2.0,
-           "fade_after_s": 5.0, "fade_s": 20.0, "keypoint_min_score": 0.3,
+NUM_CFG = {"min_log_p": -1.5, "min_share": 0.6, "switch_reads": 2, "vote_prior": 0.5,
+           "window_s": 4.0, "tau_s": 5.0, "conflict_factor": 0.3, "keypoint_min_score": 0.3,
            "back_min_shoulder_ratio": 0.35, "crop_side": 0.25, "crop_top": -0.05,
            "crop_bottom": 0.6}
 
@@ -14,22 +14,29 @@ def _read(number: int, sure: float = -0.1) -> list[float]:
     return [sure if n == number else -6.0 for n in ROSTER]
 
 
-def test_a_track_handed_to_another_player_is_cut_where_its_number_changes():
-    # pakmen-black_set2 track 0: the libero #6, then #14, then #17 (one blurred "17" read
-    # inside #14's stretch is noise, not a switch).
-    frames = [0, 60, 120, 600, 660, 720, 780, 840, 1980, 2040, 2100]
-    numbers = [6, 6, 6, 14, 14, 17, 14, 14, 17, 17, 17]
-    log_p = np.array([_read(n) for n in numbers] + [_read(14, sure=-4.0)])  # implausible
-    found = stretches(np.zeros(12, int), np.array(frames + [900]), log_p, ROSTER, NUM_CFG)
-    assert [s.number for s in found] == [6, 14, 17]
-    index = NumberIndex(found, 60.0, NUM_CFG)
+def test_a_track_handed_to_another_player_takes_the_number_read_around_the_touch():
+    # pakmen-black_set2 track 0: the libero #6, then #14, then #17; one blurred "17" read
+    # inside #14's time is outvoted, an implausible read doesn't count.
+    frames = [0, 60, 120, 600, 660, 720, 780, 840, 1980, 2040, 2100, 900]
+    numbers = [6, 6, 6, 14, 14, 17, 14, 14, 17, 17, 17, 14]
+    log_p = np.array([_read(n) for n in numbers[:-1]] + [_read(14, sure=-4.0)])
+    index = NumberIndex(np.zeros(12, int), np.array(frames), log_p, ROSTER, 60.0, NUM_CFG)
     assert index.number_at(0, 100)[0] == 6
-    assert index.number_at(0, 700)[0] == 14
-    assert index.number_at(0, 2500)[0] == 17
-    assert index.number_at(1, 700) is None                 # a track with no reads
-    near, far = index.number_at(0, 2100)[1], index.number_at(0, 2100 + 60 * 40)[1]
-    assert far < near                                     # long after the last read: less sure
+    assert index.number_at(0, 720)[0] == 14
+    assert index.number_at(0, 2050)[0] == 17
+    assert index.number_at(0, 1400) is None               # no read within the window
+    assert index.number_at(1, 700) is None                # a track with no reads
+    found = stretches(np.zeros(12, int), np.array(frames), log_p, ROSTER, NUM_CFG)
+    assert [s.number for s in found] == [6, 14, 17]       # the numbers.json summary
 
+
+def test_one_number_is_on_one_player_at_a_time():
+    # Tracks 1 and 2 on court together, both read as 14; track 1 much more often.
+    frames = np.array([0, 30, 60, 90, 120, 150, 40, 100])
+    tids = np.array([1] * 6 + [2] * 2)
+    index = NumberIndex(tids, frames, np.array([_read(14)] * 8), ROSTER, 60.0, NUM_CFG)
+    strong, weak = index.number_at(1, 80), index.number_at(2, 80)
+    assert strong[0] == weak[0] == 14 and weak[1] < 0.5 * strong[1]
 
 def test_back_crop_only_for_players_facing_away():
     kp = np.zeros((17, 2))
@@ -69,8 +76,8 @@ def test_the_toucher_is_whose_hands_are_at_the_ball_not_the_biggest_box():
         contacts = [0, 1]
 
     contacts = [C("us", 2), C("them", 2)]
-    index = NumberIndex(stretches(np.array([1, 1, 1]), np.array([0, 6, 12]),
-                                  np.array([_read(14)] * 3), ROSTER, NUM_CFG), 60.0, NUM_CFG)
+    index = NumberIndex(np.array([1, 1, 1]), np.array([0, 6, 12]), np.array([_read(14)] * 3),
+                        ROSTER, 60.0, NUM_CFG)
     how = assign_players([R()], contacts, picker, index,
                          {"toucher": cfg, "min_player_confidence": 0.3})
     assert (contacts[0].track_id, contacts[0].jersey) == (1, 14)

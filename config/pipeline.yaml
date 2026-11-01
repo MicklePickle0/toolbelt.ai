@@ -211,10 +211,12 @@ identity:
     crop_bottom: 0.6         # to this x torso height below it (pakmen-black_set2: best of 10)
     min_log_p: -1.5          # a read counts when its best number is this plausible (log P) ...
     min_share: 0.6           # ...and has this share of the roster posterior
-    switch_reads: 2          # a track's number changes after this many reads in a row agree
-    vote_prior: 2.0          # confidence = top votes / (all votes + this), per stretch
-    fade_after_s: 5.0        # a touch further than this from the stretch's nearest read...
-    fade_s: 20.0             # ...loses confidence: x exp(-(gap - fade_after_s) / fade_s)
+    switch_reads: 2          # numbers.json summary: a stretch ends after this many reads agree
+                             # on another number
+    window_s: 4.0            # a touch's number: its track's reads within +- this...
+    tau_s: 5.0               # ...each weighted exp(-|dt| / this)
+    vote_prior: 0.5          # confidence = top weight / (all weight + this)
+    conflict_factor: 0.3     # another track shows this number more strongly then: x this
   toucher:                   # identity/toucher.py: hands / forearms at the ball
     max_dt_s: 0.15           # pose samples this close to the touch (10 Hz: 0.1 s apart)
     keypoint_min_score: 0.3

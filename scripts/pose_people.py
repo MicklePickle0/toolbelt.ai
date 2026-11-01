@@ -1,7 +1,8 @@
 """Pose of our players and their jersey numbers (Milestone 7; roadmap B2-B4).
 
-For every detected sample (detect.person_sample_hz, 10 Hz) of a near-side player track
-(people_roles.json) at least `identity.pose.min_box_height_px` tall: RTMPose keypoints
+For every detected sample (detect.person_sample_hz, 10 Hz) of a person on our court at
+that moment (track/roles.py ours_now) at least `identity.pose.min_box_height_px` tall:
+RTMPose keypoints
 (rtmlib, ONNX on the GPU). On back views the back number is read with PARSeq, limited to
 the video's roster (identity/numbers.py), and each read votes for its track.
 
@@ -37,7 +38,7 @@ from setter_eyes.ingest import iter_frames, probe
 from setter_eyes.labels import load_manifest
 from setter_eyes.pose import pose_batch
 from setter_eyes.track.people import PeopleTracks
-from setter_eyes.track.roles import load_roles
+from setter_eyes.track.roles import load_roles, ours_now
 
 PROGRESS_EVERY_S = 20
 
@@ -64,10 +65,15 @@ def main() -> int:
     cfg = config.scale_px(pipeline["identity"], info.width)
     people = PeopleTracks.load(cache / "people_tracks.npz")
     roles = load_roles(cache / "people_roles.json")
-    ours = np.array([roles.get(int(t), {}).get("role") == "near_player"
-                     for t in people.track_id])
+    # Ours from where they are at that moment (track/roles.py ours_now, rally or not): a
+    # track's lifetime role misses the setter and hitters at the net (tracks swap teams
+    # there) and short tracks ("other"). Not the filled-in rows (source 1): those have no
+    # detection; corrected positions (2, e.g. mid-jump) keep theirs.
+    track_cfg = pipeline["track"]
+    ours = np.array([ours_now(xy, roles.get(int(t), {}).get("role"), True, track_cfg)
+                     for xy, t in zip(people.court_xy_smooth, people.track_id, strict=True)])
     tall = (people.box[:, 3] - people.box[:, 1]) >= cfg["pose"]["min_box_height_px"]
-    sel = np.flatnonzero((people.source == 0) & ours & tall)
+    sel = np.flatnonzero((people.source != 1) & ours & tall)
     if args.seconds:
         sel = sel[people.frame[sel] < args.seconds * info.fps]
     by_frame: dict[int, np.ndarray] = {}

@@ -41,7 +41,7 @@ from setter_eyes.contacts.blocks import add_stuff_blocks, blocks_from_landing
 from setter_eyes.contacts.events import Contact, add_hidden_touches, find_contacts
 from setter_eyes.contacts.scorer import TouchScorer, scored_contacts
 from setter_eyes.db.pipeline import write_video
-from setter_eyes.identity.numbers import NumberIndex, stretches
+from setter_eyes.identity.numbers import load_numbers
 from setter_eyes.identity.toucher import Poses, TouchPicker, assign_players
 from setter_eyes.labels import load_manifest
 from setter_eyes.rally.live import PlayerMotion
@@ -94,10 +94,7 @@ def identify(rallies: list, contacts: list, cache: Path, fps: float, cfg: dict) 
     picker = TouchPicker(Poses.load(cache / "pose.npz"), fps, id_cfg["toucher"])
     numbers = None
     if (cache / "number_reads.npz").exists():
-        d = np.load(cache / "number_reads.npz")
-        numbers = NumberIndex(stretches(d["track_id"], d["frame"], d["log_p"],
-                                        d["roster"].tolist(), id_cfg["numbers"]),
-                              fps, id_cfg["numbers"])
+        numbers = load_numbers(cache / "number_reads.npz", fps, id_cfg["numbers"])
     return assign_players(rallies, contacts, picker, numbers, id_cfg)
 
 
@@ -184,7 +181,8 @@ def main() -> int:
     passes = score_passes(rallies, contacts, path, people, arcs, g, fps,
                           config.load("pass_scale"))
     print(f"serve-receive pass scores: {dict(passes)}")
-    print(f"who touched it (our touches): {dict(identify(rallies, contacts, cache, fps, cfg))}")
+    print(f"who touched it (our touches): "
+          f"{dict(identify(rallies, contacts, cache, fps, cfg))}")
     (cache / f"contacts{suffix}.json").write_text(json.dumps(
         {"video": entry.key, "fps": fps, "contacts": [c.to_dict() for c in contacts]},
         indent=1), encoding="utf-8")

@@ -175,19 +175,19 @@ Deadline: 16U OVA Fall Classic, Ottawa, 2026-11-06/07. The owner has only a lapt
   - three touches by one side keep the rally without a crossing;
   - an impossible-score check (`pakmen-black_set1` inferred 33-17).
   CPU only; measure on set 2 and the two Humber sets.
-- A16 (added 2026-10-31) Pass score and jersey number on each touch in review (none is editable in the web app today), so Ottawa gets pass averages and per-player stats from review even before the pipeline is right. Pass scores entered there become B8's labelled passes.
+- A16 DONE 2026-10-31. Pass score and jersey number on each touch in review (none is editable in the web app today), so Ottawa gets pass averages and per-player stats from review even before the pipeline is right. Pass scores entered there become B8's labelled passes.
 - A17 (added 2026-10-31) Re-run the processed sets with the 2026-10-31 fixes (poster, 1080p features, team decoder). CPU, from cached detections. First check that writing the event DB keeps every reviewed rally (`pakmen-black_set1/2`), and back up the DB.
 - A18 (added 2026-10-31) Retrain the touch scorer with `pakmen-black_set2`'s reviewed rallies (C3, first Durham Attack data), then test on `pakmen-black_set1`'s reviewed rallies.
 
 **Phase B, per-player stats (after Ottawa, or earlier if Phase A goes well):**
 - B1 (Owner) Roster (numbers + names) and each set's starting lineup.
-- B2 Pick the toucher by hands at the ball (RTMPose), not nearest feet (wrong ~1/3 of labelled touches).
-- B3 Jersey-number reading: PARSeq (needs the owner's OK to run torch-hub code) or our own digit model trained on ~300-500 crops the owner tags. Off-the-shelf EasyOCR read ~6/40.
-- B4 Number votes per track; keep the binding when the number is hidden.
+- B2 DONE 2026-10-31 (moved before Ottawa): toucher by forearms/hands at the ball (identity/toucher.py, RTMPose in scripts/pose_people.py).
+- B3 DONE 2026-10-31: PARSeq (owner's OK) limited to the roster, on back views (identity/numbers.py). Fine-tune on reviewed crops later if needed.
+- B4 DONE 2026-10-31, differently: tracks pass between players, so a touch takes its track's reads within +-4 s, and one number is on one player at a time. titan-rise_set1 at 1080p: 50% of our touches named, 91% right.
 - B5 Re-attach broken tracks by appearance.
 - B6 Rotation state machine and libero swaps.
 - B7 Fix a touch's player in review; one fix relabels the whole track.
-- B8 Pass scores in the pipeline (from the setter's feet). Moved before Ottawa (owner, 2026-10-29: core feature). Every pipeline contact has `pass_score` NULL today.
+- B8 DONE 2026-10-31: pass scores in the pipeline (from the setter's feet), with a confidence.
 
 **Phase C, accuracy and new gyms without labelling:**
 - C1 Self-labelling: confident ball arcs become detector labels; retrain overnight on new footage.
@@ -233,7 +233,7 @@ Deadline: 16U OVA Fall Classic, Ottawa, 2026-11-06/07. The owner has only a lapt
    - A18 touch scorer retrain;
    - A9 1080p ball detector retrain (owner's DA boxes, if done).
 5. 2026-11-03/04: A13 dry run, fix what breaks. 2026-11-05: freeze; no new features.
-6. After Ottawa: jersey numbers B2-B4 first (pose toucher, then PARSeq or our own digit model), then the rest of Phase B, with Phase C alongside (C1 first, so new gyms stop needing labels). Jersey numbers are not reliable enough for Ottawa: untested at 1080p, and the toucher is wrong ~1/3 of the time; A16 covers it by hand.
+6. After Ottawa: the rest of Phase B (B2-B4 and B8 were done 2026-10-31), with Phase C alongside (C1 first, so new gyms stop needing labels).
 7. Then Phase D in the order that matters to the owner's coaching.
 
 ## Product shape (later; do not build yet)
