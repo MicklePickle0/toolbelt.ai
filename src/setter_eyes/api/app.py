@@ -751,5 +751,15 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         data = path.read_bytes()[-tail:].decode("utf-8", "replace")
         return head + (data.replace("\r", "\n") or last_line(path))
 
-    app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
+    app.mount("/", FreshStaticFiles(directory=STATIC, html=True), name="static")
     return app
+
+
+class FreshStaticFiles(StaticFiles):
+    """Static files the browser re-checks on every load (a cheap 304 when unchanged), so
+    after an update it never mixes a cached old index.html or script with new ones."""
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
