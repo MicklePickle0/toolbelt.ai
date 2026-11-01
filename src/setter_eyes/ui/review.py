@@ -371,6 +371,7 @@ def rally_clip(src: Path, out: Path, t0: float, t1: float, width: int = 1280) ->
     out.parent.mkdir(parents=True, exist_ok=True)
     cmd = ["ffmpeg", "-v", "error", "-y", "-ss", f"{max(0.0, t0):.3f}", "-i", str(src),
            "-t", f"{t1 - max(0.0, t0):.3f}", "-vf", f"scale={width}:-2", "-c:v", "libx264",
-           "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-an", str(out)]
+           "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-an",
+           "-movflags", "+faststart", str(out)]   # index first: plays before it's all loaded
     subprocess.run(cmd, check=True)
     return out

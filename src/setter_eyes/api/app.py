@@ -24,6 +24,7 @@ from pathlib import Path
 
 import cv2
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -207,6 +208,9 @@ def _edits(touches: list[Touch]) -> list[rv.TouchEdit]:
 def create_app(settings: Settings | None = None, start_worker: bool = True) -> FastAPI:
     s = settings or Settings.from_config()
     app = FastAPI(title="Toolbelt")
+    # Over the VS Code tunnel every byte goes through a relay: JSON and scripts shrink ~10x
+    # (video is left alone, it's already compressed).
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     def usable(cal) -> bool:
         return cal is not None and (cal.method == "manual" or s.accept_auto_calibration)
