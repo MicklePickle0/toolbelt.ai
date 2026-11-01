@@ -53,6 +53,7 @@ def main() -> int:
           f"players (5+ reads each): the tracker passed the id on")
 
     res = Counter()
+    seen = []                                  # (track, bound number or None, true jersey)
     for r in vl.rallies:
         for c in r.contacts:
             if c.team != "us" or c.jersey is None:
@@ -63,6 +64,7 @@ def main() -> int:
                 continue
             local = index.number_at(pick[0], c.frame)
             w, truth = whole[pick[0]], int(c.jersey)
+            seen.append((pick[0], local[0] if local else None, truth))
             if local is None:
                 res["no local reads"] += 1
                 res["whole-track right (no local reads)"] += w == truth
@@ -77,6 +79,22 @@ def main() -> int:
                 res["differ: whole-track right"] += w == truth
     for k, v in res.items():
         print(f"  {k}: {v}")
+    # Switches as pairs of labelled touches: one identity, two different real players.
+    # Tracker: same track id. Bound: same track id AND same number read there (the track's
+    # stretch for that player); a switch the numbers caught splits the identity.
+    raw = bound = raw_n = bound_n = 0
+    for i, (ta, na, ja) in enumerate(seen):
+        for tb, nb, jb in seen[i + 1:]:
+            if ta != tb:
+                continue
+            raw_n += 1
+            raw += ja != jb
+            if na is not None and na == nb:
+                bound_n += 1
+                bound += ja != jb
+    print(f"  identity switches, pairs of labelled touches on one identity with two real "
+          f"players: tracker {raw}/{raw_n} ({raw / max(raw_n, 1):.0%}), after binding numbers "
+          f"{bound}/{bound_n} ({bound / max(bound_n, 1):.0%})")
     return 0
 
 
