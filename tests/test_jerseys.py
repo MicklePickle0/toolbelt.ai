@@ -69,6 +69,7 @@ def test_the_toucher_is_whose_hands_are_at_the_ball_not_the_biggest_box():
     class C:                                               # minimal Contact / Rally stand-ins
         def __init__(self, team, track):
             self.kind, self.team, self.inferred, self.frame = "touch", team, False, 3
+            self.serve = False
             self.ball_uv, self.track_id, self.jersey, self.player_confidence = \
                 (52, 45), track, None, None
 
@@ -97,3 +98,39 @@ def test_the_libero_is_told_apart_by_jersey_colour():
     lib = LiberoColour(poses, *reads, [6], cfg)
     assert lib.ok and lib.which(1, 3, 10) == "libero" and lib.which(2, 3, 10) == "team"
     assert not LiberoColour(poses, *reads, [], cfg).ok   # no libero on the roster
+
+
+def test_our_server_is_who_walks_into_view_after_the_serve():
+    from setter_eyes.identity.server import name_servers
+    from setter_eyes.track.people import PeopleTracks
+
+    fps = 60.0
+    # Track 5 (#14) first seen 1 s after our serve, 8 m deep; track 6 was there all along.
+    rows = [(f, 5, (4.0, 8.0)) for f in range(660, 1200, 6)] + \
+           [(f, 6, (4.0, 2.0)) for f in range(0, 1200, 6)]
+    rows.sort()
+    n = len(rows)
+    people = PeopleTracks(np.array([r[0] for r in rows]), np.array([r[1] for r in rows]),
+                          np.zeros((n, 4)), np.ones(n), np.array([r[2] for r in rows], float),
+                          np.array([r[2] for r in rows], float), np.ones(n, bool),
+                          np.zeros(n, np.int8), np.full(n, 1.8))
+    index = NumberIndex(np.array([5] * 6), np.arange(700, 1060, 60), np.array([_read(14)] * 6),
+                        ROSTER, fps, NUM_CFG)
+
+    class C:
+        def __init__(self):
+            self.frame, self.jersey, self.player_confidence = 600, None, None
+
+    class R:
+        serving_team, serve_contact, start_t = "us", 0, 10.0
+
+    serve = [C()]
+    cfg = {"server": {"walk_in": True, "runs": False, "enter_before_s": 1.5,
+                      "enter_window_s": 3.0, "min_depth_m": 3.5, "read_after_s": [1.0, 3.0],
+                      "min_read_confidence": 0.5, "confidence": 0.9, "run_min_share": 0.6},
+           "min_player_confidence": 0.3}
+    name_servers([R()], serve, people, index, fps, cfg)
+    assert serve[0].jersey == 14
+    serve = [C()]
+    name_servers([R()], serve, people, index, fps, cfg, liberos=(14,))  # a libero: not them
+    assert serve[0].jersey is None

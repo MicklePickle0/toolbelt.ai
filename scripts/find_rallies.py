@@ -43,6 +43,7 @@ from setter_eyes.contacts.events import Contact, add_hidden_touches, find_contac
 from setter_eyes.contacts.scorer import TouchScorer, scored_contacts
 from setter_eyes.db.pipeline import write_video
 from setter_eyes.identity.numbers import counted_reads, load_numbers
+from setter_eyes.identity.server import name_servers
 from setter_eyes.identity.toucher import LiberoColour, Poses, TouchPicker, assign_players
 from setter_eyes.labels import load_manifest
 from setter_eyes.rally.live import PlayerMotion
@@ -88,7 +89,7 @@ def mark_our_serves(contacts: list, path, fps: float, key: str, cfg: dict,
 
 
 def identify(rallies: list, contacts: list, cache: Path, fps: float, cfg: dict,
-             key: str) -> Counter:
+             key: str, people: PeopleTracks) -> Counter:
     """Jerseys on our touches from scripts/pose_people.py's output, when it's there."""
     if not (cache / "pose.npz").exists():
         return Counter({"not posed yet (scripts/pose_people.py)": 1})
@@ -96,6 +97,7 @@ def identify(rallies: list, contacts: list, cache: Path, fps: float, cfg: dict,
     poses = Poses.load(cache / "pose.npz")
     picker = TouchPicker(poses, fps, id_cfg["toucher"])
     numbers = libero = None
+    liberos: list[int] = []
     reads = cache / "number_reads.npz"
     if reads.exists():
         numbers = load_numbers(reads, fps, id_cfg["numbers"])
@@ -106,7 +108,9 @@ def identify(rallies: list, contacts: list, cache: Path, fps: float, cfg: dict,
                               id_cfg["libero"])
         print("libero by jersey colour: " + (f"#{libero.number}" if libero.ok else
                                              "not used (no libero, few reads or same colour)"))
-    return assign_players(rallies, contacts, picker, numbers, id_cfg, libero)
+    how = assign_players(rallies, contacts, picker, numbers, id_cfg, libero, tuple(liberos))
+    how.update(name_servers(rallies, contacts, people, numbers, fps, id_cfg, tuple(liberos)))
+    return how
 
 
 def main() -> int:
@@ -194,7 +198,7 @@ def main() -> int:
                           config.load("pass_scale"))
     print(f"serve-receive pass scores: {dict(passes)}")
     print(f"who touched it (our touches): "
-          f"{dict(identify(rallies, contacts, cache, fps, cfg, entry.key))}")
+          f"{dict(identify(rallies, contacts, cache, fps, cfg, entry.key, people))}")
     (cache / f"contacts{suffix}.json").write_text(json.dumps(
         {"video": entry.key, "fps": fps, "contacts": [c.to_dict() for c in contacts]},
         indent=1), encoding="utf-8")

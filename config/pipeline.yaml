@@ -229,6 +229,17 @@ identity:
     min_separation: 15.0     # Lab distance between the two colours, else not used
     margin: 8.0              # a player this much nearer one colour is in that jersey
     confidence: 0.8          # number confidence of "in the libero's jersey"
+  server:                    # identity/server.py: our server walks into view after serving
+    walk_in: true            # name a serve from who walks into view after it
+    runs: false              # one server per run of our serves: off, it spread wrong names
+                             # (set 2: 91 -> 86% right, 2026-11-01)
+    enter_before_s: 1.5      # a track of ours first seen from this before the serve (the
+    enter_window_s: 3.0      # toss) to this after...
+    min_depth_m: 3.5         # ...this deep in our court (from the net) when first seen
+    read_after_s: [1.0, 3.0, 5.0]  # its number: the surest read around these times after
+    min_read_confidence: 0.9 # ...if this sure; the deepest newcomer with one is the server
+    confidence: 0.9          # x the number's confidence
+    run_min_share: 0.6       # a run of our serves takes its top number from this vote share
   min_player_confidence: 0.5 # a touch gets a jersey from this confidence on (else unknown):
                              # titan 1080p 43% of our touches named, 90% right; mac 4K 34%, 84%
   rotation:                  # identity/rotation.py

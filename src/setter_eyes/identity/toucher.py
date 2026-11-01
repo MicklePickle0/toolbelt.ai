@@ -168,7 +168,8 @@ class TouchPicker:
 
 
 def assign_players(rallies: list, contacts: list, picker: TouchPicker | None, numbers,
-                   cfg: dict, libero: LiberoColour | None = None) -> Counter:
+                   cfg: dict, libero: LiberoColour | None = None,
+                   liberos: tuple[int, ...] = ()) -> Counter:
     """Jersey and player confidence on our touches in rallies, in place: the toucher by
     hands at the ball (else the track the touch came with, x `fallback_factor`), its number
     from `numbers` (NumberIndex). In the libero's colour: the libero; in the team's colour:
@@ -196,6 +197,11 @@ def assign_players(rallies: list, contacts: list, picker: TouchPicker | None, nu
                 continue
             got = numbers.number_at(tid, c.frame) if numbers is not None else None
             kit = libero.which(tid, c.frame, max_df) if libero is not None else None
+            if c.serve and (kit == "libero" or (got is not None and got[0] in liberos)):
+                # The libero doesn't serve (owner's labels): whoever this is, it isn't the
+                # server; identity/server.py names serves from who walks in after.
+                how["serve: libero isn't the server"] += 1
+                continue
             if kit == "libero":
                 got = (libero.number, cfg["libero"]["confidence"])
                 how["libero by jersey colour"] += 1
