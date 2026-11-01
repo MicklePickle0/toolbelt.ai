@@ -224,7 +224,8 @@ identity:
     reach_bodies: 0.35       # nobody's arms nearer the ball than this (body heights): no pick
     base_confidence: 0.4     # confidence = this + (second nearest - nearest) / reach
     fallback_factor: 0.4     # no hands at the ball: the touch's own track, this sure
-  min_player_confidence: 0.3 # a touch gets a jersey from this confidence on (else unknown)
+  min_player_confidence: 0.5 # a touch gets a jersey from this confidence on (else unknown):
+                             # titan 1080p 43% of our touches named, 90% right; mac 4K 34%, 84%
   rotation:                  # identity/rotation.py
     unknown_serve_factor: 0.5  # rotation confidence factor for a rally with no serving team
 

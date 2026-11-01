@@ -119,7 +119,10 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
         - at the labelled moments: 67% named, 83% right; confidence >= 0.5: 54% named, 92% right;
         - through the pipeline's own touches: 50% named, 91% right; the rest left for review.
       - *Error split:* toucher wrong 7, the track's number wrong/missing then 37, nobody posed near 4.
-      - Next: mac-chrome_set1 / titan 4K / a Durham Attack set by eye; the libero (white #6) reads poorly.
+      - mac-chrome_set1 (4K, out-of-fold touches): at the labelled moments 62% named, 75% right; through the pipeline 44% named, 79% right. At confidence >= 0.5 (now `identity.min_player_confidence`): titan 1080p 43% named, 90% right; mac 34% named, 84% right.
+      - Owner reviews the unnamed touches (Player box in review).
+      - Next: titan 4K, a Durham Attack set by eye; the libero (white #6) reads poorly.
+      - Speed: pose_people 4.5 min (1080p), 8.6 min (4K, decoding); GPU ~15% busy, so the CPU (decode, crops) is the limit.
 - [ ] **Pass scores at 1080p, 2026-10-31** (`eval_passes.py`, labelled touches, setter's feet):
       - titan-rise_set1 4K: exact 56%, within 1 83%;
       - the same video at 1080p: exact 58%, within 1 79%;
