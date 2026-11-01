@@ -1,0 +1,34 @@
+# Video key -> tournament and game (the web app's Stats page).
+leaside-panther_set1:
+  tournament: Humber 17U
+  game: leaside-panther
+mac-chrome_set1:
+  tournament: Humber 17U
+  game: mac-chrome
+mac-chrome_set2:
+  tournament: Humber 17U
+  game: mac-chrome
+mac-iron_set1:
+  tournament: Humber 17U
+  game: mac-iron
+niagara-rtw_set1:
+  tournament: Humber 17U
+  game: niagara-rtw
+niagara-rtw_set2:
+  tournament: Humber 17U
+  game: niagara-rtw
+pakmen-black_set1:
+  tournament: DA Invitational
+  game: pakmen-black
+pakmen-black_set2:
+  tournament: DA Invitational
+  game: pakmen-black
+reach-apex_set1:
+  tournament: Humber 17U
+  game: reach-apex
+reach-apex_set2:
+  tournament: Humber 17U
+  game: reach-apex
+titan-rise_set1:
+  tournament: Humber 17U
+  game: titan-rise
