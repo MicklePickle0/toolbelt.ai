@@ -125,7 +125,12 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
       - pakmen-black_set2 by eye (40 named touches): numbers right wherever visible, except the libero: the white #6's number reads poorly, so the libero's touches got other numbers (3 of 40).
         Fixed with the jersey colour (LiberoColour): it learns the libero's and the team's torso colour from the clear reads. The libero's named touches went 8 -> 17, the 3 errors became #6, and no team-coloured player got #6.
         It only switches on when the colours clearly differ: Humber's dark-green libero vs black kit doesn't (lightness 88 vs 82), so it stays off there.
-      - Next: label the player on some pakmen-black touches in review to measure Durham Attack properly.
+      - Durham Attack by eye (Claude, pakmen-black_set2, 40 named touches spread over the set, after the libero fix): the number visible on the picked player in 26 of 40, all 26 right; 14 couldn't be judged from the crop (front or side on). Not owner labels: the owner's ticks in review will measure it properly.
+      - Track switches (`eval_track_switches.py`): 49-62 tracks a set (about 1 in 5) carry 2+ players' numbers. On labelled touches where the track had changed hands (titan 1080p / 4K / mac: 17 / 14 / 18), the number read around the touch was right 14 / 8 / 13 times, one number for the whole track 1 / 3 / 1.
+      - In the event DB (2026-10-31): pakmen-black_set1/2 re-run with `pose_people` + `find_rallies`. Every reviewed rally, touch and correction was kept (DB backed up first: `data/setter_eyes.db.backup_2026-10-31_before_jerseys`).
+        Guesses were added to reviewed touches that had none (`db/pipeline.py` `_guess_on_reviewed`, confidence < 1): set 1 has 13 pass scores and 61 players, set 2 has 14 and 56.
+        Stats: team pass average 2.87 over 23 passes (it was 0, from aces only); the libero #6 leads with 9 passes at 3.22.
+        Side effect: set 2 gained 4 unreviewed pipeline rallies, the known false ones (0:32, 7:27, 8:56, 14:12, A15); owner: dismiss them as not a rally.
       - Speed: pose_people 4.5 min (1080p), 8.6 min (4K, decoding); GPU ~15% busy, so the CPU (decode, crops) is the limit.
 - [ ] **Pass scores at 1080p, 2026-10-31** (`eval_passes.py`, labelled touches, setter's feet):
       - titan-rise_set1 4K: exact 56%, within 1 83%;

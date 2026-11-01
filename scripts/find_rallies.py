@@ -227,7 +227,8 @@ def main() -> int:
                         rosters_dir=config.repo_path(paths["rosters_dir"]))
         conn.close()
         print(f"event DB: {w.rallies} rallies, {w.contacts} touches written, {w.kept_reviewed} "
-              f"reviewed rallies kept -> {paths['db_path']}")
+              f"reviewed rallies kept ({w.guesses} pass scores / players guessed on their "
+              f"touches) -> {paths['db_path']}")
     return 0
 
 

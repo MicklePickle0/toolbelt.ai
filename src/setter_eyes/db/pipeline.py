@@ -7,7 +7,8 @@ unreviewed and carry their confidences. point_winner is inferred from who serves
 review UI's key press (source 'user') overrides both.
 
 Re-writing a video replaces its UNREVIEWED rallies only. Rallies saved in the review UI
-(reviewed = 1) are human work: they and their touches are kept as they are, and pipeline
+(reviewed = 1) are human work: they and their touches are kept as they are (bar a pass
+score or player the reviewer hasn't given, filled in as a guess below confidence 1), and pipeline
 rallies overlapping one are dropped (also for a rally reviewed as `not_a_rally`, so a
 false rally the reviewer dismissed doesn't come back). Rally numbers then follow time order again.
 
@@ -17,6 +18,7 @@ rally gets its rotation and our serves their server (db/rotation.py).
 
 from __future__ import annotations
 
+import bisect
 import json
 import sqlite3
 from dataclasses import dataclass
@@ -33,7 +35,8 @@ class WriteSummary:
     game_id: int
     rallies: int            # pipeline rallies written
     contacts: int
-    kept_reviewed: int      # reviewed rallies left untouched
+    kept_reviewed: int      # reviewed rallies left untouched (bar guesses, below)
+    guesses: int = 0        # pass scores / players guessed on reviewed touches without one
 
 
 def _game(conn, team_id: int, entry: VideoEntry, fps: float, calibration) -> int:
@@ -126,6 +129,43 @@ def write_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry,
                      c.get("player_confidence") if player else None),
                 )
                 n_contacts += 1
+        guesses = _guess_on_reviewed(conn, set_id, contacts, players)
         renumber(conn, set_id)
     apply_rotation(conn, set_id)
-    return WriteSummary(game_id, n_rallies, n_contacts, len(kept))
+    return WriteSummary(game_id, n_rallies, n_contacts, len(kept), guesses)
+
+
+def _guess_on_reviewed(conn, set_id: int, contacts: list[dict], players: dict[int, int],
+                       max_dt_s: float = 0.15) -> int:
+    """Pass scores and players the reviewer hasn't given yet, on touches of reviewed
+    rallies, from the pipeline touch of the same team within max_dt_s: guesses with the
+    pipeline's confidence (< 1), shown as such in review; never over a value already
+    there. Returns how many were filled."""
+    ours = [c for c in contacts if c["kind"] == "touch" and c["team"] == "us"
+            and (c.get("pass_score") is not None or c.get("jersey") is not None)]
+    if not ours:
+        return 0
+    t = sorted(ours, key=lambda c: c["t"])
+    times = [c["t"] for c in t]
+    filled = 0
+    rows = conn.execute(
+        "SELECT c.id, c.t, c.action, c.pass_score, c.player_id FROM contacts c "
+        "JOIN rallies r ON c.rally_id = r.id WHERE r.set_id = ? AND r.reviewed = 1 "
+        "AND c.team = 'us' AND (c.pass_score IS NULL OR c.player_id IS NULL)",
+        (set_id,)).fetchall()
+    for cid, ct, action, pass_score, player_id in rows:
+        k = bisect.bisect_left(times, ct)
+        near = [t[j] for j in (k - 1, k) if 0 <= j < len(t) and abs(t[j]["t"] - ct) <= max_dt_s]
+        if not near:
+            continue
+        p = min(near, key=lambda c: abs(c["t"] - ct))
+        if pass_score is None and p.get("pass_score") is not None and \
+                action in ("receive", "overpass"):
+            conn.execute("UPDATE contacts SET pass_score = ?, pass_confidence = ? WHERE id = ?",
+                         (p["pass_score"], min(p["pass_confidence"] or 0.0, 0.99), cid))
+            filled += 1
+        if player_id is None and players.get(p.get("jersey")) is not None:
+            conn.execute("UPDATE contacts SET player_id = ?, player_confidence = ? WHERE id = ?",
+                         (players[p["jersey"]], min(p["player_confidence"] or 0.0, 0.99), cid))
+            filled += 1
+    return filled

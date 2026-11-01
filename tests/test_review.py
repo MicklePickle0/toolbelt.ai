@@ -222,3 +222,34 @@ def test_unconfirmed_pipeline_guesses_are_not_exported_as_labels(tmp_path):
     labels = reviewed_for_training(conn, "v1")[0].contacts
     assert (labels[1].pass_score, labels[1].jersey) == (None, None)   # left as guesses
     assert labels[2].jersey == 7
+
+
+def test_rerun_guesses_pass_and_player_on_reviewed_touches_without_overwriting(tmp_path):
+    from setter_eyes.labels.manifest import RosterEntry
+    conn = db.connect(":memory:")
+    manifest = Manifest(tmp_path / "manifest.yaml", "Venom", [RosterEntry(7, "Sam"),
+                                                              RosterEntry(9, "Ali")], [])
+    entry = VideoEntry("v1", tmp_path / "v1.mp4", venue="Humber", ball="mikasa")
+
+    def touches(p, j):
+        return [{"kind": "touch", "t": t, "frame": int(t * 60), "confidence": 0.6, "team": team,
+                 "ball_xyz": None, "action": a, "action_confidence": 0.5,
+                 "pass_score": p if a == "receive" else None, "pass_confidence": 0.7,
+                 "jersey": j if team == "us" else None, "player_confidence": 0.8}
+                for t, team, a in ((10.0, "them", "serve"), (11.0, "us", "receive"),
+                                   (12.0, "us", "set"))]
+
+    rally = {"index": 1, "start_frame": 600, "end_frame": 800, "start_t": 10.0, "end_t": 13.0,
+             "confidence": 0.4, "serving_team": "them", "contacts": [0, 1, 2]}
+    write_video(conn, manifest, entry, 60.0, [rally], touches(None, None))
+    rid = rv.rallies(conn, rv.games(conn)[0]["set_id"])[0]["id"]
+    t = rv.touches(conn, rid)
+    edits = [rv.TouchEdit(x["id"], x["t"], x["team"], x["action"]) for x in t]
+    edits[2] = rv.TouchEdit(t[2]["id"], 12.0, "us", "set", jersey=9, keep_extra=False)
+    rv.save_review(conn, rid, 60.0, "us", "kill", "them", 13.0, edits, True)
+    w = write_video(conn, manifest, entry, 60.0, [rally], touches(3, 7))   # a re-run
+    t = rv.touches(conn, rid)
+    assert w.kept_reviewed == 1 and w.guesses == 2
+    assert (t[1]["pass_score"], t[1]["jersey"]) == (3, 7)          # filled in...
+    assert t[1]["pass_confidence"] < 1 and t[1]["player_confidence"] < 1   # ...as guesses
+    assert t[2]["jersey"] == 9                                      # the reviewer's stays
