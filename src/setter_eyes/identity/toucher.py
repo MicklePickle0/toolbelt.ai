@@ -174,6 +174,8 @@ def assign_players(rallies: list, contacts: list, picker: TouchPicker | None, nu
     from `numbers` (NumberIndex). In the libero's colour: the libero; in the team's colour:
     not the libero. Kept from `min_player_confidence` on. Returns counts."""
     max_df = int(round(cfg["toucher"]["max_dt_s"] * (picker.fps if picker else 60) * 2))
+    for c in contacts:                             # touches read back from an earlier run
+        c.jersey = c.player_confidence = None
     t_cfg = cfg["toucher"]
     how = Counter()
     for r in rallies:

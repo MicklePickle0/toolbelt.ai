@@ -104,6 +104,8 @@ def score_passes(rallies: list, contacts: list, path: BallPath, people: PeopleTr
     receive's action and the next touch are. Returns counts by how each was scored."""
     p = scale["pipeline"]
     how = Counter()
+    for c in contacts:                             # touches read back from an earlier run
+        c.pass_score = c.pass_confidence = None
     for r in rallies:
         if r.serving_team != "them":
             continue
