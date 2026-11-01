@@ -156,3 +156,41 @@ def test_split_two_points_counted_as_one(tmp_path):
     assert (second["serving_team"], second["point_winner"]) == ("us", "them")
     assert not first["reviewed"] and not second["reviewed"]
     assert conn.execute("SELECT field FROM corrections").fetchone()[0] == "split"
+
+
+def test_review_saves_pass_score_and_player(tmp_path):
+    from setter_eyes.labels.manifest import RosterEntry
+    conn = db.connect(":memory:")
+    manifest = Manifest(tmp_path / "manifest.yaml", "Venom", [RosterEntry(7, "Sam")], [])
+    entry = VideoEntry("v1", tmp_path / "v1.mp4", venue="Humber", ball="mikasa")
+    contacts = [{"kind": "touch", "t": t, "frame": int(t * 60), "confidence": 0.6, "team": team,
+                 "ball_xyz": None, "action": a, "action_confidence": 0.5, "pass_score": p,
+                 "pass_confidence": None if p is None else 0.4}
+                for t, team, a, p in ((10.0, "them", "serve", None), (11.0, "us", "receive", 2),
+                                      (12.0, "us", "set", None))]
+    write_video(conn, manifest, entry, 60.0, [{
+        "index": 1, "start_frame": 600, "end_frame": 800, "start_t": 10.0, "end_t": 13.0,
+        "confidence": 0.4, "serving_team": "them", "contacts": [0, 1, 2]}], contacts)
+    rid = rv.rallies(conn, rv.games(conn)[0]["set_id"])[0]["id"]
+    t = rv.touches(conn, rid)
+    assert (t[1]["pass_score"], t[1]["pass_confidence"]) == (2, 0.4)   # from the pipeline
+    edits = [rv.TouchEdit(x["id"], x["t"], x["team"], x["action"]) for x in t]
+    edits[1] = rv.TouchEdit(t[1]["id"], 11.0, "us", "receive", pass_score=3, jersey=7,
+                            keep_extra=False)
+    edits[0] = rv.TouchEdit(t[0]["id"], 10.0, "them", "serve", jersey=7, keep_extra=False)
+    rv.save_review(conn, rid, 60.0, "us", "kill", "them", 13.0, edits, True)
+    t = rv.touches(conn, rid)
+    assert (t[1]["pass_score"], t[1]["pass_confidence"], t[1]["jersey"]) == (3, 1.0, 7)
+    assert t[0]["jersey"] is None                        # their touch: no player of ours
+    assert t[2]["pass_score"] is None                    # a set has no pass score
+    logged = {(c["field"], c["new_value"]) for c in conn.execute("SELECT * FROM corrections")}
+    assert {("pass_score", "3"), ("jersey", "7")} <= logged
+    # A caller that doesn't send them (merge, Streamlit) keeps them.
+    rv.save_review(conn, rid, 60.0, "us", "kill", "them", 13.0,
+                   [rv.TouchEdit(x["id"], x["t"], x["team"], x["action"])
+                    for x in rv.touches(conn, rid)], True)
+    assert rv.touches(conn, rid)[1]["pass_score"] == 3
+    bad = [rv.TouchEdit(x["id"], x["t"], x["team"], x["action"], jersey=99, keep_extra=False)
+           for x in rv.touches(conn, rid)]
+    with pytest.raises(ValueError, match="roster"):
+        rv.save_review(conn, rid, 60.0, "us", "kill", "them", 13.0, bad, True)

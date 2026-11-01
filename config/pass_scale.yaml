@@ -46,3 +46,13 @@ overpass_score: 0
 
 # Below this confidence the pass score goes to the review queue.
 review_below_confidence: 0.6
+
+# Pass scores in processing (stats/pass_score.py, score_passes): how sure each is, times
+# how sure the receive's action and the next touch are. Below review_below_confidence the
+# review page shows the score as the pipeline's guess.
+pipeline:
+  located_3d_confidence: 0.8     # the next player found under the ball's 3D position
+  located_image_confidence: 0.6  # ...found in the image (hands at the ball)
+  overpass_confidence: 0.8       # their side played it next
+  shank_confidence: 0.6          # no next touch and they won the point
+  inferred_next_factor: 0.5      # the next touch wasn't seen (added from the timing)

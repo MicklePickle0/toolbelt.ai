@@ -90,3 +90,5 @@ pre.log { white-space: pre-wrap; word-break: break-all; font-size: 12px; max-hei
   .roster-row.head { display: none; }
 }
 a.chip { text-decoration: none; color: inherit; }
+.touch .extra { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.touch .extra select { width: auto; max-width: 14em; }

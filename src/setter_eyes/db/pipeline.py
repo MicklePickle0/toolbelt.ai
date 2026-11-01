@@ -92,6 +92,8 @@ def write_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry,
         kept = [(r[0], r[1]) for r in conn.execute(
             "SELECT start_t, end_t FROM rallies WHERE set_id = ?", (set_id,))]
 
+        players = {r[0]: r[1] for r in conn.execute(
+            "SELECT jersey_number, id FROM players WHERE team_id = ?", (team_id,))}
         n_rallies = n_contacts = 0
         for r in rallies:
             if any(min(r["end_t"], b) > max(r["start_t"], a) for a, b in kept):
@@ -112,12 +114,16 @@ def write_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry,
                 if c["kind"] != "touch":
                     continue
                 x, y, z = c["ball_xyz"] if c["ball_xyz"] is not None else (None, None, None)
+                player = players.get(c.get("jersey")) if c["team"] == "us" else None
                 conn.execute(
                     "INSERT INTO contacts (rally_id, t, frame, contact_confidence, team, "
-                    "action, action_confidence, ball_x, ball_y, ball_z, reviewed) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+                    "action, action_confidence, ball_x, ball_y, ball_z, pass_score, "
+                    "pass_confidence, player_id, player_confidence, reviewed) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
                     (rally_id, c["t"], c["frame"], c["confidence"], c["team"],
-                     c.get("action"), c.get("action_confidence"), x, y, z),
+                     c.get("action"), c.get("action_confidence"), x, y, z,
+                     c.get("pass_score"), c.get("pass_confidence"), player,
+                     c.get("player_confidence") if player else None),
                 )
                 n_contacts += 1
         renumber(conn, set_id)

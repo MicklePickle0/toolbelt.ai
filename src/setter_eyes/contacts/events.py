@@ -48,6 +48,10 @@ class Contact:
     action_confidence: float | None = None
     inferred: bool = False                   # not seen: added because the timing says it was hidden
     p_ours: float | None = None              # touch scorer's P(our side touched it), if scored
+    pass_score: int | None = None            # 0-4 on our receive (stats/pass_score.py)
+    pass_confidence: float | None = None
+    jersey: int | None = None                # who touched it (identity/), our touches
+    player_confidence: float | None = None
 
     def to_dict(self) -> dict:
         d = asdict(self)

@@ -23,6 +23,8 @@ owner's labelled pass scores and suggests values.
 
 from __future__ import annotations
 
+from collections import Counter
+
 import numpy as np
 
 from setter_eyes.ball.tracker import BallPath
@@ -79,6 +81,66 @@ def pass_spot(path: BallPath, people: PeopleTracks, frame: int,
         if gap < best_gap:
             best, best_gap = people.court_xy_smooth[r], gap
     return best if best_gap <= hands_bodies * 2 else None
+
+
+def ball_xyz(arcs: list, g: np.ndarray, t: float, min_conf: float = 0.4,
+             slack_s: float = 0.1) -> np.ndarray | None:
+    """The ball's court position at t from a confident flight around it, or None."""
+    for a in arcs:
+        if a.confidence >= min_conf and a.t0 - slack_s <= t <= a.t0 + a.duration_s + slack_s:
+            return a.position(np.array([min(max(t, a.t0), a.t0 + a.duration_s)]), g)[0]
+    return None
+
+
+def score_passes(rallies: list, contacts: list, path: BallPath, people: PeopleTracks,
+                 arcs: list, g: np.ndarray, fps: float, scale: dict) -> Counter:
+    """Pass score and confidence on each rally's serve receive of ours (the first touch
+    of ours after their serve, `receive` or `overpass`), in place on the Contact:
+      - our next touch: graded from where it is played (`pass_spot`, `grade`);
+      - their next touch: the pass went straight over, `overpass_score`;
+      - no next touch and they won the point: shanked, `ace_score`;
+      - no next touch otherwise: not scored.
+    Confidence: how the spot was found (`pipeline:` in pass_scale.yaml) times how sure the
+    receive's action and the next touch are. Returns counts by how each was scored."""
+    p = scale["pipeline"]
+    how = Counter()
+    for r in rallies:
+        if r.serving_team != "them":
+            continue
+        touches = [contacts[i] for i in r.contacts if contacts[i].kind == "touch"]
+        k = next((j for j, c in enumerate(touches) if c.team == "us"
+                  and c.action in ("receive", "overpass")), None)
+        if k is None:
+            continue
+        rec = touches[k]
+        sure = rec.action_confidence if rec.action_confidence is not None else rec.confidence
+        nxt = touches[k + 1] if k + 1 < len(touches) else None
+        if nxt is None:
+            if r.point_winner == "them":
+                rec.pass_score, rec.pass_confidence = scale["ace_score"], \
+                    round(p["shank_confidence"] * sure, 3)
+                how["shank"] += 1
+            else:
+                how["unscored"] += 1
+            continue
+        if nxt.team != "us":
+            rec.pass_score, rec.pass_confidence = scale["overpass_score"], \
+                round(p["overpass_confidence"] * sure, 3)
+            how["overpass"] += 1
+            continue
+        xyz = ball_xyz(arcs, g, nxt.t)
+        xy = pass_spot(path, people, nxt.frame, xyz)
+        if xy is None:
+            how["no player found"] += 1
+            continue
+        by_3d = xyz is not None and np.isfinite(xyz).all()
+        conf = p["located_3d_confidence" if by_3d else "located_image_confidence"] * \
+            min(sure, nxt.confidence)
+        if nxt.inferred:
+            conf *= p["inferred_next_factor"]
+        rec.pass_score, rec.pass_confidence = grade(xy, scale), round(conf, 3)
+        how["graded"] += 1
+    return how
 
 
 def grade(xy: np.ndarray, scale: dict) -> int:

@@ -102,6 +102,8 @@ class Touch(BaseModel):
     team: str | None = None
     action: str | None = None
     delete: bool = False
+    pass_score: int | None = None         # 0-4 on our receive
+    jersey: int | None = None             # who touched it (our touches), a roster number
 
 
 class Review(BaseModel):
@@ -168,7 +170,10 @@ class NewJob(BaseModel):
 
 
 def _edits(touches: list[Touch]) -> list[rv.TouchEdit]:
-    return [rv.TouchEdit(t.id, t.t, t.team, t.action, t.delete) for t in touches]
+    """Touches that send pass_score or jersey (even as null) set them; others keep the DB's."""
+    return [rv.TouchEdit(t.id, t.t, t.team, t.action, t.delete, t.pass_score, t.jersey,
+                         keep_extra=not ({"pass_score", "jersey"} & t.model_fields_set))
+            for t in touches]
 
 
 def create_app(settings: Settings | None = None, start_worker: bool = True) -> FastAPI:
@@ -320,12 +325,16 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             r = _rally(c, rally_id)
             rows = rv.rallies(c, r["set_id"])
             touches = rv.touches(c, rally_id)
+            roster = [{"number": p[0], "name": p[1]} for p in c.execute(
+                "SELECT p.jersey_number, p.name FROM players p JOIN games g "
+                "ON p.team_id = g.team_id WHERE g.video_key = ? ORDER BY p.jersey_number",
+                (r["video_key"],))]
         prev, nxt = rv.neighbours(rows, rally_id)
         try:
             has_video = _source(r["video_key"]).exists()
         except KeyError:
             has_video = False
-        return {"rally": r, "touches": touches, "has_video": has_video,
+        return {"rally": r, "touches": touches, "has_video": has_video, "roster": roster,
                 "prev": prev and {"id": prev["id"], "rally_number": prev["rally_number"],
                                   "gap_s": round(r["start_t"] - prev["end_t"], 2)},
                 "next": nxt and {"id": nxt["id"], "rally_number": nxt["rally_number"],
@@ -367,14 +376,18 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         if body.end_detail is not None and body.end_detail not in s.end_details:
             raise HTTPException(400, f"unknown end detail {body.end_detail!r}")
         for t in body.touches:
-            if t.team not in ("us", "them", None) or (t.action and t.action not in s.actions):
+            if t.team not in ("us", "them", None) or (t.action and t.action not in s.actions) \
+                    or (t.pass_score is not None and not 0 <= t.pass_score <= 4):
                 raise HTTPException(400, f"bad touch {t}")
         with conn() as c:
             r = _rally(c, rally_id)
-            rv.save_review(c, rally_id, r["fps"], body.winner, body.outcome, body.serving_team,
-                           body.end_t, _edits(body.touches),
-                           body.touches_checked and body.winner != rv.NOT_A_RALLY,
-                           start_t=body.start_t, end_detail=body.end_detail)
+            try:
+                rv.save_review(c, rally_id, r["fps"], body.winner, body.outcome,
+                               body.serving_team, body.end_t, _edits(body.touches),
+                               body.touches_checked and body.winner != rv.NOT_A_RALLY,
+                               start_t=body.start_t, end_detail=body.end_detail)
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
         return {"ok": True}
 
     @app.post("/api/rallies/{rally_id}/merge")

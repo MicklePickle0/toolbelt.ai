@@ -6,7 +6,8 @@ Needs the ball path and arcs (scripts/track_ball.py) and the people tracks and r
                                   ball position, evidence, confidence, serve flag
   data/cache/<id>/rallies.json    rallies: start (serve) and end (floor / ball lost),
                                   serving team, contacts, net crossings, confidence
-Rallies carry no point winner: that comes from the review UI (CLAUDE.md).
+Point winners are inferred from who serves next (the review UI overrides them); our serve
+receives get a 0-4 pass score with a confidence (stats/pass_score.py, config/pass_scale.yaml).
 Also writes rallies and touches (with actions) to the event DB (paths.db_path), unreviewed,
 replacing what was there for this video; --no-db skips it.
 Touches are chosen by the learned scorer when its model exists (contacts.scorer.path,
@@ -51,6 +52,7 @@ from setter_eyes.rally.segment import (
 )
 from setter_eyes.rally.serve_entry import find_our_serves
 from setter_eyes.rally.winner import infer_winners
+from setter_eyes.stats.pass_score import score_passes
 from setter_eyes.track.people import PeopleTracks
 from setter_eyes.track.roles import load_roles
 
@@ -162,6 +164,9 @@ def main() -> int:
                   json.loads(checks_path.read_text(encoding="utf-8"))["checks"]}
         print(f"stuff blocks added: {add_stuff_blocks(rallies, contacts, checks, cfg)} "
               f"({len(checks)} point-ending attacks checked)")
+    passes = score_passes(rallies, contacts, path, people, arcs, g, fps,
+                          config.load("pass_scale"))
+    print(f"serve-receive pass scores: {dict(passes)}")
     (cache / f"contacts{suffix}.json").write_text(json.dumps(
         {"video": entry.key, "fps": fps, "contacts": [c.to_dict() for c in contacts]},
         indent=1), encoding="utf-8")

@@ -510,12 +510,13 @@ async function reviewPage(setId, rallyId, params) {
         h("input", { type: "number", step: 0.001, value: (x.t - t0()).toFixed(3),
           onchange: e => { x.t = t0() + (+e.target.value); suggest(); } }),
         select(["us", "them"], x.team, v => { x.team = v; drawTouches(); suggest(); }),
-        select(META.actions, x.action, v => { x.action = v; suggest(); }, "action?"),
+        select(META.actions, x.action, v => { x.action = v; drawTouches(); suggest(); }, "action?"),
         h("button", { class: "iconbtn", title: "delete", onclick: () => {
           x.delete = true; drawTouches(); suggest(); } }, "✕"));
       if (x.action_confidence !== undefined && x.action_confidence !== null && x.id) {
         row.append(h("div", { class: "sure" }, `pipeline sure ${x.action_confidence.toFixed(2)}`));
       }
+      if (x.team === "us") row.append(extraRow(x));
       return row;
     });
     touchBox.replaceChildren(...rows,
@@ -523,6 +524,25 @@ async function reviewPage(setId, rallyId, params) {
         h("button", { onclick: () => {
           S.touches.push({ id: null, t: now(), team: "us", action: null, delete: false });
           drawTouches(); suggest(); } }, "+ Touch at the current frame")));
+  }
+
+  // Who touched it (our touches) and, on our receive, the pass score 0-4.
+  function extraRow(x) {
+    const unsure = (v, c) => v !== null && v !== undefined && c !== null && c !== undefined && c < 1
+      ? h("span", { class: "small muted" }, ` pipeline, sure ${c.toFixed(2)}`) : null;
+    const who = h("select", { onchange: e => { x.jersey = e.target.value === "" ? null : +e.target.value; } },
+      h("option", { value: "" }, d.roster.length ? "player?" : "no roster for this video"),
+      ...d.roster.map(p => h("option", { value: p.number, selected: p.number === x.jersey },
+        `#${p.number} ${p.name}`)));
+    const parts = [h("label", { class: "row small" }, "Player", who, unsure(x.jersey, x.player_confidence))];
+    if (x.action === "receive" || x.action === "overpass") {
+      parts.push(h("span", { class: "row small" }, "Pass",
+        seg([0, 1, 2, 3, 4].map(n => [String(n), String(n)]),
+          x.pass_score === null || x.pass_score === undefined ? null : String(x.pass_score),
+          v => { x.pass_score = x.pass_score === +v ? null : +v; drawTouches(); }),
+        unsure(x.pass_score, x.pass_confidence)));
+    }
+    return h("div", { class: "extra" }, ...parts);
   }
 
   // rally span

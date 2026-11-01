@@ -40,6 +40,10 @@ class TouchEdit:
     team: str | None
     action: str | None
     delete: bool = False
+    pass_score: int | None = None   # 0-4, our receive only
+    jersey: int | None = None       # roster number of who touched it (our touches)
+    keep_extra: bool = True         # True: keep the DB's pass_score / jersey (callers that
+                                    # don't edit them); False: use the two fields above
 
 
 def games(conn: sqlite3.Connection) -> list[dict]:
@@ -59,8 +63,29 @@ def rallies(conn: sqlite3.Connection, set_id: int) -> list[dict]:
 
 def touches(conn: sqlite3.Connection, rally_id: int) -> list[dict]:
     return [dict(r) for r in conn.execute(
-        "SELECT id, t, team, action, contact_confidence, action_confidence, reviewed "
-        "FROM contacts WHERE rally_id = ? ORDER BY t", (rally_id,))]
+        "SELECT c.id, c.t, c.team, c.action, c.contact_confidence, c.action_confidence, "
+        "c.reviewed, c.pass_score, c.pass_confidence, c.player_confidence, "
+        "p.jersey_number AS jersey "
+        "FROM contacts c LEFT JOIN players p ON c.player_id = p.id "
+        "WHERE c.rally_id = ? ORDER BY c.t", (rally_id,))]
+
+
+def _player_ids(conn: sqlite3.Connection, rally_id: int) -> dict[int, int]:
+    """Jersey number -> players.id for the team of the rally's game."""
+    return {r[0]: r[1] for r in conn.execute(
+        "SELECT p.jersey_number, p.id FROM players p JOIN games g ON p.team_id = g.team_id "
+        "JOIN sets s ON s.game_id = g.id JOIN rallies r ON r.set_id = s.id WHERE r.id = ?",
+        (rally_id,))}
+
+
+def _extra(e: TouchEdit, players: dict[int, int]) -> tuple[int | None, int | None]:
+    """(pass_score, player_id) of an edit: a pass score only on our receive or overpass, a
+    player only on our touches and from the game's roster."""
+    ours = e.team == "us"
+    score = e.pass_score if ours and e.action in ("receive", "overpass") else None
+    if ours and e.jersey is not None and e.jersey not in players:
+        raise ValueError(f"#{e.jersey} isn't on this game's roster")
+    return score, players[e.jersey] if ours and e.jersey is not None else None
 
 
 def score(rows: list[dict]) -> tuple[int, int]:
@@ -111,6 +136,7 @@ def save_review(conn: sqlite3.Connection, rally_id: int, fps: float, winner: str
     with conn:
         old = dict(conn.execute("SELECT * FROM rallies WHERE id = ?", (rally_id,)).fetchone())
         before = {r["id"]: r for r in touches(conn, rally_id)}
+        players = _player_ids(conn, rally_id)
         if start_t is None:
             start_t = old["start_t"]
         for e in edits:
@@ -119,12 +145,19 @@ def save_review(conn: sqlite3.Connection, rally_id: int, fps: float, winner: str
             if e.id is None:
                 if e.delete:
                     continue
+                score, player = _extra(e, players)
                 new_id = conn.execute(
                     "INSERT INTO contacts (rally_id, t, frame, contact_confidence, team, "
-                    "action, action_confidence, reviewed) VALUES (?, ?, ?, 1.0, ?, ?, 1.0, ?)",
-                    (rally_id, e.t, round(e.t * fps), e.team, e.action, int(touches_checked)),
+                    "action, action_confidence, pass_score, pass_confidence, player_id, "
+                    "player_confidence, reviewed) VALUES (?, ?, ?, 1.0, ?, ?, 1.0, ?, ?, ?, ?, ?)",
+                    (rally_id, e.t, round(e.t * fps), e.team, e.action, score,
+                     None if score is None else 1.0, player, None if player is None else 1.0,
+                     int(touches_checked)),
                 ).lastrowid
                 _log(conn, "contacts", new_id, "insert", None, f"{e.t:.2f} {e.team} {e.action}",
+                     author)
+                _log(conn, "contacts", new_id, "pass_score", None, score, author)
+                _log(conn, "contacts", new_id, "jersey", None, e.jersey if player else None,
                      author)
                 continue
             b = before.get(e.id)
@@ -135,18 +168,29 @@ def save_review(conn: sqlite3.Connection, rally_id: int, fps: float, winner: str
                      None, author)
                 conn.execute("DELETE FROM contacts WHERE id = ?", (e.id,))
                 continue
-            for field, new in (("t", round(e.t, 3)), ("team", e.team), ("action", e.action)):
+            if e.keep_extra:
+                e.pass_score, e.jersey = b["pass_score"], b["jersey"]
+            score, player = _extra(e, players)
+            jersey = e.jersey if player else None
+            for field, new in (("t", round(e.t, 3)), ("team", e.team), ("action", e.action),
+                               ("pass_score", score), ("jersey", jersey)):
                 old_v = round(b[field], 3) if field == "t" else b[field]
                 _log(conn, "contacts", e.id, field, old_v, new, author)
-            # A confirmed touch, or one the reviewer changed, is certain from now on.
+            # A confirmed touch, or one the reviewer changed, is certain from now on; so are
+            # its pass score and player.
             touch_conf = 1.0 if touches_checked else b["contact_confidence"]
             action_conf = 1.0 if touches_checked or e.action != b["action"] else \
                 b["action_confidence"]
+            pass_conf = None if score is None else \
+                1.0 if touches_checked or score != b["pass_score"] else b["pass_confidence"]
+            player_conf = None if player is None else \
+                1.0 if touches_checked or jersey != b["jersey"] else b["player_confidence"]
             conn.execute("UPDATE contacts SET t = ?, frame = ?, team = ?, action = ?, "
-                         "contact_confidence = ?, action_confidence = ?, reviewed = ? "
-                         "WHERE id = ?",
+                         "contact_confidence = ?, action_confidence = ?, pass_score = ?, "
+                         "pass_confidence = ?, player_id = ?, player_confidence = ?, "
+                         "reviewed = ? WHERE id = ?",
                          (e.t, round(e.t * fps), e.team, e.action, touch_conf, action_conf,
-                          int(touches_checked), e.id))
+                          score, pass_conf, player, player_conf, int(touches_checked), e.id))
         for field, new in (("point_winner", point_winner), ("outcome", outcome),
                            ("serving_team", serving_team), ("start_t", round(start_t, 3)),
                            ("end_t", round(end_t, 3)), ("end_detail", end_detail)):
