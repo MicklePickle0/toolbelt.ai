@@ -45,6 +45,12 @@ async function request(path, opts) {
     throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
   }
   const type = res.headers.get("content-type") || "";
+  // The app never answers /api with a web page; the devtunnels relay does (its sign-in or
+  // "connecting to a developer tunnel" page) when its session runs out.
+  if (type.includes("html")) {
+    throw new Error("the tunnel sent a web page instead of data (its sign-in or warning " +
+      "page). Reload this page, sign in or press Continue, then try again.");
+  }
   return type.includes("json") ? res.json() : res.text();
 }
 
