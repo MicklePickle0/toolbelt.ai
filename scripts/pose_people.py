@@ -32,7 +32,7 @@ import numpy as np
 
 from setter_eyes import config
 from setter_eyes import rosters as rost
-from setter_eyes.identity.numbers import NumberReader, back_crop, counted, stretches
+from setter_eyes.identity.numbers import NumberReader, back_crop, counted, stretches, torso_lab
 from setter_eyes.identity.toucher import Poses
 from setter_eyes.ingest import iter_frames, probe
 from setter_eyes.labels import load_manifest
@@ -100,7 +100,7 @@ def main() -> int:
     print("roster numbers: " + (", ".join(map(str, numbers)) if numbers else
                                 "none (no roster assigned): pose only"))
 
-    out = {k: [] for k in ("frame", "track_id", "box", "kp", "kp_score")}
+    out = {k: [] for k in ("frame", "track_id", "box", "kp", "kp_score", "torso_lab")}
     crops, crop_tracks, crop_frames, read_scores = [], [], [], []
 
     def flush():
@@ -124,6 +124,7 @@ def main() -> int:
                 out["box"].append(people.box[r])
                 out["kp"].append(kp)
                 out["kp_score"].append(sc)
+                out["torso_lab"].append(torso_lab(img, kp, sc, n_cfg["keypoint_min_score"]))
                 if reader is None:
                     continue
                 box = back_crop(kp, sc, n_cfg)
@@ -159,7 +160,8 @@ def main() -> int:
     Poses(np.array(out["frame"], np.int64), np.array(out["track_id"], np.int64),
           np.array(out["box"], np.float32).reshape(-1, 4),
           np.array(out["kp"], np.float32).reshape(-1, 17, 2),
-          np.array(out["kp_score"], np.float32).reshape(-1, 17)).save(cache / "pose.npz")
+          np.array(out["kp_score"], np.float32).reshape(-1, 17),
+          np.array(out["torso_lab"], np.float32).reshape(-1, 3)).save(cache / "pose.npz")
     print(f"posed {len(out['frame'])} player samples in {time.time() - t0:.0f} s "
           f"-> {cache / 'pose.npz'}")
     if reader is None:

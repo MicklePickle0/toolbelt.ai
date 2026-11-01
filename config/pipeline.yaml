@@ -224,6 +224,11 @@ identity:
     reach_bodies: 0.35       # nobody's arms nearer the ball than this (body heights): no pick
     base_confidence: 0.4     # confidence = this + (second nearest - nearest) / reach
     fallback_factor: 0.4     # no hands at the ball: the touch's own track, this sure
+  libero:                    # identity/toucher.py LiberoColour: the libero's jersey colour
+    min_reads: 20            # back views read as the libero (and as others) to learn colours
+    min_separation: 15.0     # Lab distance between the two colours, else not used
+    margin: 8.0              # a player this much nearer one colour is in that jersey
+    confidence: 0.8          # number confidence of "in the libero's jersey"
   min_player_confidence: 0.5 # a touch gets a jersey from this confidence on (else unknown):
                              # titan 1080p 43% of our touches named, 90% right; mac 4K 34%, 84%
   rotation:                  # identity/rotation.py

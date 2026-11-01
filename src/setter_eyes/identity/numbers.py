@@ -48,6 +48,25 @@ def back_crop(kp: np.ndarray, score: np.ndarray, cfg: dict) -> tuple[int, int, i
     return int(max(0, x0)), int(max(0, y0)), int(x1), int(y1)
 
 
+def torso_lab(image: np.ndarray, kp: np.ndarray, score: np.ndarray,
+              min_score: float) -> np.ndarray:
+    """Mean CIELAB colour of the middle of the torso (shoulders to hips, front or back), for
+    telling the libero's jersey from the team's; NaN when the torso isn't found."""
+    pts = (L_SHOULDER, R_SHOULDER, L_HIP, R_HIP)
+    if min(score[i] for i in pts) < min_score:
+        return np.full(3, np.nan, np.float32)
+    xs, ys = kp[list(pts), 0], kp[list(pts), 1]
+    x0, x1, y0, y1 = xs.min(), xs.max(), ys[:2].mean(), ys[2:].mean()
+    w, h = x1 - x0, y1 - y0
+    if w < 4 or h < 4:
+        return np.full(3, np.nan, np.float32)
+    c = image[int(y0 + 0.2 * h):int(y1 - 0.2 * h), int(x0 + 0.2 * w):int(x1 - 0.2 * w)]
+    if c.size == 0:
+        return np.full(3, np.nan, np.float32)
+    lab = cv2.cvtColor(c, cv2.COLOR_BGR2LAB).reshape(-1, 3).astype(np.float32)
+    return lab.mean(axis=0)
+
+
 class NumberReader:
     """PARSeq limited to a roster's numbers."""
 
@@ -208,3 +227,10 @@ def load_numbers(reads_path, fps: float, cfg: dict) -> NumberIndex:
     """The NumberIndex of a video from pose_people.py's number_reads.npz."""
     d = np.load(reads_path)
     return NumberIndex(d["track_id"], d["frame"], d["log_p"], d["roster"].tolist(), fps, cfg)
+
+
+def counted_reads(reads_path, cfg: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(track, frame, number) of the reads that count, from number_reads.npz."""
+    d = np.load(reads_path)
+    ok, top = counted(d["log_p"], cfg)
+    return d["track_id"][ok], d["frame"][ok], d["roster"][top[ok]]

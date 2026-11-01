@@ -27,17 +27,69 @@ class Poses:
     box: np.ndarray          # (N, 4) x0 y0 x1 y1
     kp: np.ndarray           # (N, 17, 2) image pixels (COCO keypoints)
     kp_score: np.ndarray     # (N, 17)
+    torso_lab: np.ndarray | None = None   # (N, 3) mean torso colour (libero check), NaN = none
 
     def save(self, path: Path) -> None:
+        extra = {} if self.torso_lab is None else {"torso_lab": self.torso_lab.astype(np.float16)}
         np.savez_compressed(path, frame=self.frame, track_id=self.track_id, box=self.box,
                             kp=self.kp.astype(np.float32),
-                            kp_score=self.kp_score.astype(np.float16))
+                            kp_score=self.kp_score.astype(np.float16), **extra)
 
     @classmethod
     def load(cls, path: Path) -> Poses:
         d = np.load(path)
+        lab = d["torso_lab"].astype(np.float32) if "torso_lab" in d else None
         return cls(d["frame"], d["track_id"], d["box"], d["kp"].astype(np.float32),
-                   d["kp_score"].astype(np.float32))
+                   d["kp_score"].astype(np.float32), lab)
+
+    def colour_at(self, track_id: int, frame: int, max_df: int) -> np.ndarray | None:
+        """Torso colour of a track's pose sample nearest `frame` (within max_df frames)."""
+        if self.torso_lab is None:
+            return None
+        rows = np.flatnonzero((self.track_id == track_id) & (np.abs(self.frame - frame) <= max_df)
+                              & np.isfinite(self.torso_lab).all(axis=1))
+        if not len(rows):
+            return None
+        return self.torso_lab[rows[np.argmin(np.abs(self.frame[rows] - frame))]]
+
+
+class LiberoColour:
+    """Is a player in the libero's jersey? The libero's colour is learnt from the torsos of
+    back views read as a libero number, the team's from the other numbers; a player nearer
+    one by `margin` (Lab units) is that. The libero's white #6 reads poorly
+    (pakmen-black_set2), so its track picked up other numbers; the colour fixes that."""
+
+    def __init__(self, poses: Poses, read_tracks: np.ndarray, read_frames: np.ndarray,
+                 read_numbers: np.ndarray, liberos: list[int], cfg: dict):
+        self.ok, self.cfg, self.poses = False, cfg, poses
+        if poses.torso_lab is None or not liberos or not len(read_tracks):
+            return
+        key = {(int(f), int(t)): i for i, (f, t) in enumerate(zip(poses.frame, poses.track_id,
+                                                                 strict=True))}
+        rows = [key.get((int(f), int(t))) for f, t in zip(read_frames, read_tracks, strict=True)]
+        lab = np.array([poses.torso_lab[r] if r is not None else [np.nan] * 3 for r in rows])
+        is_lib = np.isin(read_numbers, liberos)
+        good = np.isfinite(lab).all(axis=1)
+        if (good & is_lib).sum() < cfg["min_reads"] or (good & ~is_lib).sum() < cfg["min_reads"]:
+            return
+        self.libero = np.median(lab[good & is_lib], axis=0)
+        self.team = np.median(lab[good & ~is_lib], axis=0)
+        self.ok = float(np.linalg.norm(self.libero - self.team)) >= cfg["min_separation"]
+        self.number = liberos[0]
+
+    def which(self, track_id: int, frame: int, max_df: int) -> str | None:
+        """'libero', 'team' or None (unsure, or no colour)."""
+        if not self.ok:
+            return None
+        c = self.poses.colour_at(track_id, frame, max_df)
+        if c is None:
+            return None
+        dl, dt = np.linalg.norm(c - self.libero), np.linalg.norm(c - self.team)
+        if dl + self.cfg["margin"] < dt:
+            return "libero"
+        if dt + self.cfg["margin"] < dl:
+            return "team"
+        return None
 
 
 def _segment_distance(p: np.ndarray, a: np.ndarray, b: np.ndarray) -> float:
@@ -116,10 +168,12 @@ class TouchPicker:
 
 
 def assign_players(rallies: list, contacts: list, picker: TouchPicker | None, numbers,
-                   cfg: dict) -> Counter:
+                   cfg: dict, libero: LiberoColour | None = None) -> Counter:
     """Jersey and player confidence on our touches in rallies, in place: the toucher by
     hands at the ball (else the track the touch came with, x `fallback_factor`), its number
-    from `numbers` (NumberIndex). Kept from `min_player_confidence` on. Returns counts."""
+    from `numbers` (NumberIndex). In the libero's colour: the libero; in the team's colour:
+    not the libero. Kept from `min_player_confidence` on. Returns counts."""
+    max_df = int(round(cfg["toucher"]["max_dt_s"] * (picker.fps if picker else 60) * 2))
     t_cfg = cfg["toucher"]
     how = Counter()
     for r in rallies:
@@ -139,6 +193,13 @@ def assign_players(rallies: list, contacts: list, picker: TouchPicker | None, nu
                 how["no player"] += 1
                 continue
             got = numbers.number_at(tid, c.frame) if numbers is not None else None
+            kit = libero.which(tid, c.frame, max_df) if libero is not None else None
+            if kit == "libero":
+                got = (libero.number, cfg["libero"]["confidence"])
+                how["libero by jersey colour"] += 1
+            elif kit == "team" and got is not None and got[0] == libero.number:
+                got = None                         # read as the libero, but not in its jersey
+                how["libero number but team colour"] += 1
             if got is None:
                 how["no number on that track then"] += 1
                 continue

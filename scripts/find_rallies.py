@@ -33,6 +33,7 @@ from pathlib import Path
 import numpy as np
 
 from setter_eyes import config, db
+from setter_eyes import rosters as rost
 from setter_eyes.ball.arcs import Arc
 from setter_eyes.ball.tracker import BallPath
 from setter_eyes.calibration import load as load_calibration
@@ -41,8 +42,8 @@ from setter_eyes.contacts.blocks import add_stuff_blocks, blocks_from_landing
 from setter_eyes.contacts.events import Contact, add_hidden_touches, find_contacts
 from setter_eyes.contacts.scorer import TouchScorer, scored_contacts
 from setter_eyes.db.pipeline import write_video
-from setter_eyes.identity.numbers import load_numbers
-from setter_eyes.identity.toucher import Poses, TouchPicker, assign_players
+from setter_eyes.identity.numbers import counted_reads, load_numbers
+from setter_eyes.identity.toucher import LiberoColour, Poses, TouchPicker, assign_players
 from setter_eyes.labels import load_manifest
 from setter_eyes.rally.live import PlayerMotion
 from setter_eyes.rally.segment import (
@@ -86,16 +87,26 @@ def mark_our_serves(contacts: list, path, fps: float, key: str, cfg: dict,
           f"({marked} on a touch already found, {added} added)")
 
 
-def identify(rallies: list, contacts: list, cache: Path, fps: float, cfg: dict) -> Counter:
+def identify(rallies: list, contacts: list, cache: Path, fps: float, cfg: dict,
+             key: str) -> Counter:
     """Jerseys on our touches from scripts/pose_people.py's output, when it's there."""
     if not (cache / "pose.npz").exists():
         return Counter({"not posed yet (scripts/pose_people.py)": 1})
     id_cfg = cfg["identity"]
-    picker = TouchPicker(Poses.load(cache / "pose.npz"), fps, id_cfg["toucher"])
-    numbers = None
-    if (cache / "number_reads.npz").exists():
-        numbers = load_numbers(cache / "number_reads.npz", fps, id_cfg["numbers"])
-    return assign_players(rallies, contacts, picker, numbers, id_cfg)
+    poses = Poses.load(cache / "pose.npz")
+    picker = TouchPicker(poses, fps, id_cfg["toucher"])
+    numbers = libero = None
+    reads = cache / "number_reads.npz"
+    if reads.exists():
+        numbers = load_numbers(reads, fps, id_cfg["numbers"])
+        rosters_dir = config.repo_path(cfg["paths"]["rosters_dir"])
+        roster = rost.load_all(rosters_dir).get(rost.load_assignments(rosters_dir).get(key))
+        liberos = [p.number for p in roster.players if p.libero] if roster else []
+        libero = LiberoColour(poses, *counted_reads(reads, id_cfg["numbers"]), liberos,
+                              id_cfg["libero"])
+        print("libero by jersey colour: " + (f"#{libero.number}" if libero.ok else
+                                             "not used (no libero, few reads or same colour)"))
+    return assign_players(rallies, contacts, picker, numbers, id_cfg, libero)
 
 
 def main() -> int:
@@ -182,7 +193,7 @@ def main() -> int:
                           config.load("pass_scale"))
     print(f"serve-receive pass scores: {dict(passes)}")
     print(f"who touched it (our touches): "
-          f"{dict(identify(rallies, contacts, cache, fps, cfg))}")
+          f"{dict(identify(rallies, contacts, cache, fps, cfg, entry.key))}")
     (cache / f"contacts{suffix}.json").write_text(json.dumps(
         {"video": entry.key, "fps": fps, "contacts": [c.to_dict() for c in contacts]},
         indent=1), encoding="utf-8")

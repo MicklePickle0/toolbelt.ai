@@ -83,3 +83,17 @@ def test_the_toucher_is_whose_hands_are_at_the_ball_not_the_biggest_box():
     assert (contacts[0].track_id, contacts[0].jersey) == (1, 14)
     assert contacts[1].jersey is None                      # their touch: not ours to name
     assert how["number given"] == 1
+
+
+def test_the_libero_is_told_apart_by_jersey_colour():
+    from setter_eyes.identity.toucher import LiberoColour
+    lab = np.array([[240, 128, 128], [120, 90, 160], [238, 127, 129], [122, 92, 158]],
+                   np.float32)                            # white libero (1), green team (2)
+    poses = Poses(np.array([0, 0, 6, 6]), np.array([1, 2, 1, 2]), np.zeros((4, 4)),
+                  np.zeros((4, 17, 2)), np.ones((4, 17)), lab)
+    reads = (np.array([1] * 25 + [2] * 25), np.array([0] * 25 + [6] * 25),
+             np.array([6] * 25 + [14] * 25))
+    cfg = {"min_reads": 20, "min_separation": 15.0, "margin": 8.0, "confidence": 0.8}
+    lib = LiberoColour(poses, *reads, [6], cfg)
+    assert lib.ok and lib.which(1, 3, 10) == "libero" and lib.which(2, 3, 10) == "team"
+    assert not LiberoColour(poses, *reads, [], cfg).ok   # no libero on the roster
