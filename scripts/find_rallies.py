@@ -100,7 +100,7 @@ def identify(rallies: list, contacts: list, cache: Path, fps: float, cfg: dict,
     liberos: list[int] = []
     reads = cache / "number_reads.npz"
     if reads.exists():
-        numbers = load_numbers(reads, fps, id_cfg["numbers"])
+        numbers = load_numbers(reads, fps, id_cfg["numbers"], people)
         rosters_dir = config.repo_path(cfg["paths"]["rosters_dir"])
         roster = rost.load_all(rosters_dir).get(rost.load_assignments(rosters_dir).get(key))
         liberos = [p.number for p in roster.players if p.libero] if roster else []

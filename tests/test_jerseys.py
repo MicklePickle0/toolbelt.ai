@@ -134,3 +134,29 @@ def test_our_server_is_who_walks_into_view_after_the_serve():
     serve = [C()]
     name_servers([R()], serve, people, index, fps, cfg, liberos=(14,))  # a libero: not them
     assert serve[0].jersey is None
+
+
+def test_a_label_holds_across_a_track_the_tracker_lost_on_a_jump():
+    from setter_eyes.identity.numbers import track_links
+    from setter_eyes.track.people import PeopleTracks
+
+    # Track 1 (#14, read before the jump) ends at frame 600; track 2 starts 0.3 s later
+    # 0.5 m away (the landing) and is never read; track 3 starts far away: not linked.
+    rows = [(f, 1, (3.0, 2.0)) for f in range(300, 601, 6)] + \
+           [(f, 2, (3.5, 2.0)) for f in range(618, 900, 6)] + \
+           [(f, 3, (8.0, 7.0)) for f in range(618, 900, 6)]
+    n = len(rows)
+    people = PeopleTracks(np.array([r[0] for r in rows]), np.array([r[1] for r in rows]),
+                          np.zeros((n, 4)), np.ones(n), np.array([r[2] for r in rows], float),
+                          np.array([r[2] for r in rows], float), np.ones(n, bool),
+                          np.zeros(n, np.int8), np.full(n, 1.8))
+    cfg = {**NUM_CFG, "hold_s": 15.0, "hold_factor": 0.8, "hold_own_track": False,
+           "link_gap_s": 1.0, "link_dist_m": 1.5}
+    links = track_links(people, 60.0, cfg)
+    assert links == {1: [2], 2: [1]}
+    index = NumberIndex(np.array([1] * 5), np.arange(300, 600, 60), np.array([_read(14)] * 5),
+                        ROSTER, 60.0, cfg)
+    assert index.number_at(2, 1000) is None               # no reads of its own near
+    index.links = links
+    assert index.number_at(2, 1000)[0] == 14              # held through the link
+    assert index.number_at(3, 1000) is None

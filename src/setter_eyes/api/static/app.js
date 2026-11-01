@@ -107,6 +107,7 @@ async function route() {
   try {
     if (page === "queue") await queuePage();
     else if (page === "stats") await statsPage(params);
+    else if (page === "search") await searchPage(params);
     else if (page === "review") await reviewPage(+parts[1], parts[2] ? +parts[2] : null, params);
     else if (page === "calibrate") await calibratePage(decodeURIComponent(parts[1]), params);
     else if (page === "rosters") await rostersPage(parts[1]);
@@ -264,17 +265,44 @@ async function statsPage(params) {
     try { localStorage.setItem("passScale", p); } catch (_) { /* private mode */ }
     location.hash = `#/stats?v=${keys.join(",")}&src=${s}&pass=${p}`; };
 
+  // Sets in folders: tournament -> game -> sets. "Edit folders" moves sets between them.
+  const fd = await api("/folders");
+  const folderTree = folderPicker(fd, vids, chosen, keys => go(keys, src));
+  const tournaments = [...new Set(Object.values(fd.folders).map(f => f.tournament)
+    .filter(t => t !== fd.unfiled))];
+  const games = [...new Set(Object.values(fd.folders).map(f => f.game))];
+  const editor = h("div", { class: "card", style: "display:none" },
+    h("div", { class: "small muted" }, "Type a tournament and a game for each set (pick from " +
+      "the list or type a new one). Leave the tournament empty for none."),
+    h("datalist", { id: "dl-tournaments" }, ...tournaments.map(t => h("option", { value: t }))),
+    h("datalist", { id: "dl-games" }, ...games.map(g => h("option", { value: g }))),
+    ...vids.map(v => {
+      const f = fd.folders[v.key];
+      const tIn = h("input", { list: "dl-tournaments", placeholder: "tournament",
+        value: f.tournament === fd.unfiled ? "" : f.tournament });
+      const gIn = h("input", { list: "dl-games", placeholder: "game", value: f.game });
+      const save = async () => {
+        try {
+          await api(`/videos/${v.key}/folder`, { method: "PUT",
+            body: { tournament: tIn.value, game: gIn.value } });
+          toast(`${v.key}: saved`);
+        } catch (e) { toast(e.message, 5000); }
+      };
+      tIn.onchange = save; gIn.onchange = save;
+      return h("div", { class: "row folder-edit" }, h("span", { class: "mono small" }, v.key),
+        tIn, gIn);
+    }),
+    h("button", { onclick: () => route() }, "Done"));
+
   const picker = h("div", { class: "card" },
     h("div", { class: "row spread" }, h("strong", {}, "Sets"),
       h("div", { class: "row" },
         h("button", { onclick: () => go(vids.map(v => v.key), src) }, "All"),
+        h("button", { onclick: () => { editor.style.display =
+          editor.style.display === "none" ? "" : "none"; } }, "Edit folders"),
         seg([["pipeline", "Pipeline + review"], ["labels", "Hand labels"]], src,
           s => go(chosen, s)))),
-    h("div", { class: "row", style: "margin-top:8px" }, ...vids.map(v =>
-      h("label", { class: "check chip" },
-        h("input", { type: "checkbox", checked: chosen.includes(v.key), onchange: e => {
-          const next = e.target.checked ? [...chosen, v.key] : chosen.filter(k => k !== v.key);
-          go(next, src); } }), v.key))),
+    folderTree,
     h("div", { class: "row", style: "margin-top:8px" },
       h("span", { class: "small" }, "Passing average on a"),
       seg([["4", "4-point scale"], ["3", "3-point scale (4s count as 3)"]], scale,
@@ -287,7 +315,30 @@ async function statsPage(params) {
   } catch (e) {
     body = [h("p", { class: "muted" }, e.message)];
   }
-  view.replaceChildren(h("h1", {}, "Stat sheet"), picker, ...body);
+  view.replaceChildren(h("h1", {}, "Stat sheet"), picker, editor, ...body);
+}
+
+// Processed sets as a tournament -> game -> set tree of checkboxes (data/folders.yaml).
+// Ticking a tournament or a game picks all of its sets; onPick gets the new list of keys.
+function folderPicker(fd, vids, chosen, onPick) {
+  const have = new Set(vids.map(v => v.key));
+  const tree = fd.tree.map(t => ({ ...t, games: t.games.map(g =>
+    ({ ...g, videos: g.videos.filter(k => have.has(k)) })).filter(g => g.videos.length) }))
+    .filter(t => t.games.length);
+  const pickAll = (keys, on) => onPick(on ? [...new Set([...chosen, ...keys])]
+    : chosen.filter(k => !keys.includes(k)));
+  const box = (keys, text, cls) => h("label", { class: "check " + cls },
+    h("input", { type: "checkbox", checked: keys.every(k => chosen.includes(k)),
+      onchange: e => pickAll(keys, e.target.checked) }), text);
+  return h("div", { class: "folders" }, ...tree.map(t => {
+    const tKeys = t.games.flatMap(g => g.videos);
+    return h("div", { class: "folder" },
+      box(tKeys, t.tournament, "tournament"),
+      ...t.games.map(g => h("div", { class: "game" },
+        box(g.videos, g.game, "gamebox"),
+        h("span", { class: "row" }, ...g.videos.map(k => box([k], k.replace(g.game + "_", ""),
+          "chip"))))));
+  }));
 }
 
 function statsBody(st, src) {

@@ -48,7 +48,7 @@ def client(tmp_path):
                  tmp_path / "cache", tmp_path / "logs", ["find_play"], [], 640, 2.0,
                  ["serve", "receive", "set", "attack", "dig", "block"],
                  ["kill", "attack_error", "ace", "service_error", "other", "replay"],
-                 rosters_dir=tmp_path / "rosters")
+                 rosters_dir=tmp_path / "rosters", folders_path=tmp_path / "folders.yaml")
     return TestClient(create_app(s, start_worker=False))
 
 
@@ -250,3 +250,18 @@ def test_camera_tracking_runs_alongside_detection(tmp_path):
     j2 = q2.submit("v2")
     q2.run_job(j2)
     assert j2.status == jb.NEEDS_CALIBRATION
+
+
+def test_sets_in_folders_of_games_and_tournaments(client, tmp_path):
+    f = client.get("/api/folders").json()
+    assert f["tree"] == [{"tournament": f["unfiled"], "games": [{"game": "v1", "videos": ["v1"]}]}]
+    r = client.put("/api/videos/v1/folder", json={"tournament": "OVA Fall Classic",
+                                                  "game": "vs Pakmen"})
+    assert r.status_code == 200
+    f = client.get("/api/folders").json()
+    assert f["tree"][0]["tournament"] == "OVA Fall Classic"
+    assert f["tree"][0]["games"] == [{"game": "vs Pakmen", "videos": ["v1"]}]
+    assert "OVA Fall Classic" in (tmp_path / "folders.yaml").read_text(encoding="utf-8")
+    client.put("/api/videos/v1/folder", json={"tournament": "", "game": ""})   # back to default
+    assert client.get("/api/folders").json()["folders"]["v1"]["game"] == "v1"
+    assert client.put("/api/videos/nope/folder", json={}).status_code == 404

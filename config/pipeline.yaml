@@ -9,6 +9,7 @@ paths:
   calibration_dir: data/calibration
   # Rosters (players, numbers, heights) and which videos they played: human work, in git.
   rosters_dir: data/rosters
+  folders_path: data/folders.yaml   # sets -> games -> tournaments (folders.py)
   db_path: data/setter_eyes.db
   # Ground truth from hand-labelled footage. Same schema as db_path but a
   # separate file, so pipeline output can be evaluated against it.
@@ -197,11 +198,12 @@ ball:
 
 identity:
   number_vote_bind_threshold: 0.8   # a track's number counts from this confidence on
-  min_crop_height_px: 80     # back-number crops at least this tall (4K px) are read
+  min_crop_height_px: 50     # back-number crops at least this tall (4K px) are read (was 80)
   pose:                      # scripts/pose_people.py: RTMPose on our players (rtmlib, ONNX)
     model: https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-m_simcc-body7_pt-body7_420e-256x192-e48f03d0_20230504.zip
     input_size: [192, 256]
-    min_box_height_px: 300   # 4K px; smaller people (far away) aren't posed
+    min_box_height_px: 180   # 4K px; smaller people (far away) aren't posed (was 300: the
+                             # attackers at the net were left out, owner 2026-11-01)
     batch: 64                # players posed at once (GPU, pose/__init__.py pose_batch)
   numbers:                   # identity/numbers.py: back views read by PARSeq (torch hub)
     keypoint_min_score: 0.3
@@ -217,6 +219,16 @@ identity:
     tau_s: 5.0               # ...each weighted exp(-|dt| / this)
     vote_prior: 0.5          # confidence = top weight / (all weight + this)
     conflict_factor: 0.3     # another track shows this number more strongly then: x this
+    # Holding a label while the number is hidden (owner, 2026-11-01): with no reads near
+    # the touch, the track's and its linked tracks' reads within +- hold_s count, x
+    # hold_factor. Linked: one track starts within link_gap_s and link_dist_m of where
+    # another ended (the tracker lost the player on a jump or behind someone).
+    hold_s: 15.0
+    hold_factor: 0.8
+    hold_own_track: false    # also the track's own reads further away: off, it added wrong
+                             # names; linked tracks only (+2 right, 0 wrong on 4 sets)
+    link_gap_s: 1.0
+    link_dist_m: 1.5
   toucher:                   # identity/toucher.py: hands / forearms at the ball
     max_dt_s: 0.15           # pose samples this close to the touch (10 Hz: 0.1 s apart)
     keypoint_min_score: 0.3

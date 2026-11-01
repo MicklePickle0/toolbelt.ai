@@ -27,6 +27,7 @@ from setter_eyes.identity.numbers import load_numbers
 from setter_eyes.identity.toucher import Poses, TouchPicker
 from setter_eyes.labels import load_manifest
 from setter_eyes.labels.loader import load_video_labels
+from setter_eyes.track.people import PeopleTracks
 
 
 def report(name: str, truth: list[int], got: list[tuple[int, float] | None]) -> None:
@@ -57,7 +58,8 @@ def main() -> int:
     fps = vl.info.fps
     path = BallPath.load(cache / "ball_path.npz")
     picker = TouchPicker(Poses.load(cache / "pose.npz"), fps, id_cfg["toucher"])
-    index = load_numbers(cache / "number_reads.npz", fps, id_cfg["numbers"])
+    index = load_numbers(cache / "number_reads.npz", fps, id_cfg["numbers"],
+                         PeopleTracks.load(cache / "people_tracks.npz"))
     suffix = "_oof" if args.oof else ""
     contacts = json.loads((cache / f"contacts{suffix}.json").read_text(encoding="utf-8"))
     ours = [c for c in contacts["contacts"] if c["kind"] == "touch" and c["team"] == "us"]

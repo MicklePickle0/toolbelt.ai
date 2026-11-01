@@ -29,7 +29,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from setter_eyes import config, db
+from setter_eyes import folders as fold
 from setter_eyes import rosters as rost
+from setter_eyes import search as srch
 from setter_eyes.calibration import court_model, draw_court, line_mask
 from setter_eyes.calibration import store as cal_store
 from setter_eyes.calibration.lines import LineScorer
@@ -38,6 +40,7 @@ from setter_eyes.calibration.solve import error_limit_px, manual_calibration, so
 from setter_eyes.db.read import load_rallies
 from setter_eyes.ingest import frame_filename, grab_frame, probe, write_image
 from setter_eyes.labels import load_manifest
+from setter_eyes.reels import ReelMaker
 from setter_eyes.stats.sheet import COLUMNS, SHORT, stat_rows
 from setter_eyes.ui import review as rv
 
@@ -71,6 +74,7 @@ class Settings:
     background_during: list[str] = field(default_factory=list)
     rosters_dir: Path | None = None
     missed_point_gap_s: float = 20.0      # a gap this long before a rally: a point may be missing
+    folders_path: Path | None = None      # data/folders.yaml: sets -> games -> tournaments
 
     @classmethod
     def from_config(cls) -> Settings:
@@ -93,7 +97,8 @@ class Settings:
                    background_steps=a.get("background_steps", []),
                    background_during=a.get("background_during", []),
                    rosters_dir=config.repo_path(p["rosters_dir"]),
-                   missed_point_gap_s=cfg["rally"].get("missed_point_gap_s", 20.0))
+                   missed_point_gap_s=cfg["rally"].get("missed_point_gap_s", 20.0),
+                   folders_path=config.repo_path(p.get("folders_path", "data/folders.yaml")))
 
 
 class Touch(BaseModel):
@@ -166,6 +171,25 @@ class RosterChoice(BaseModel):
     roster: str | None = None
 
 
+class ReelItem(BaseModel):
+    video: str
+    t: float                              # seconds into the video: the touch
+    jersey: int | None = None             # ring this player (the toucher)
+
+
+class ReelIn(BaseModel):
+    items: list[ReelItem]
+    before: float = 3.0
+    after: float = 2.0
+    ring: bool = True
+    name: str = "reel"
+
+
+class FolderIn(BaseModel):
+    tournament: str = ""
+    game: str = ""
+
+
 class NewJob(BaseModel):
     video: str
     from_step: str | None = None
@@ -226,6 +250,10 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     def manifest():
         return load_manifest(s.manifest_path)
 
+    reels = ReelMaker(manifest, s.cache_dir, s.calibration_dir,
+                      (s.output_dir or s.cache_dir.parent / "outputs") / "reels",
+                      config.load("pipeline"))
+
     # ---- meta and videos -------------------------------------------------------------------
     @app.get("/api/meta")
     def meta() -> dict:
@@ -265,6 +293,67 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 "job": {k: job[k] for k in ("id", "status", "step_name", "progress")}
                 if job else None})
         return out
+
+    # ---- folders: sets -> games -> tournaments -----------------------------------------------
+    def _folders() -> dict:
+        return fold.load(s.folders_path) if s.folders_path else {}
+
+    @app.get("/api/folders")
+    def folders() -> dict:
+        f = _folders()
+        keys = [v.key for v in manifest().videos]
+        return {"tree": fold.tree(keys, f), "folders": {k: fold.folder_of(k, f) for k in keys},
+                "unfiled": fold.UNFILED}
+
+    @app.put("/api/videos/{key}/folder")
+    def set_folder(key: str, body: FolderIn) -> dict:
+        _entry(key)
+        if s.folders_path is None:
+            raise HTTPException(500, "no folders file configured")
+        f = _folders()
+        t, g = body.tournament.strip(), body.game.strip()
+        if t in ("", fold.UNFILED) and g in ("", fold.default_game(key)):
+            f.pop(key, None)                    # back to the default
+        else:
+            f[key] = {"tournament": "" if t == fold.UNFILED else t, "game": g}
+        fold.save(s.folders_path, f)
+        return fold.folder_of(key, f)
+
+    # ---- search and reels -------------------------------------------------------------------
+    @app.get("/api/search")
+    def search_points(videos: str, player: int | None = None, action: str | None = None,
+                      result: str | None = None, passes: str | None = None,
+                      set_by: int | None = None) -> dict:
+        keys = [k for k in videos.split(",") if k]
+        scores = [int(x) for x in passes.split(",") if x != ""] if passes else None
+        if result is not None and result not in srch.RESULTS:
+            raise HTTPException(400, f"result is one of {srch.RESULTS}")
+        with conn() as c:
+            items = srch.search(c, keys, player, action or None, result or None, scores, set_by,
+                                config.load("pass_scale")["overpass_score"])
+        return {"items": items, "results": srch.RESULTS}
+
+    @app.post("/api/reels")
+    def new_reel(body: ReelIn) -> dict:
+        if not body.items:
+            raise HTTPException(400, "pick at least one clip")
+        for it in body.items:
+            _entry(it.video)
+        return {"id": reels.submit(body.model_dump())}
+
+    @app.get("/api/reels/{reel_id}")
+    def reel_status(reel_id: str) -> dict:
+        st = reels.status(reel_id)
+        if st is None:
+            raise HTTPException(404, f"no reel {reel_id}")
+        return st
+
+    @app.get("/api/reels/{reel_id}/file")
+    def reel_file(reel_id: str) -> FileResponse:
+        st = reels.status(reel_id)
+        if st is None or st["state"] != "done":
+            raise HTTPException(404, "the reel isn't ready")
+        return FileResponse(st["path"], media_type="video/mp4", filename=Path(st["path"]).name)
 
     # ---- stats -----------------------------------------------------------------------------
     @app.get("/api/stats")

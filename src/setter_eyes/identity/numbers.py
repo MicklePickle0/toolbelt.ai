@@ -199,6 +199,7 @@ class NumberIndex:
         self.numbers = np.array(roster)[top[rows]] if len(rows) else np.zeros(0, int)
         self.share = share[rows]
         self.fps, self.cfg = fps, cfg
+        self.links: dict[int, list[int]] | None = None      # track_links, when given
 
     def _votes(self, frame: int) -> dict[int, dict[int, float]]:
         """{track: {number: weight}} of every track's reads near `frame`."""
@@ -214,19 +215,86 @@ class NumberIndex:
     def number_at(self, track_id: int, frame: int) -> tuple[int, float] | None:
         votes = self._votes(frame)
         mine = votes.get(int(track_id))
+        factor = 1.0
+        if not mine and self.links is not None:
+            mine = self._held(int(track_id), frame)
+            factor = self.cfg["hold_factor"]
         if not mine:
             return None
         number, weight = max(mine.items(), key=lambda kv: kv[1])
-        conf = weight / (sum(mine.values()) + self.cfg["vote_prior"])
+        conf = factor * weight / (sum(mine.values()) + self.cfg["vote_prior"])
         if any(v.get(number, 0.0) > weight for t, v in votes.items() if t != int(track_id)):
             conf *= self.cfg["conflict_factor"]    # someone else on court is this number
         return number, round(float(conf), 3)
 
+    def _held(self, track_id: int, frame: int) -> dict[int, float]:
+        """Votes when the track has no reads near `frame`: its own and its linked tracks'
+        (the same player, the tracker lost them on a jump or behind someone) within
+        +-`hold_s`, so the label holds while the number is hidden."""
+        chain, todo = {track_id}, [track_id]
+        if not self.cfg["hold_own_track"]:
+            chain = set()
+            todo = list(self.links.get(track_id, ()))
+            chain.update(todo)
+        while todo:
+            for n in self.links.get(todo.pop(), ()):
+                if n not in chain:
+                    chain.add(n)
+                    todo.append(n)
+        w = self.cfg["hold_s"] * self.fps
+        lo, hi = np.searchsorted(self.frames, [frame - w, frame + w + 1])
+        out: dict[int, float] = defaultdict(float)
+        for t, n, s, f in zip(self.tracks[lo:hi], self.numbers[lo:hi], self.share[lo:hi],
+                              self.frames[lo:hi], strict=True):
+            if int(t) in chain:
+                out[int(n)] += float(s * np.exp(-abs(f - frame) / self.fps / self.cfg["hold_s"]))
+        return out
 
-def load_numbers(reads_path, fps: float, cfg: dict) -> NumberIndex:
-    """The NumberIndex of a video from pose_people.py's number_reads.npz."""
+
+def track_links(people, fps: float, cfg: dict) -> dict[int, list[int]]:
+    """Tracks that are one player: one starts within `link_gap_s` of where another ended,
+    `link_dist_m` away at most (court feet). Each end joins at most one start, nearest
+    first; returned both ways."""
+    order = np.lexsort((people.frame, people.track_id))
+    tids, starts = np.unique(people.track_id[order], return_index=True)
+    ends = []
+    begins = []
+    for t, rows in zip(tids, np.split(order, starts[1:]), strict=True):
+        xy = people.court_xy_smooth[rows]
+        ok = np.isfinite(xy).all(axis=1)
+        if not ok.any():
+            continue
+        r = rows[ok]
+        ends.append((int(people.frame[r[-1]]), xy[ok][-1], int(t)))
+        begins.append((int(people.frame[r[0]]), xy[ok][0], int(t)))
+    gap = cfg["link_gap_s"] * fps
+    pairs = []
+    for fe, pe, a in ends:
+        for fb, pb, b in begins:
+            if a != b and 0 < fb - fe <= gap:
+                d = float(np.linalg.norm(pb - pe))
+                if d <= cfg["link_dist_m"]:
+                    pairs.append((d + (fb - fe) / fps, a, b))
+    links: dict[int, list[int]] = defaultdict(list)
+    used_a, used_b = set(), set()
+    for _, a, b in sorted(pairs):
+        if a in used_a or b in used_b:
+            continue
+        used_a.add(a)
+        used_b.add(b)
+        links[a].append(b)
+        links[b].append(a)
+    return dict(links)
+
+
+def load_numbers(reads_path, fps: float, cfg: dict, people=None) -> NumberIndex:
+    """The NumberIndex of a video from pose_people.py's number_reads.npz; with its people
+    tracks, labels also hold across linked tracks (`track_links`)."""
     d = np.load(reads_path)
-    return NumberIndex(d["track_id"], d["frame"], d["log_p"], d["roster"].tolist(), fps, cfg)
+    index = NumberIndex(d["track_id"], d["frame"], d["log_p"], d["roster"].tolist(), fps, cfg)
+    if people is not None:
+        index.links = track_links(people, fps, cfg)
+    return index
 
 
 def counted_reads(reads_path, cfg: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

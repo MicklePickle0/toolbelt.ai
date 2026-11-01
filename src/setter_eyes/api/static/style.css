@@ -92,3 +92,13 @@ pre.log { white-space: pre-wrap; word-break: break-all; font-size: 12px; max-hei
 a.chip { text-decoration: none; color: inherit; }
 .touch .extra { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
 .touch .extra select { width: auto; max-width: 14em; }
+.folders { margin-top: 8px; display: grid; gap: 8px; }
+.folder { border-left: 3px solid var(--line); padding-left: 10px; }
+.folder .tournament { font-weight: 600; }
+.folder .game { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 0 14px; }
+.folder .gamebox { min-width: 9em; }
+.folder-edit { margin: 4px 0; }
+.folder-edit input { width: 12em; }
+.filters label select { max-width: 16em; }
+a.button { display: inline-block; padding: 8px 14px; border-radius: 8px; text-decoration: none; }
+a.button.primary { background: var(--accent); color: var(--accent-text); }
