@@ -96,8 +96,12 @@ function label(s) { return (s || "-").replaceAll("_", " "); }
 function seg(options, current, onPick) {
   const wrap = h("div", { class: "seg" });
   for (const [value, text] of options) {
-    wrap.append(h("button", { class: value === current ? "on" : "", type: "button",
-      onclick: () => onPick(value) }, text));
+    const b = h("button", { class: value === current ? "on" : "", type: "button",
+      onclick: () => {
+        wrap.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+        onPick(value);
+      } }, text);
+    wrap.append(b);
   }
   return wrap;
 }

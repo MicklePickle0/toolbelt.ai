@@ -79,13 +79,26 @@ function summaryBody(s, names) {
     scoreBars,
     h("div", { class: "row spread", style: "margin-top:10px" },
       h("div", { class: "viz-sub" }, `Where the passes went (${passes.points.length} located)`),
-      seg([["dots", "Dots"], ["heat", "Heatmap"]], mode, v => { mode = v; drawMap();
-        legend.style.visibility = v === "dots" ? "" : "hidden"; })),
-    mapBox, legend,
+      seg([["dots", "Dots"], ["heat", "Heatmap"]], mode, v => { mode = v; drawMap(); })),
+    mapBox, legend, missingLine(passes),
     h("p", { class: "small muted" }, "Our half of the court from behind our end line, the " +
       "net at the top; × is the setter's target. A pass is placed where the setter played " +
-      "it (their feet)."));
+      "it (their feet). Heatmap: each square is the average score of the passes played " +
+      "there, n = how many."));
   return [h("div", { class: "viz-grid" }, setsCol, passCol)];
+}
+
+// Scored passes with no spot on the map, by score. Bad passes are the ones most often
+// missing (no clean second ball to place them by), so the map alone looks too good.
+function missingLine(passes) {
+  const onMap = new Map();
+  for (const p of passes.points) onMap.set(p.score, (onMap.get(p.score) || 0) + 1);
+  const missing = passes.by_score.map(r => [r.score, r.n - (onMap.get(r.score) || 0)])
+    .filter(([, n]) => n > 0);
+  if (!missing.length) return null;
+  const total = missing.reduce((a, [, n]) => a + n, 0);
+  return h("p", { class: "small" }, h("strong", {}, `Not on the map: ${total} of ${passes.n}`),
+    " (no spot found for them): ", missing.map(([s, n]) => `${n}× a ${s}`).join(", "), ".");
 }
 
 function passMap(points, target, mode, names) {
@@ -94,19 +107,27 @@ function passMap(points, target, mode, names) {
     "aria-label": `Pass map, ${points.length} passes` });
   root.append(svg("rect", { x: 0, y: 0, width: 9, height: 9, class: "court-floor" }));
   if (mode === "heat") {
-    const cell = 1.5, n = 6, grid = Array.from({ length: n }, () => Array(n).fill(0));
+    // Each 1.5 m square: the average score of the passes played there (colour and number),
+    // with how many passes that is underneath.
+    const cell = 1.5, n = 6;
+    const grid = Array.from({ length: n }, () => Array.from({ length: n }, () => []));
     for (const p of points) {
       const i = Math.min(n - 1, Math.max(0, Math.floor(p.x / cell)));
       const j = Math.min(n - 1, Math.max(0, Math.floor(p.y / cell)));
-      grid[j][i] += 1;
+      grid[j][i].push(p.score);
     }
-    const max = Math.max(1, ...grid.flat());
-    grid.forEach((row, j) => row.forEach((c, i) => {
-      if (!c) return;
-      const step = Math.min(6, Math.round(6 * c / max));         // --viz-heat-0..6
+    grid.forEach((row, j) => row.forEach((scores, i) => {
+      if (!scores.length) return;
+      const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+      const step = Math.round(avg), cx = i * cell + cell / 2, cy = j * cell + cell / 2;
       root.append(svg("rect", { x: i * cell + 0.02, y: j * cell + 0.02, width: cell - 0.04,
-        height: cell - 0.04, rx: 0.08, style: `fill:var(--viz-heat-${step})` },
-        svg("title", {}, `${c} pass${c === 1 ? "" : "es"} here`)));
+        height: cell - 0.04, rx: 0.08, style: `fill:var(--viz-pass-${step})` },
+        svg("title", {}, `${scores.length} pass${scores.length === 1 ? "" : "es"} here, ` +
+          `average ${avg.toFixed(2)}`)));
+      root.append(svg("text", { x: cx, y: cy - 0.12, class: "heat-num",
+        style: `fill:var(--viz-pass-ink-${step})` }, avg.toFixed(1)));
+      root.append(svg("text", { x: cx, y: cy + 0.42, class: "heat-n",
+        style: `fill:var(--viz-pass-ink-${step})` }, `n=${scores.length}`));
     }));
   }
   root.append(svg("line", { x1: 0, y1: 3, x2: 9, y2: 3, class: "court-line" }));   // attack line
@@ -119,10 +140,12 @@ function passMap(points, target, mode, names) {
   }
   if (mode === "dots") {
     for (const p of points) {
-      root.append(svg("circle", { cx: Math.max(-0.8, Math.min(9.8, p.x)),
-        cy: Math.max(-0.8, Math.min(9.8, p.y)), r: 0.22, class: "pass-dot",
+      const cx = Math.max(-0.8, Math.min(9.8, p.x)), cy = Math.max(-0.8, Math.min(9.8, p.y));
+      root.append(svg("circle", { cx, cy, r: 0.28, class: "pass-dot",
         style: `fill:var(--viz-pass-${p.score})` },
         svg("title", {}, `${who(p.jersey, names)}: pass ${p.score}, ${p.video} ${clock(p.t)}`)));
+      root.append(svg("text", { x: cx, y: cy, class: "pass-num",
+        style: `fill:var(--viz-pass-ink-${p.score})` }, String(p.score)));
     }
   }
   return root;

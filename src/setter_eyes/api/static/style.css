@@ -102,23 +102,25 @@ a.chip { text-decoration: none; color: inherit; }
 .filters label select { max-width: 16em; }
 a.button { display: inline-block; padding: 8px 14px; border-radius: 8px; text-decoration: none; }
 a.button.primary { background: var(--accent); color: var(--accent-text); }
-/* Game summary charts (summary.js). Pass scores: one blue hue, light -> dark = 0 -> 4
-   (ordinal; validated light and dark with the dataviz validator). Heat: the sequential
-   blue ramp. Bars: one series. */
+/* Game summary charts (summary.js). Pass scores 0 -> 4: red -> amber -> green (owner,
+   2026-11-01). Checked with the dataviz validator: adjacent scores stay apart for normal and
+   colour-blind vision; the digit on every dot and square carries the score as well, so
+   colour is never the only cue. --viz-pass-ink-N: the digit's colour on that fill.
+   Bars: one series. */
 :root {
   --viz-series-1: #2a78d6;
-  --viz-pass-0: #86b6ef; --viz-pass-1: #5598e7; --viz-pass-2: #2a78d6;
-  --viz-pass-3: #1c5cab; --viz-pass-4: #104281;
-  --viz-heat-0: #cde2fb; --viz-heat-1: #b7d3f6; --viz-heat-2: #9ec5f4; --viz-heat-3: #6da7ec;
-  --viz-heat-4: #3987e5; --viz-heat-5: #256abf; --viz-heat-6: #184f95;
+  --viz-pass-0: #a51d1d; --viz-pass-1: #e0603c; --viz-pass-2: #e8b13a;
+  --viz-pass-3: #5ea84a; --viz-pass-4: #1b6a36;
+  --viz-pass-ink-0: #ffffff; --viz-pass-ink-1: #1b1f24; --viz-pass-ink-2: #1b1f24;
+  --viz-pass-ink-3: #1b1f24; --viz-pass-ink-4: #ffffff;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --viz-series-1: #3987e5;
-    --viz-pass-0: #184f95; --viz-pass-1: #256abf; --viz-pass-2: #3987e5;
-    --viz-pass-3: #6da7ec; --viz-pass-4: #9ec5f4;
-    --viz-heat-0: #104281; --viz-heat-1: #184f95; --viz-heat-2: #1c5cab; --viz-heat-3: #256abf;
-    --viz-heat-4: #3987e5; --viz-heat-5: #6da7ec; --viz-heat-6: #9ec5f4;
+    --viz-pass-0: #d63f36; --viz-pass-1: #f08a5d; --viz-pass-2: #f0c24f;
+    --viz-pass-3: #4aa756; --viz-pass-4: #1f6b3a;
+    --viz-pass-ink-0: #ffffff; --viz-pass-ink-1: #1b1f24; --viz-pass-ink-2: #1b1f24;
+    --viz-pass-ink-3: #1b1f24; --viz-pass-ink-4: #ffffff;
   }
 }
 .viz-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;
@@ -148,6 +150,11 @@ a.button.primary { background: var(--accent); color: var(--accent-text); }
 .court-target { stroke: var(--text); stroke-width: 0.08; fill: none; }
 .pass-dot { stroke: var(--panel); stroke-width: 0.05; }
 .pass-dot:hover { stroke: var(--text); }
+.pass-num { font-size: 0.34px; font-weight: 700; text-anchor: middle;
+            dominant-baseline: central; pointer-events: none; }
+.heat-num { font-size: 0.5px; font-weight: 700; text-anchor: middle;
+            dominant-baseline: central; pointer-events: none; }
+.heat-n { font-size: 0.28px; text-anchor: middle; pointer-events: none; }
 .legend-item { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; }
 .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 td a, p a { color: var(--accent); }
