@@ -202,8 +202,8 @@ Deadline: 16U OVA Fall Classic, Ottawa, 2026-11-06/07. The owner has only a lapt
 - C10 Small known issues (mac-chrome_set2 camera jump, camera offsets, line judge marked as a player).
 
 **Phase D, deeper stats and product:**
-- D1 Clips per stat and highlight reels in the app.
-- D2 Combos (setter-to-hitter kill %), trends across games.
+- D1 PARTLY DONE 2026-11-01: Search tab (player, play, result, pass score, set by) with clips and highlight reels with the player ringed; game summary (set distribution, pass map) on Stats; tournament/game folders.
+- D2 Combos (setter-to-hitter kill %), trends across games. (Search's set-by filter and the summary's sets-by-hitter cover the basics, 2026-11-01.)
 - D3 (Owner decides) How scrappy non-setter second touches are counted.
 - D4 Milestone 11, serve-receive by zone.
 - D5 Milestone 12, serve placement.

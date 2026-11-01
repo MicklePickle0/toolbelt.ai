@@ -56,7 +56,7 @@ from setter_eyes.rally.segment import (
 )
 from setter_eyes.rally.serve_entry import find_our_serves
 from setter_eyes.rally.winner import infer_winners
-from setter_eyes.stats.pass_score import score_passes
+from setter_eyes.stats.pass_score import player_position, score_passes
 from setter_eyes.track.people import PeopleTracks
 from setter_eyes.track.roles import load_roles
 
@@ -110,6 +110,13 @@ def identify(rallies: list, contacts: list, cache: Path, fps: float, cfg: dict,
                                              "not used (no libero, few reads or same colour)"))
     how = assign_players(rallies, contacts, picker, numbers, id_cfg, libero, tuple(liberos))
     how.update(name_servers(rallies, contacts, people, numbers, fps, id_cfg, tuple(liberos)))
+    for r in rallies:                              # where our toucher stood (attack zones)
+        for i in r.contacts:
+            c = contacts[i]
+            c.player_xy = None
+            if c.kind == "touch" and c.team == "us" and c.track_id >= 0:
+                xy = player_position(people, c.track_id, c.frame)
+                c.player_xy = [round(float(v), 2) for v in xy] if xy is not None else None
     return how
 
 

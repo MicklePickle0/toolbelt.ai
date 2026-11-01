@@ -312,6 +312,11 @@ async function statsPage(params) {
   try {
     const st = await api(`/stats?videos=${encodeURIComponent(chosen.join(","))}&source=${src}&pass_scale=${scale}`);
     body = statsBody(st, src);
+    if (src === "pipeline") {
+      const names = new Map(st.players.filter(p => p.player !== "?")
+        .map(p => [+p.player, p.name]));
+      body.push(await summarySection(chosen, names));
+    }
   } catch (e) {
     body = [h("p", { class: "muted" }, e.message)];
   }

@@ -134,7 +134,7 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
         Tried:
         - linking tracks within 1 s / 1.5 m and holding labels through the link (`track_links`, `hold_own_track: false`): +2 right, 0 wrong over 4 sets, kept; it doesn't reach the attacks;
         - holding the track's own reads from up to 15 s away: added wrong names, off;
-        - posing and reading smaller players (`min_box_height_px` 300 -> 180, `min_crop_height_px` 80 -> 50): no change on set 2 (the attackers were posed already).
+        - posing and reading smaller players (`min_box_height_px` 300 -> 180, `min_crop_height_px` 80 -> 50): no change on set 2 (the attackers were posed already); titan 1080p 51 / 45 right -> 53 / 48; kept.
         Next: appearance re-identification (DINOv2 or OSNet embeddings of each player's crop, matched to players already named, one player per number), so the label carries through the approach. Teammates share a kit, so it has to match build, hair, shoes and pads.
       - Durham Attack by eye, random sample (Claude): 40 of our touches from the owner's reviewed rallies on pakmen-black_set2, named or not. The pipeline named 19: 11 could be checked by eye, all right; 8 couldn't be judged. Of the 21 left unnamed, several were clear (the libero's receives, #17's sets), so it errs toward leaving touches for review.
       - Track switches as identity errors, labelled touch pairs on one identity that were two real players (`eval_track_switches.py`): tracker ids 44/78 (56%) -> after binding numbers 14/41 (34%) -> as named in the output (confidence >= 0.5) 7/30 (23%), over titan 1080p / 4K / mac (1/7, 2/10, 4/13). The rest are misreads giving both players one number.
@@ -174,6 +174,15 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
       home PC can't reach ~35 min/set by ~2026-11-02.
 - [ ] **Dry run** ~2026-11-03/04: owner on the laptop away from home, full day's flow on DA
       sets.
+
+## Web app: folders, search, reels, game summary (owner, 2026-11-01)
+- [x] Sets in tournament -> game folders (`data/folders.yaml`, Edit folders on Stats; a set's game defaults to its key before _set).
+- [x] Search tab: our touches by player, play, how the point ended, pass score and who set it (#17 set to #12). Each point's clip plays on the page; the ticked ones become a reel.
+      Reels (`reels.py`): each clip 3 s before to 2 s after the touch, a ring round the toucher (hands at the ball, followed through the clip), all at 1280x720 30 fps, joined. Checked on 2 of #12's attacks off #17 (both ringed; during a jump the ring stays on the floor below the player).
+- [x] Game summary on Stats: sets by hitter and by attack zone (ball 3D at the hit, else the hitter's feet), kills/errors; pass scores 0-4 and a court map of where each pass was played (dots coloured by score, or a heatmap). Counts as the stat sheet does (rallies with a winner; 33 passes, 2.58 on pakmen-black 1+2).
+      Schema v8: `contacts.pass_x/pass_y` (pass spot), `player_x/player_y` (toucher's feet); re-runs fill them on reviewed touches too.
+- [ ] Owner: put the sets in tournaments/games (Edit folders); check reels and the summary on a phone.
+- [ ] Next: zones for the 18 attacks with no position (touches added in review have no pipeline touch); a reel's ring during jumps.
 
 ## pakmen-black_set2 reviewed (owner, 2026-10-29..31): what the corrections show
 

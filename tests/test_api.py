@@ -265,3 +265,13 @@ def test_sets_in_folders_of_games_and_tournaments(client, tmp_path):
     client.put("/api/videos/v1/folder", json={"tournament": "", "game": ""})   # back to default
     assert client.get("/api/folders").json()["folders"]["v1"]["game"] == "v1"
     assert client.put("/api/videos/nope/folder", json={}).status_code == 404
+
+
+def test_search_and_game_summary(client):
+    r = client.get("/api/search", params={"videos": "v1", "action": "attack"}).json()
+    assert [(i["action"], i["result"]) for i in r["items"]] == [("attack", "kills")]
+    assert client.get("/api/search", params={"videos": "v1", "result": "nope"}).status_code == 400
+    s = client.get("/api/summary", params={"videos": "v1"}).json()
+    assert s["sets"]["n"] == 1 and s["sets"]["by_zone"][0]["zone"] == "Not located"
+    assert s["sets"]["by_hitter"][0]["kills"] == 1
+    assert s["passes"]["n"] == 0 and s["pass_target"]["x"] > 0

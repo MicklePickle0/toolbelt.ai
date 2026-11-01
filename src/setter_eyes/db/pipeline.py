@@ -121,11 +121,14 @@ def write_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry,
                 conn.execute(
                     "INSERT INTO contacts (rally_id, t, frame, contact_confidence, team, "
                     "action, action_confidence, ball_x, ball_y, ball_z, pass_score, "
-                    "pass_confidence, player_id, player_confidence, reviewed) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+                    "pass_confidence, pass_x, pass_y, player_x, player_y, player_id, "
+                    "player_confidence, reviewed) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
                     (rally_id, c["t"], c["frame"], c["confidence"], c["team"],
                      c.get("action"), c.get("action_confidence"), x, y, z,
-                     c.get("pass_score"), c.get("pass_confidence"), player,
+                     c.get("pass_score"), c.get("pass_confidence"),
+                     *(c.get("pass_xy") or (None, None)), *(c.get("player_xy") or (None, None)),
+                     player,
                      c.get("player_confidence") if player else None),
                 )
                 n_contacts += 1
@@ -142,23 +145,34 @@ def _guess_on_reviewed(conn, set_id: int, contacts: list[dict], players: dict[in
     pipeline's confidence (< 1), shown as such in review; never over a value already
     there. Returns how many were filled."""
     ours = [c for c in contacts if c["kind"] == "touch" and c["team"] == "us"
-            and (c.get("pass_score") is not None or c.get("jersey") is not None)]
+            and (c.get("pass_score") is not None or c.get("jersey") is not None
+                 or c.get("pass_xy") or c.get("player_xy"))]
     if not ours:
         return 0
     t = sorted(ours, key=lambda c: c["t"])
     times = [c["t"] for c in t]
     filled = 0
     rows = conn.execute(
-        "SELECT c.id, c.t, c.action, c.pass_score, c.player_id FROM contacts c "
+        "SELECT c.id, c.t, c.action, c.pass_score, c.player_id, c.pass_x FROM contacts c "
         "JOIN rallies r ON c.rally_id = r.id WHERE r.set_id = ? AND r.reviewed = 1 "
-        "AND c.team = 'us' AND (c.pass_score IS NULL OR c.player_id IS NULL)",
+        "AND c.team = 'us' AND (c.pass_score IS NULL OR c.player_id IS NULL "
+        "OR c.player_x IS NULL OR (c.action = 'receive' AND c.pass_x IS NULL))",
         (set_id,)).fetchall()
-    for cid, ct, action, pass_score, player_id in rows:
+    for cid, ct, action, pass_score, player_id, pass_x in rows:
         k = bisect.bisect_left(times, ct)
         near = [t[j] for j in (k - 1, k) if 0 <= j < len(t) and abs(t[j]["t"] - ct) <= max_dt_s]
         if not near:
             continue
         p = min(near, key=lambda c: abs(c["t"] - ct))
+        if pass_x is None and action == "receive" and p.get("pass_xy"):
+            # Where it went (for the pass map), even when the reviewer set the score.
+            conn.execute("UPDATE contacts SET pass_x = ?, pass_y = ? WHERE id = ?",
+                         (*p["pass_xy"], cid))
+        if p.get("player_xy") and (player_id is None or
+                                   players.get(p.get("jersey")) == player_id):
+            # Where the toucher stood, when it's the reviewer's player too.
+            conn.execute("UPDATE contacts SET player_x = ?, player_y = ? WHERE id = ? "
+                         "AND player_x IS NULL", (*p["player_xy"], cid))
         if pass_score is None and p.get("pass_score") is not None and \
                 action == "receive":
             conn.execute("UPDATE contacts SET pass_score = ?, pass_confidence = ? WHERE id = ?",

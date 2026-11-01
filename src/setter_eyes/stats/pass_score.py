@@ -107,7 +107,7 @@ def score_passes(rallies: list, contacts: list, path: BallPath, people: PeopleTr
     p = scale["pipeline"]
     how = Counter()
     for c in contacts:                             # touches read back from an earlier run
-        c.pass_score = c.pass_confidence = None
+        c.pass_score = c.pass_confidence = c.pass_xy = None
     for r in rallies:
         if r.serving_team != "them":
             continue
@@ -149,6 +149,7 @@ def score_passes(rallies: list, contacts: list, path: BallPath, people: PeopleTr
             score = 1                              # where a 4 goes, but far too low: a 1
             how["low pass, so a 1"] += 1
         rec.pass_score, rec.pass_confidence = score, round(conf, 3)
+        rec.pass_xy = [round(float(xy[0]), 2), round(float(xy[1]), 2)]
         how["graded"] += 1
     return how
 

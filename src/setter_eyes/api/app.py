@@ -42,6 +42,7 @@ from setter_eyes.ingest import frame_filename, grab_frame, probe, write_image
 from setter_eyes.labels import load_manifest
 from setter_eyes.reels import ReelMaker
 from setter_eyes.stats.sheet import COLUMNS, SHORT, stat_rows
+from setter_eyes.stats.summary import summary as stats_summary
 from setter_eyes.ui import review as rv
 
 from .jobs import JobQueue, last_line
@@ -332,6 +333,15 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             items = srch.search(c, keys, player, action or None, result or None, scores, set_by,
                                 config.load("pass_scale")["overpass_score"])
         return {"items": items, "results": srch.RESULTS}
+
+    @app.get("/api/summary")
+    def game_summary(videos: str) -> dict:
+        keys = [k for k in videos.split(",") if k]
+        with conn() as c:
+            out = stats_summary(c, keys, config.load("pass_scale"))
+        scale = config.load("pass_scale")["target"]
+        out["pass_target"] = {"x": scale["x"], "y": scale["y"]}
+        return out
 
     @app.post("/api/reels")
     def new_reel(body: ReelIn) -> dict:

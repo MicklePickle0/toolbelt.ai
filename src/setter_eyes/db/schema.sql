@@ -111,6 +111,10 @@ CREATE TABLE IF NOT EXISTS contacts (
     outcome             TEXT,
     pass_score          INTEGER CHECK (pass_score BETWEEN 0 AND 4),
     pass_confidence     REAL,
+    pass_x              REAL,                 -- where the pass was played (court m)
+    pass_y              REAL,
+    player_x            REAL,                 -- the toucher's feet then (court m)
+    player_y            REAL,
     reviewed            INTEGER NOT NULL DEFAULT 0
 );
 

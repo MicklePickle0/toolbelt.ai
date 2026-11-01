@@ -37,7 +37,8 @@ def _rally_ids(conn: sqlite3.Connection, key: str) -> dict[tuple[int, int], dict
 def search(conn: sqlite3.Connection, keys: list[str], player: int | None = None,
            action: str | None = None, result: str | None = None,
            pass_scores: list[int] | None = None, set_by: int | None = None,
-           overpass_score: int | None = 0) -> list[dict]:
+           overpass_score: int | None = 0, decided_only: bool = False) -> list[dict]:
+    """decided_only: only rallies with a point winner (as the stat sheet counts them)."""
     out = []
     for key in keys:
         fps_row = conn.execute("SELECT fps FROM games WHERE video_key = ?", (key,)).fetchone()
@@ -45,7 +46,12 @@ def search(conn: sqlite3.Connection, keys: list[str], player: int | None = None,
             continue
         fps = fps_row[0]
         ids = _rally_ids(conn, key)
-        for r in load_rallies(conn, key, decided_only=False):
+        where = {r[0]: r[1:] for r in conn.execute(
+            "SELECT c.frame, c.ball_x, c.ball_y, c.pass_x, c.pass_y, c.player_x, c.player_y "
+            "FROM contacts c JOIN rallies "
+            "r ON c.rally_id = r.id JOIN sets s ON r.set_id = s.id JOIN games g ON "
+            "s.game_id = g.id WHERE g.video_key = ? AND c.team = 'us'", (key,))}
+        for r in load_rallies(conn, key, decided_only=decided_only):
             if r.outcome in SKIP:
                 continue
             decider, stat = _decider(r)
@@ -56,8 +62,8 @@ def search(conn: sqlite3.Connection, keys: list[str], player: int | None = None,
                 score = c.pass_score if a == "receive" else \
                     overpass_score if a == "overpass" and r.serving_team == "them" else None
                 prev = acts[i - 1] if i else None
-                setter = prev[0].jersey if prev is not None and prev[0].team == "us" \
-                    and prev[1] == "set" else None
+                after_set = prev is not None and prev[0].team == "us" and prev[1] == "set"
+                setter = prev[0].jersey if after_set else None
                 credited = stat if c is decider else None
                 if player is not None and c.jersey != player:
                     continue
@@ -70,10 +76,16 @@ def search(conn: sqlite3.Connection, keys: list[str], player: int | None = None,
                 if set_by is not None and setter != set_by:
                     continue
                 meta = ids.get((r.set_number, r.rally_number), {})
-                out.append({"video": key, "rally_number": r.rally_number,
+                bx, by, px, py, fx, fy = where.get(c.frame, (None,) * 6)
+                out.append({"video": key, "set_number": r.set_number,
+                            "rally_number": r.rally_number,
                             "rally_id": meta.get("rally_id"), "reviewed": meta.get("reviewed"),
                             "t": round(c.frame / fps, 3), "start_t": meta.get("start_t"),
                             "end_t": meta.get("end_t"), "jersey": c.jersey, "action": a,
                             "pass_score": score, "result": credited, "set_by": setter,
-                            "point_winner": r.point_winner, "outcome": r.outcome})
+                            "after_set": after_set,
+                            "point_winner": r.point_winner, "outcome": r.outcome,
+                            "ball_xy": [bx, by] if bx is not None else None,
+                            "pass_xy": [px, py] if px is not None else None,
+                            "player_xy": [fx, fy] if fx is not None else None})
     return out

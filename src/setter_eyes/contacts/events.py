@@ -50,6 +50,8 @@ class Contact:
     p_ours: float | None = None              # touch scorer's P(our side touched it), if scored
     pass_score: int | None = None            # 0-4 on our receive (stats/pass_score.py)
     pass_confidence: float | None = None
+    pass_xy: list[float] | None = None       # where the pass was played (court m)
+    player_xy: list[float] | None = None     # the toucher's feet at the touch (court m)
     jersey: int | None = None                # who touched it (identity/), our touches
     player_confidence: float | None = None
 

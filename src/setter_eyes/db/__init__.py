@@ -8,7 +8,7 @@ from pathlib import Path
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 # Bump when schema.sql changes in a way CREATE ... IF NOT EXISTS can't apply
 # to an existing file. Stored in PRAGMA user_version.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 _OLD_SOURCE = "CHECK (point_winner_source IN ('user', 'ocr'))"
 _NEW_SOURCE = "CHECK (point_winner_source IN ('user', 'ocr', 'next_serve'))"
@@ -60,6 +60,18 @@ def _migrate_6_to_7(conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA user_version = 7")
 
 
+def _migrate_7_to_8(conn: sqlite3.Connection) -> None:
+    """v8: contacts.pass_x / pass_y, where a serve receive was played (the setter's feet,
+    court metres; stats/pass_score.py), for the pass map; player_x / player_y, the
+    toucher's feet at the touch (attack zones)."""
+    with conn:
+        have = {r[1] for r in conn.execute("PRAGMA table_info(contacts)")}
+        for col in ("pass_x", "pass_y", "player_x", "player_y"):
+            if col not in have:
+                conn.execute(f"ALTER TABLE contacts ADD COLUMN {col} REAL")
+        conn.execute("PRAGMA user_version = 8")
+
+
 def connect(db_path: str | Path) -> sqlite3.Connection:
     """Open (and create if needed) the event DB, applying the schema."""
     if str(db_path) != ":memory:":
@@ -81,6 +93,9 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     if has_tables and version == 6:
         _migrate_6_to_7(conn)
         version = 7
+    if has_tables and version == 7:
+        _migrate_7_to_8(conn)
+        version = 8
     if has_tables and version != SCHEMA_VERSION:
         conn.close()
         raise SchemaVersionError(
