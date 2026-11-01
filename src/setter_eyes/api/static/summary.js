@@ -12,10 +12,17 @@ function svg(tag, attrs = {}, ...kids) {
   return el;
 }
 
-async function summarySection(keys, names) {
+function summaryFetch(keys) {
+  const p = api(`/summary?videos=${encodeURIComponent(keys.join(","))}`);
+  p.catch(() => {});                    // shown by summarySection; not an unhandled rejection
+  return p;
+}
+
+// The summary card, filled in when `pending` (from summaryFetch) arrives.
+function summarySection(pending, names) {
   const box = h("div", { class: "card" }, h("strong", {}, "Game summary"),
     h("p", { class: "small muted" }, "loading…"));
-  api(`/summary?videos=${encodeURIComponent(keys.join(","))}`)
+  pending
     .then(s => box.replaceChildren(h("strong", {}, "Game summary"), ...summaryBody(s, names)))
     .catch(e => box.replaceChildren(h("strong", {}, "Game summary"),
       h("p", { class: "muted" }, e.message)));

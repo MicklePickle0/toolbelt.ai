@@ -6,9 +6,9 @@ const SEARCH_ACTIONS = ["serve", "receive", "overpass", "set", "attack", "dump",
   "dig", "free_ball_pass", "block", "coverage", "ball_handling_error"];
 
 async function searchPage(params) {
-  const vids = (await api("/videos")).filter(v => v.rallies);
-  const fd = await api("/folders");
-  const rosters = await api("/rosters");
+  const [allVids, fd, rosters] = await Promise.all(
+    [api("/videos"), api("/folders"), api("/rosters")]);
+  const vids = allVids.filter(v => v.rallies);
   const people = new Map();
   for (const r of rosters) for (const p of r.players) if (!people.has(p.number)) people.set(p.number, p.name);
   const numbers = [...people.keys()].sort((a, b) => a - b);

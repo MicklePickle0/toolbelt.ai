@@ -11,7 +11,27 @@ let META = null;
 let timer = null;                       // the page's refresh timer, cleared on navigation
 
 // ---- helpers ------------------------------------------------------------------------------
-async function api(path, opts = {}) {
+// Lists that rarely change are kept for a minute, so switching pages over the VS Code tunnel
+// (every request a slow round trip through a relay) doesn't refetch them. Any change made in
+// the app clears them; { fresh: true } always asks the server (and refills the cache).
+const CACHED = new Set(["/videos", "/folders", "/rosters"]);
+const CACHE_MS = 60000;
+const cache = new Map();                // path -> { at, promise }
+
+function api(path, opts = {}) {
+  const { fresh, ...rest } = opts;
+  const write = rest.body !== undefined || (rest.method && rest.method !== "GET");
+  if (write) cache.clear();
+  if (write || !CACHED.has(path)) return request(path, rest);
+  const hit = cache.get(path);
+  if (!fresh && hit && Date.now() - hit.at < CACHE_MS) return hit.promise;
+  const promise = request(path, rest);
+  cache.set(path, { at: Date.now(), promise });
+  promise.catch(() => { if (cache.get(path)?.promise === promise) cache.delete(path); });
+  return promise;
+}
+
+async function request(path, opts) {
   const init = { ...opts };
   if (opts.body !== undefined) {
     init.method = init.method || "POST";
@@ -104,6 +124,10 @@ async function route() {
   document.querySelectorAll("nav a").forEach(a =>
     a.classList.toggle("on", a.dataset.nav ===
       (page === "review" || page === "calibrate" ? "videos" : page)));
+  // Say so when a page takes a moment (over the tunnel), instead of showing the old one.
+  const old = view.firstChild;
+  const slow = setTimeout(() => { if (view.firstChild === old)
+    view.replaceChildren(h("p", { class: "muted" }, "Loading…")); }, 250);
   try {
     if (page === "queue") await queuePage();
     else if (page === "stats") await statsPage(params);
@@ -114,6 +138,8 @@ async function route() {
     else await videosPage();
   } catch (e) {
     view.replaceChildren(errorBox(e));
+  } finally {
+    clearTimeout(slow);
   }
 }
 
@@ -126,8 +152,8 @@ route();
 
 // ---- videos -------------------------------------------------------------------------------
 async function videosPage() {
-  const draw = async () => {
-    const vids = await api("/videos");
+  const draw = async (fresh = false) => {
+    const vids = await api("/videos", { fresh });
     const list = vids.map(videoCard);
     view.replaceChildren(
       h("h1", {}, META.team + ": videos"),
@@ -136,7 +162,7 @@ async function videosPage() {
       ...list);
   };
   await draw();
-  timer = setInterval(() => draw().catch(() => {}), 5000);
+  timer = setInterval(() => draw(true).catch(() => {}), 5000);
 }
 
 function videoCard(v) {
@@ -252,10 +278,13 @@ async function queuePage() {
 
 // ---- stats --------------------------------------------------------------------------------
 async function statsPage(params) {
-  const vids = (await api("/videos")).filter(v => v.rallies);
+  const [allVids, fd] = await Promise.all([api("/videos"), api("/folders")]);
+  const vids = allVids.filter(v => v.rallies);
   let chosen = (params.get("v") || "").split(",").filter(Boolean);
   if (!chosen.length && vids.length) chosen = [vids[0].key];
   const src = params.get("src") || "pipeline";
+  // Ask for the summary now, alongside the stat sheet, not after it.
+  const summaryP = src === "pipeline" ? summaryFetch(chosen) : null;
   let scale = params.get("pass");
   if (scale !== "3" && scale !== "4") {
     try { scale = localStorage.getItem("passScale"); } catch (_) { scale = null; }
@@ -266,7 +295,6 @@ async function statsPage(params) {
     location.hash = `#/stats?v=${keys.join(",")}&src=${s}&pass=${p}`; };
 
   // Sets in folders: tournament -> game -> sets. "Edit folders" moves sets between them.
-  const fd = await api("/folders");
   const folderTree = folderPicker(fd, vids, chosen, keys => go(keys, src));
   const tournaments = [...new Set(Object.values(fd.folders).map(f => f.tournament)
     .filter(t => t !== fd.unfiled))];
@@ -315,7 +343,7 @@ async function statsPage(params) {
     if (src === "pipeline") {
       const names = new Map(st.players.filter(p => p.player !== "?")
         .map(p => [+p.player, p.name]));
-      body.push(await summarySection(chosen, names));
+      body.push(summarySection(summaryP, names));
     }
   } catch (e) {
     body = [h("p", { class: "muted" }, e.message)];
