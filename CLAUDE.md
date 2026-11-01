@@ -152,23 +152,32 @@ Background and venue variety:
 12. Serve placement: where our serves go on the opponent side, by zone (1-6) as percentages. Show a court map with each serve as a dot (colored by outcome: ace, in play, error) and a heatmap toggle. Landing point comes from the ball's 3D arc (floor crossing or the opponent's first contact). This is the ball only, not far-side player tracking, but far-side depth accuracy is weaker, so keep zones coarse, attach a confidence to each landing point and send low-confidence ones to the review queue.
 
 ## Roadmap (agreed 2026-10-28; progress and measurements live in docs/todo.md)
-Deadline: 16U OVA Fall Classic, Ottawa, 2026-11-06/07. The owner has only a laptop and a phone there and wants each day's sets analysed the same day (6-9 sets on day 1). Flow: record each set at 1080p60, upload the file after the set (no live streaming), process it as a batch on the home PC (cloud GPUs as a backup), review and read stats in the web app over Tailscale. Live AI stats are out of scope. (Owner) = only the owner can do it.
+Deadline: 16U OVA Fall Classic, Ottawa, 2026-11-06/07. The owner has only a laptop and a phone there and wants each day's sets analysed the same day (6-9 sets on day 1). Flow: record each set at 1080p60, upload the file after the set (no live streaming), process it as a batch on the home PC (cloud GPUs as a backup), review and read stats in the web app over the VS Code tunnel. Live AI stats are out of scope. (Owner) = only the owner can do it.
 
-**Phase A, Fall Classic minimum (by 2026-11-05):**
-- A1 (Owner) Push after each session; the laptop only sees what is pushed.
-- A2 (Owner) Calibrate the 10 Durham Attack sets by hand (`calibrate.py --manual`); auto calibration fails at those gyms.
-- A3 (Owner) Tailscale on PC, laptop and phone; PC never sleeps; app starts on boot.
-- A4 (Owner) Queue the Durham Attack sets overnight in the app.
-- A5 Browser calibration page (tap 6-8 court points on a still).
-- A6 Honest auto-calibration confidence (a wrong fit scored 0.87), so the app asks for taps.
-- A7 Upload a video or paste a YouTube/Drive link in the app; it joins the manifest.
-- A8 Speed-ups to ~30-40 min per 1080p set (~100 min measured 2026-10-28): people detection at 10 Hz, 2x2 tiles at 1080p (check accuracy, retrain if needed), TensorRT/fp16.
-- A9 (Owner labels) ~50 ball frames from each of 2-3 Durham Attack gyms, then retrain.
-- A10 Third-set side switch: detect the camera move, ask for a second calibration.
-- A11 One-key point us/them and keyboard shortcuts on the review page.
-- A12 Manual stat tracker on the phone, works offline (optional; owner picks the stats).
-- A13 (Owner) Dry run ~2026-11-03/04 from the laptop away from home on Durham Attack sets.
-- A14 (Owner) Recording plan: 1080p60, phone low behind our end line, spare battery, upload after each set.
+**Phase A, Fall Classic minimum (by 2026-11-05).** Status as of 2026-10-31:
+- A1 (Owner) Push after each session; the laptop only sees what is pushed. Ongoing.
+- A2 (Owner) Calibrate the Durham Attack sets by hand in the app. 7 done; still to do: `416-knight_set1`, `mac-platinum_set1`, `pakmen-black_set3` (the last needs A10).
+- A3 DONE differently: remote access is a VS Code Remote Tunnel (top of this file), not Tailscale. Still to do: `code tunnel service install`.
+- A4 (Owner) Queue the Durham Attack sets in the app. Processed: `pakmen-black_set1/2` only. Calibrated but not processed: `416-knight_set2/3`, `mac-platinum_set2`, `pakmen-gold_set1/2`.
+- A5 DONE: browser calibration page.
+- A6 DONE for now: automatic fits never count as calibrated (`app.accept_auto_calibration: false`).
+- A7 Upload a video or paste a YouTube/Drive link in the app; it joins the manifest. Until then: drag the file into the VS Code explorer over the tunnel. Measure the upload size and time on the dry run: a 20-min 1080p60 file is several GB.
+- A8 DONE: ~33 min per 20-min 1080p set (was ~2 h).
+- A9 (Owner labels) ~50 ball frames from each of 2-3 Durham Attack gyms, then retrain at 1080p. Add the poster stretches of `pakmen-black_set2` as hard negatives, plus self-labels from its reviewed rallies (C1).
+- A10 Third-set side switch: detect the camera move, ask for a second calibration. Prototype only.
+- A11 Review speed (6-9 sets to review in a day): one key for point us/them, keys for actions and team, next/previous touch, Enter = save & next.
+- A12 Manual stat tracker on the phone. Dropped for Ottawa unless time is left over.
+- A13 (Owner) Dry run 2026-11-03/04 from the laptop away from home on Durham Attack sets.
+- A14 (Owner) Recording plan: 1080p60, phone low and CENTRED behind our end line (corner views cost accuracy at Durham Attack: worse depth, false entry serves), whole court in frame, no posters or windows behind the far court if there's a choice, spare battery, upload after each set.
+- A15 (added 2026-10-31) Rally-step fixes from `pakmen-black_set2` (issues-log "Still open"):
+  - a "serve" needs a net crossing soon after it, or enough confidence;
+  - a short piece with no crossing just before a sure serve is dropped;
+  - three touches by one side keep the rally without a crossing;
+  - an impossible-score check (`pakmen-black_set1` inferred 33-17).
+  CPU only; measure on set 2 and the two Humber sets.
+- A16 (added 2026-10-31) Pass score and jersey number on each touch in review (none is editable in the web app today), so Ottawa gets pass averages and per-player stats from review even before the pipeline is right. Pass scores entered there become B8's labelled passes.
+- A17 (added 2026-10-31) Re-run the processed sets with the 2026-10-31 fixes (poster, 1080p features, team decoder). CPU, from cached detections. First check that writing the event DB keeps every reviewed rally (`pakmen-black_set1/2`), and back up the DB.
+- A18 (added 2026-10-31) Retrain the touch scorer with `pakmen-black_set2`'s reviewed rallies (C3, first Durham Attack data), then test on `pakmen-black_set1`'s reviewed rallies.
 
 **Phase B, per-player stats (after Ottawa, or earlier if Phase A goes well):**
 - B1 (Owner) Roster (numbers + names) and each set's starting lineup.
@@ -178,7 +187,7 @@ Deadline: 16U OVA Fall Classic, Ottawa, 2026-11-06/07. The owner has only a lapt
 - B5 Re-attach broken tracks by appearance.
 - B6 Rotation state machine and libero swaps.
 - B7 Fix a touch's player in review; one fix relabels the whole track.
-- B8 Pass scores in the pipeline (from the setter's feet).
+- B8 Pass scores in the pipeline (from the setter's feet). Moved before Ottawa (owner, 2026-10-29: core feature). Every pipeline contact has `pass_score` NULL today.
 
 **Phase C, accuracy and new gyms without labelling:**
 - C1 Self-labelling: confident ball arcs become detector labels; retrain overnight on new footage.
@@ -205,13 +214,27 @@ Deadline: 16U OVA Fall Classic, Ottawa, 2026-11-06/07. The owner has only a lapt
 - D10 Optional: rename the package/repo to Toolbelt.
 - D11 Practice-footage features (later).
 
-**Order:**
-1. 2026-10-28/29: A1-A4 (owner), A5-A7 (Claude).
-2. 2026-10-30 to 11-01: A8 and A10 (Claude), A9 (owner), then retrain.
-3. 2026-11-02: A11, then A12 if there is time. If still above ~40 min a set, start D8 as the backup.
-4. 2026-11-03/04: A13 dry run, fix what breaks. 2026-11-05: freeze; no new features.
-5. After Ottawa: Phase B top to bottom, with Phase C alongside (C1 first, so new gyms stop needing labels).
-6. Then Phase D in the order that matters to the owner's coaching.
+**Order (revised 2026-10-31; the 2026-10-28 order slipped by ~2 days):**
+1. 2026-11-01, Claude, CPU:
+   - A15 rally-step fixes;
+   - A16 pass score and jersey in review;
+   - B8 pipeline pass scores;
+   - A17 safe re-run of processed sets.
+2. 2026-11-01, owner:
+   - A2 calibrate the 2 remaining sets;
+   - A4 queue the 5 calibrated Durham Attack sets overnight (dry-run material; `pakmen-gold` is the new-gym test);
+   - review `pakmen-black_set1`'s remaining 39 rallies and check the 4 flagged set 2 labels;
+   - `code tunnel service install`.
+3. 2026-11-02, Claude:
+   - A10 third-set switch;
+   - A11 review shortcuts;
+   - A7 upload, if time.
+4. 2026-11-02, overnight GPU:
+   - A18 touch scorer retrain;
+   - A9 1080p ball detector retrain (owner's DA boxes, if done).
+5. 2026-11-03/04: A13 dry run, fix what breaks. 2026-11-05: freeze; no new features.
+6. After Ottawa: jersey numbers B2-B4 first (pose toucher, then PARSeq or our own digit model), then the rest of Phase B, with Phase C alongside (C1 first, so new gyms stop needing labels). Jersey numbers are not reliable enough for Ottawa: untested at 1080p, and the toucher is wrong ~1/3 of the time; A16 covers it by hand.
+7. Then Phase D in the order that matters to the owner's coaching.
 
 ## Product shape (later; do not build yet)
 Decided 2026-10-27, for further down the road. Perfect the local pipeline first (accuracy,

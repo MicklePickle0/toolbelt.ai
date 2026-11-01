@@ -12,6 +12,14 @@ Plan (2026-10-28): record each set on the phone at 1080p60, upload the file afte
 it as a batch job, look at results in a browser. Live AI stats: not feasible (out of scope).
 Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a backup.
 
+**Revised 2026-10-31: the order and status are in CLAUDE.md's Roadmap, and the new items are A15-A18.**
+- Pass scores: every pipeline contact has `pass_score` NULL, and the web review can't enter one. A16 (by hand in review) and B8 (pipeline) come next.
+- Jersey numbers move to right after Ottawa; A16 covers them by hand until then.
+- Processed Durham Attack sets: `pakmen-black_set1` (14/53 rallies reviewed) and `pakmen-black_set2` (46/46).
+- Calibrated, not processed: `416-knight_set2/3`, `mac-platinum_set2`, `pakmen-gold_set1/2`.
+- Not calibrated: `416-knight_set1`, `mac-platinum_set1`, `pakmen-black_set3` (side switch).
+- Every other processed set still has the ball path from before the poster fix (A17).
+
 - [x] **Speed-ups, 2026-10-29: ~2 h -> ~33 min per 20-min 1080p set.** Measured on a 1080p
       copy of titan-rise_set1 (`titan-rise_set1_1080p`, same frames, labels apply; 18.4 min):
       find_play 68 s, ball 21 min (25.9 frames/s), people 5.8 min, track_ball 68 s,
