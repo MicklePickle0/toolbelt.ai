@@ -180,3 +180,16 @@ def test_hidden_receive_and_set_are_found_from_the_timing():
     assert got[1] == (11.05, "them", True) and got[5] == (16.55, "us", True)
     assert rally.contacts == list(range(8))
     assert [c.t for c in contacts] == sorted(c.t for c in contacts)
+
+
+def test_an_overpass_our_side_plays_again_is_a_receive():
+    from setter_eyes.classify.rules import fix_overpasses
+
+    class R:
+        serving_team = "them"
+        contacts = [0, 1, 2]
+
+    contacts = [_c(10.0, "them", action="serve"), _c(11.0, "us", action="overpass"),
+                _c(12.0, "us", action="set")]
+    assert fix_overpasses([R()], contacts) == 1
+    assert contacts[1].action == "receive"

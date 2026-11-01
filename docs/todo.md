@@ -144,6 +144,11 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
       **Done 2026-10-31:** pass scores in processing (`score_passes`, with a confidence), and pass score + player editable in review (A16). A pipeline guess counts as a label only once set or ticked (✓).
       End to end, touches from models that never saw the rally: titan 4K 17/20 scored, 53% exact, 94% within 1; mac 15/20, 53%, 93%; titan 1080p 14/20, 43%, 71%. The 1080p misses come from upstream (receives taken as our serve, or outside a rally).
       Owner: tick or set pass scores while reviewing Durham Attack sets, to tune the thresholds there.
+      **2026-11-01, owner's rules:**
+      - Height: a pass in a 4's spot but very low is a 1. `low_pass.max_apex_m` 2.4. Labelled apexes: 1s from 1.8 m, 2s from 2.5, 3s/4s from 2.9; they overlap above that.
+        pakmen-black_set2 against the owner's 25: 62 -> 69% exact, 85 -> 92% within 1. Titan and mac unchanged. The 1.8 m pass also helped set the threshold, so this isn't independent yet.
+      - An overpass on serve receive is automatically a 0 (no pass buttons in review); one on a dig isn't a reception.
+      - An "overpass" our side plays again is a receive, or a dig (`fix_overpasses`).
 - [ ] **P1 Third-set side switch** (A10). Seen in `pakmen-black_set3` and `416-knight_set3`
       (2026-10-28): one continuous recording; at ~8 points the phone is carried to the other
       end (30-45 s of walls and floor), then a completely different view (other corner, other

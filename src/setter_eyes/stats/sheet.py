@@ -2,7 +2,8 @@
 
 Built from rallies read out of the event DB (db/read.py), with the owner's counting rules
 (stats/actions.py: free-ball passes and uncontrolled digs; stats/passing.py: serve
-receive 0-4, overpass = 0, aces = 0). Replays and dismissed rallies count for nothing.
+receive 0-4, overpass on serve receive = 0, aces = 0). Replays and dismissed rallies count
+for nothing.
 
 Credit for how a point ended follows the rally's outcome (labelled, or set in review)
 and goes to the touch of ours it is about:

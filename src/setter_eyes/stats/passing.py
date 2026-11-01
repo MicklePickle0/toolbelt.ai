@@ -3,8 +3,8 @@
 A reception is OUR first touch after THEIR serve (CLAUDE.md: the first ball only, not
 defence). Its score, by what happened (config/pass_scale.yaml):
   - labelled `receive` with a pass_score: that score
-  - labelled `overpass` (the pass went straight back over the net): `overpass_score` (0).
-    Still a serve receive, so it counts in the passer's average.
+  - labelled `overpass` (the pass went straight back over the net): `overpass_score`,
+    null = no score, left out of averages (owner, 2026-11-01; it used to be a 0).
   - no touch of ours and the rally ended in an ace: `ace_score` (0), passer unknown
     (counts in the team average only)
   - `receive` without a score: a reception, but unscored (left out of averages)

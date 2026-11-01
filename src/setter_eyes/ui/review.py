@@ -81,10 +81,11 @@ def _player_ids(conn: sqlite3.Connection, rally_id: int) -> dict[int, int]:
 
 
 def _extra(e: TouchEdit, players: dict[int, int]) -> tuple[int | None, int | None]:
-    """(pass_score, player_id) of an edit: a pass score only on our receive or overpass, a
+    """(pass_score, player_id) of an edit: a pass score only on our receive (an overpass has
+    none), a
     player only on our touches and from the game's roster."""
     ours = e.team == "us"
-    score = e.pass_score if ours and e.action in ("receive", "overpass") else None
+    score = e.pass_score if ours and e.action == "receive" else None   # overpass: an automatic 0
     if ours and e.jersey is not None and e.jersey not in players:
         raise ValueError(f"#{e.jersey} isn't on this game's roster")
     return score, players[e.jersey] if ours and e.jersey is not None else None

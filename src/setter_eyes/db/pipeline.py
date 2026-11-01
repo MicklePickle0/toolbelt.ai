@@ -160,7 +160,7 @@ def _guess_on_reviewed(conn, set_id: int, contacts: list[dict], players: dict[in
             continue
         p = min(near, key=lambda c: abs(c["t"] - ct))
         if pass_score is None and p.get("pass_score") is not None and \
-                action in ("receive", "overpass"):
+                action == "receive":
             conn.execute("UPDATE contacts SET pass_score = ?, pass_confidence = ? WHERE id = ?",
                          (p["pass_score"], min(p["pass_confidence"] or 0.0, 0.99), cid))
             filled += 1

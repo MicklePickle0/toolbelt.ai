@@ -543,7 +543,7 @@ async function reviewPage(setId, rallyId, params) {
     const parts = [h("label", { class: "row small" }, "Player", who,
       guess(x.jersey, x.player_confidence, x.jersey_checked,
         () => { x.jersey_checked = true; drawTouches(); }))];
-    if (x.action === "receive" || x.action === "overpass") {
+    if (x.action === "receive") {                 // an overpass on serve receive is an automatic 0
       parts.push(h("span", { class: "row small" }, "Pass",
         seg([0, 1, 2, 3, 4].map(n => [String(n), String(n)]),
           x.pass_score === null || x.pass_score === undefined ? null : String(x.pass_score),

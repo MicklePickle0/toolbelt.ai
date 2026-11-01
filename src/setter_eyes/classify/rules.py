@@ -168,3 +168,20 @@ def classify_rally(touches: Sequence[Contact], serve: Contact | None, serving_te
         name, conf = a if a is not None else ("dig", rule["uncertain"])
         out.append((name, round(conf * (c.confidence if c.confidence else 1.0), 3)))
     return out
+
+
+def fix_overpasses(rallies: list, contacts: list[Contact]) -> int:
+    """An "overpass" our side plays again (our set follows, e.g. a hidden set added from the
+    timing) didn't go over: it is a receive if it was our first touch after their serve,
+    else a dig (owner, 2026-11-01). In place; returns how many were changed."""
+    changed = 0
+    for r in rallies:
+        touches = [contacts[i] for i in r.contacts if contacts[i].kind == "touch"]
+        for k, c in enumerate(touches[:-1]):
+            if c.action != "overpass" or touches[k + 1].team != c.team:
+                continue
+            first = r.serving_team not in (None, c.team) and all(
+                t.team != c.team for t in touches[:k])
+            c.action = "receive" if first else "dig"
+            changed += 1
+    return changed

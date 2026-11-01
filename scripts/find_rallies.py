@@ -37,7 +37,7 @@ from setter_eyes import rosters as rost
 from setter_eyes.ball.arcs import Arc
 from setter_eyes.ball.tracker import BallPath
 from setter_eyes.calibration import load as load_calibration
-from setter_eyes.classify.rules import classify_rally, launch_up
+from setter_eyes.classify.rules import classify_rally, fix_overpasses, launch_up
 from setter_eyes.contacts.blocks import add_stuff_blocks, blocks_from_landing
 from setter_eyes.contacts.events import Contact, add_hidden_touches, find_contacts
 from setter_eyes.contacts.scorer import TouchScorer, scored_contacts
@@ -179,7 +179,8 @@ def main() -> int:
     n_hidden = add_hidden_touches(rallies, contacts, hidden, fps,
                                   cfg["classify"]["inferred_touch_confidence"])
     print(f"hidden touches added (a receive before a late first touch, a set in a long gap): "
-          f"{n_hidden}")
+          f"{n_hidden}; overpasses our side played again (now a receive or dig): "
+          f"{fix_overpasses(rallies, contacts)}")
     infer_winners(rallies, contacts, cfg)              # who serves next won the point
     print(f"blocks from the attack landing on the attacker's side: "
           f"{blocks_from_landing(rallies, contacts, cfg)}")

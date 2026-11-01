@@ -16,7 +16,7 @@ distance from the target 0.9 m for a 4, 1.9 m for a 3, 3.1 m for a 2, 4.6 m for 
 
 The score follows config/pass_scale.yaml: distance from `target` laterally and in depth,
 graded by the first matching entry of `grades`. A pass the other side plays next went
-straight over: `overpass_score` (0). Aces come from the point outcome, not here.
+straight over: `overpass_score` (null: no score). Aces come from the point outcome, not here.
 The grade boundaries are still the draft; scripts/eval_passes.py compares them with the
 owner's labelled pass scores and suggests values.
 """
@@ -97,9 +97,11 @@ def score_passes(rallies: list, contacts: list, path: BallPath, people: PeopleTr
     """Pass score and confidence on each rally's serve receive of ours (the first touch
     of ours after their serve, `receive` or `overpass`), in place on the Contact:
       - our next touch: graded from where it is played (`pass_spot`, `grade`);
-      - their next touch: the pass went straight over, `overpass_score`;
+      - their next touch: the pass went straight over, `overpass_score` (null: none);
       - no next touch and they won the point: shanked, `ace_score`;
       - no next touch otherwise: not scored.
+    A pass whose flight peaks below `low_pass.max_apex_m` is a 1 wherever it is played
+    (owner, 2026-11-01: in a 4's spot but very low, it's still a 1).
     Confidence: how the spot was found (`pipeline:` in pass_scale.yaml) times how sure the
     receive's action and the next touch are. Returns counts by how each was scored."""
     p = scale["pipeline"]
@@ -126,9 +128,10 @@ def score_passes(rallies: list, contacts: list, path: BallPath, people: PeopleTr
                 how["unscored"] += 1
             continue
         if nxt.team != "us":
-            rec.pass_score, rec.pass_confidence = scale["overpass_score"], \
-                round(p["overpass_confidence"] * sure, 3)
-            how["overpass"] += 1
+            if scale["overpass_score"] is not None:
+                rec.pass_score, rec.pass_confidence = scale["overpass_score"], \
+                    round(p["overpass_confidence"] * sure, 3)
+            how["overpass"] += 1                   # no score by default (pass_scale.yaml)
             continue
         xyz = ball_xyz(arcs, g, nxt.t)
         xy = pass_spot(path, people, nxt.frame, xyz)
@@ -140,9 +143,23 @@ def score_passes(rallies: list, contacts: list, path: BallPath, people: PeopleTr
             min(sure, nxt.confidence)
         if nxt.inferred:
             conf *= p["inferred_next_factor"]
-        rec.pass_score, rec.pass_confidence = grade(xy, scale), round(conf, 3)
+        score = grade(xy, scale)
+        top = pass_apex(arcs, g, rec.t, scale["low_pass"]["min_arc_confidence"])
+        if top is not None and top < scale["low_pass"]["max_apex_m"] and score > 1:
+            score = 1                              # where a 4 goes, but far too low: a 1
+            how["low pass, so a 1"] += 1
+        rec.pass_score, rec.pass_confidence = score, round(conf, 3)
         how["graded"] += 1
     return how
+
+
+def pass_apex(arcs: list, g: np.ndarray, t: float, min_conf: float) -> float | None:
+    """Highest point (m) of the first confident flight leaving a touch at t, or None."""
+    for a in arcs:
+        if a.confidence >= min_conf and t - 0.1 <= a.t0 <= t + 0.5:
+            ts = np.linspace(a.t0, a.t0 + a.duration_s, 30)
+            return float(a.position(ts, g)[:, 2].max())
+    return None
 
 
 def grade(xy: np.ndarray, scale: dict) -> int:

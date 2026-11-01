@@ -40,8 +40,9 @@ grades:
 ace_score: 0
 
 # Our first touch after their serve going straight back over the net (labelled
-# `overpass`) is still a serve receive: it scores this and counts in the passer's
-# average (owner's rule, 2026-10-24).
+# `overpass`) is automatically a 0 and counts in the passer's average (owner, 2026-10-24,
+# confirmed 2026-11-01). An overpass on a dig isn't a serve receive: no pass score, not in
+# the average. Review shows no pass buttons on an overpass: its 0 is automatic.
 overpass_score: 0
 
 # Below this confidence the pass score goes to the review queue.
@@ -56,3 +57,11 @@ pipeline:
   overpass_confidence: 0.8       # their side played it next
   shank_confidence: 0.6          # no next touch and they won the point
   inferred_next_factor: 0.5      # the next touch wasn't seen (added from the timing)
+
+# Height (owner, 2026-11-01): a pass in a 4's spot but very low is still a 1. Measured
+# apex of the flight after 65 labelled receives (titan, mac, pakmen-black_set2): 1s from
+# 1.8 m up, 2s from 2.5 m, 3s and 4s from 2.9 m; scores overlap above that, so height
+# only catches the very low ones.
+low_pass:
+  max_apex_m: 2.4            # flight peaks below this: a 1
+  min_arc_confidence: 0.3    # only flights this sure give a height
