@@ -1,7 +1,7 @@
 # To do
 
 Ordered by priority within each section. Scores are from the labelled `titan-rise_set1`
-(touches from models that never saw the rally scored). Last updated 2026-10-26, merging
+(touches from models that never saw the rally scored). Last updated 2026-11-01; first written 2026-10-26, merging
 the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
 
 ## Fall Classic, Ottawa, 2026-11-06/07 (deadline)
@@ -12,10 +12,18 @@ Plan (2026-10-28): record each set on the phone at 1080p60, upload the file afte
 it as a batch job, look at results in a browser. Live AI stats: not feasible (out of scope).
 Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a backup.
 
-**Revised 2026-10-31: the order and status are in CLAUDE.md's Roadmap, and the new items are A15-A18.**
-- Pass scores: every pipeline contact has `pass_score` NULL, and the web review can't enter one. A16 (by hand in review) and B8 (pipeline) come next.
-- Jersey numbers move to right after Ottawa; A16 covers them by hand until then.
-- Processed Durham Attack sets: `pakmen-black_set1` (14/53 rallies reviewed) and `pakmen-black_set2` (46/46).
+**Revised 2026-11-01: the order and status are in CLAUDE.md's Roadmap.**
+- Done 2026-10-31/11-01:
+  - pass score and jersey in review (A16);
+  - pipeline pass scores (B8);
+  - jerseys by PARSeq plus pose (B2-B4);
+  - our server from who walks into view;
+  - the owner's pass rules (low pass is a 1; overpass rules in CLAUDE.md);
+  - web folders, Search, reels and game summary.
+- Measured on the owner's `pakmen-black_set2` labels: jerseys 47% named, 92% right; pass scores 69% exact, 92% within 1. Attacks named: 3 of 24 (open, B5).
+- Next for Claude: A15 rally-step fixes, A11 review shortcuts, A17 for the Humber sets (pose_people + find_rallies).
+- Owner, 2026-11-01: recording for Ottawa changes to 4K, keeping the 4K files and processing a 1080p60 copy. The third-set switch (A10) is deferred.
+- Processed Durham Attack sets: `pakmen-black_set1` (14/53 rallies reviewed) and `pakmen-black_set2` (46/46), both re-run with jerseys and pass scores (event DB schema v8).
 - Calibrated, not processed: `416-knight_set2/3`, `mac-platinum_set2`, `pakmen-gold_set1/2`.
 - Not calibrated: `416-knight_set1`, `mac-platinum_set1`, `pakmen-black_set3` (side switch).
 - Every other processed set still has the ball path from before the poster fix (A17).
