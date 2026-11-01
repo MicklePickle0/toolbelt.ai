@@ -527,20 +527,29 @@ async function reviewPage(setId, rallyId, params) {
   }
 
   // Who touched it (our touches) and, on our receive, the pass score 0-4.
+  // A pipeline guess shows how sure it was and a ✓ to confirm it as it is; setting a value
+  // confirms it too. Only confirmed ones count as labels (export_reviewed.py).
   function extraRow(x) {
-    const unsure = (v, c) => v !== null && v !== undefined && c !== null && c !== undefined && c < 1
-      ? h("span", { class: "small muted" }, ` pipeline, sure ${c.toFixed(2)}`) : null;
-    const who = h("select", { onchange: e => { x.jersey = e.target.value === "" ? null : +e.target.value; } },
+    const guess = (v, c, checked, confirm) =>
+      v !== null && v !== undefined && !checked && c !== null && c !== undefined && c < 1
+        ? h("span", { class: "row small muted" }, `pipeline guess, sure ${c.toFixed(2)}`,
+          h("button", { class: "iconbtn", title: "it's right", onclick: confirm }, "✓"))
+        : null;
+    const who = h("select", { onchange: e => {
+      x.jersey = e.target.value === "" ? null : +e.target.value; x.jersey_checked = true; drawTouches(); } },
       h("option", { value: "" }, d.roster.length ? "player?" : "no roster for this video"),
       ...d.roster.map(p => h("option", { value: p.number, selected: p.number === x.jersey },
         `#${p.number} ${p.name}`)));
-    const parts = [h("label", { class: "row small" }, "Player", who, unsure(x.jersey, x.player_confidence))];
+    const parts = [h("label", { class: "row small" }, "Player", who,
+      guess(x.jersey, x.player_confidence, x.jersey_checked,
+        () => { x.jersey_checked = true; drawTouches(); }))];
     if (x.action === "receive" || x.action === "overpass") {
       parts.push(h("span", { class: "row small" }, "Pass",
         seg([0, 1, 2, 3, 4].map(n => [String(n), String(n)]),
           x.pass_score === null || x.pass_score === undefined ? null : String(x.pass_score),
-          v => { x.pass_score = x.pass_score === +v ? null : +v; drawTouches(); }),
-        unsure(x.pass_score, x.pass_confidence)));
+          v => { x.pass_score = +v; x.pass_checked = true; drawTouches(); }),
+        guess(x.pass_score, x.pass_confidence, x.pass_checked,
+          () => { x.pass_checked = true; drawTouches(); })));
     }
     return h("div", { class: "extra" }, ...parts);
   }

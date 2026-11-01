@@ -104,6 +104,8 @@ class Touch(BaseModel):
     delete: bool = False
     pass_score: int | None = None         # 0-4 on our receive
     jersey: int | None = None             # who touched it (our touches), a roster number
+    pass_checked: bool = False            # the reviewer set or confirmed the pass score
+    jersey_checked: bool = False          # ...the player
 
 
 class Review(BaseModel):
@@ -172,7 +174,8 @@ class NewJob(BaseModel):
 def _edits(touches: list[Touch]) -> list[rv.TouchEdit]:
     """Touches that send pass_score or jersey (even as null) set them; others keep the DB's."""
     return [rv.TouchEdit(t.id, t.t, t.team, t.action, t.delete, t.pass_score, t.jersey,
-                         keep_extra=not ({"pass_score", "jersey"} & t.model_fields_set))
+                         keep_extra=not ({"pass_score", "jersey"} & t.model_fields_set),
+                         pass_checked=t.pass_checked, jersey_checked=t.jersey_checked)
             for t in touches]
 
 

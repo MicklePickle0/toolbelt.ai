@@ -194,3 +194,31 @@ def test_review_saves_pass_score_and_player(tmp_path):
            for x in rv.touches(conn, rid)]
     with pytest.raises(ValueError, match="roster"):
         rv.save_review(conn, rid, 60.0, "us", "kill", "them", 13.0, bad, True)
+
+
+def test_unconfirmed_pipeline_guesses_are_not_exported_as_labels(tmp_path):
+    from setter_eyes.db.read import reviewed_for_training
+    from setter_eyes.labels.manifest import RosterEntry
+    conn = db.connect(":memory:")
+    manifest = Manifest(tmp_path / "manifest.yaml", "Venom", [RosterEntry(7, "Sam")], [])
+    entry = VideoEntry("v1", tmp_path / "v1.mp4", venue="Humber", ball="mikasa")
+    contacts = [{"kind": "touch", "t": t, "frame": int(t * 60), "confidence": 0.6, "team": team,
+                 "ball_xyz": None, "action": a, "action_confidence": 0.5, "pass_score": p,
+                 "pass_confidence": None if p is None else 0.4, "jersey": j,
+                 "player_confidence": None if j is None else 0.5}
+                for t, team, a, p, j in ((10.0, "them", "serve", None, None),
+                                         (11.0, "us", "receive", 2, 7),
+                                         (12.0, "us", "set", None, 7))]
+    write_video(conn, manifest, entry, 60.0, [{
+        "index": 1, "start_frame": 600, "end_frame": 800, "start_t": 10.0, "end_t": 13.0,
+        "confidence": 0.4, "serving_team": "them", "contacts": [0, 1, 2]}], contacts)
+    rid = rv.rallies(conn, rv.games(conn)[0]["set_id"])[0]["id"]
+    t = rv.touches(conn, rid)
+    assert [x["jersey"] for x in t] == [None, 7, 7]
+    edits = [rv.TouchEdit(x["id"], x["t"], x["team"], x["action"], pass_score=x["pass_score"],
+                          jersey=x["jersey"], keep_extra=False) for x in t]
+    edits[2].jersey_checked = True                      # the reviewer ticked the set's player
+    rv.save_review(conn, rid, 60.0, "us", "kill", "them", 13.0, edits, True)
+    labels = reviewed_for_training(conn, "v1")[0].contacts
+    assert (labels[1].pass_score, labels[1].jersey) == (None, None)   # left as guesses
+    assert labels[2].jersey == 7

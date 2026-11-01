@@ -45,8 +45,12 @@ def reviewed_for_training(conn: sqlite3.Connection, video_key: str) -> list[Rall
            WHERE g.video_key = ? AND r.reviewed = 1 ORDER BY r.start_t"""
     out = []
     for r in conn.execute(q, (video_key,)).fetchall():
+        # Pass scores and players only where the reviewer set or confirmed them (confidence
+        # 1); a pipeline guess left as it was isn't a label.
         rows = conn.execute(
-            "SELECT c.frame, c.team, c.action, c.pass_score, c.reviewed, p.jersey_number "
+            "SELECT c.frame, c.team, c.action, c.reviewed, "
+            "CASE WHEN c.pass_confidence >= 1 THEN c.pass_score END AS pass_score, "
+            "CASE WHEN c.player_confidence >= 1 THEN p.jersey_number END AS jersey_number "
             "FROM contacts c LEFT JOIN players p ON c.player_id = p.id "
             "WHERE c.rally_id = ? ORDER BY c.t", (r["id"],)).fetchall()
         if r["outcome"] == "not_a_rally":

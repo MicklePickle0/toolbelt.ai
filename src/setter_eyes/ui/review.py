@@ -44,6 +44,8 @@ class TouchEdit:
     jersey: int | None = None       # roster number of who touched it (our touches)
     keep_extra: bool = True         # True: keep the DB's pass_score / jersey (callers that
                                     # don't edit them); False: use the two fields above
+    pass_checked: bool = False      # the reviewer set or confirmed the pass score
+    jersey_checked: bool = False    # ...the player
 
 
 def games(conn: sqlite3.Connection) -> list[dict]:
@@ -176,15 +178,16 @@ def save_review(conn: sqlite3.Connection, rally_id: int, fps: float, winner: str
                                ("pass_score", score), ("jersey", jersey)):
                 old_v = round(b[field], 3) if field == "t" else b[field]
                 _log(conn, "contacts", e.id, field, old_v, new, author)
-            # A confirmed touch, or one the reviewer changed, is certain from now on; so are
-            # its pass score and player.
+            # A confirmed touch, or one the reviewer changed, is certain from now on. Its pass
+            # score and player only when the reviewer set or confirmed them: a pipeline guess
+            # left as it was stays a guess (and isn't exported as a label).
             touch_conf = 1.0 if touches_checked else b["contact_confidence"]
             action_conf = 1.0 if touches_checked or e.action != b["action"] else \
                 b["action_confidence"]
             pass_conf = None if score is None else \
-                1.0 if touches_checked or score != b["pass_score"] else b["pass_confidence"]
+                1.0 if e.pass_checked or score != b["pass_score"] else b["pass_confidence"]
             player_conf = None if player is None else \
-                1.0 if touches_checked or jersey != b["jersey"] else b["player_confidence"]
+                1.0 if e.jersey_checked or jersey != b["jersey"] else b["player_confidence"]
             conn.execute("UPDATE contacts SET t = ?, frame = ?, team = ?, action = ?, "
                          "contact_confidence = ?, action_confidence = ?, pass_score = ?, "
                          "pass_confidence = ?, player_id = ?, player_confidence = ?, "

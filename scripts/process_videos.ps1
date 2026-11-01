@@ -15,7 +15,7 @@ New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
 # stuff blocks it found.
 # track_camera needs the video calibrated first (web app, or scripts/calibrate.py).
 $steps = "find_play", "detect_ball", "detect_people", "track_camera", "track_ball",
-         "track_people", "find_rallies", "check_blocks", "find_rallies"
+         "track_people", "pose_people", "find_rallies", "check_blocks", "find_rallies"
 
 foreach ($v in $Videos) {
     foreach ($step in $steps) {

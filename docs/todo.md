@@ -105,6 +105,17 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
          different player (e.g. a "#12 receive" crop shows #1). Pick the toucher better
          (hands/pose at the ball, not the nearest feet) before numbers can help.
       Roster in the manifest is still empty (`roster: []`): owner to add numbers + names.
+      (Since done: the Venom Riot roster is in `data/rosters/venom-riot.yaml` and assigned to every video.)
+      **1080p check, 2026-10-31:**
+      - *Player size:* near-side players are a median 262-314 px tall at 1080p (titan 1080p copy, both Pakmen Black corners; 523 px at 4K), so a back number is ~35-40 px tall.
+      - *Readable by eye:* most back views in contact sheets of `pakmen-black_set2` and `titan-rise_set1_1080p` (12, 13, 14, 17, 23, 5, 8). Front views, side views and players behind teammates are not.
+      - *Crop filter:* about half the "near-side" boxes were coaches, spectators and bench players along the sideline, so crops must come from player roles only.
+      - *The roster helps:* it is a fixed set of ~12 numbers, so reading is a choice among the roster numbers, not free OCR.
+- [ ] **Pass scores at 1080p, 2026-10-31** (`eval_passes.py`, labelled touches, setter's feet):
+      - titan-rise_set1 4K: exact 56%, within 1 83%;
+      - the same video at 1080p: exact 58%, within 1 79%;
+      - mac-chrome_set1: exact 60%, within 1 100%.
+      So 1080p doesn't hurt. The big misses (a 4 scored as 1) come from the wrong next player or the wrong touch. There are no Durham Attack pass labels yet: the web review can't enter pass scores (A16).
 - [ ] **P1 Third-set side switch** (A10). Seen in `pakmen-black_set3` and `416-knight_set3`
       (2026-10-28): one continuous recording; at ~8 points the phone is carried to the other
       end (30-45 s of walls and floor), then a completely different view (other corner, other
