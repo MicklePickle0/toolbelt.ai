@@ -64,7 +64,9 @@ def main() -> int:
                 continue
             local = index.number_at(pick[0], c.frame)
             w, truth = whole[pick[0]], int(c.jersey)
-            seen.append((pick[0], local[0] if local else None, truth))
+            named = local is not None and \
+                pick[1] * local[1] >= id_cfg["min_player_confidence"]
+            seen.append((pick[0], local[0] if local else None, truth, named))
             if local is None:
                 res["no local reads"] += 1
                 res["whole-track right (no local reads)"] += w == truth
@@ -82,9 +84,9 @@ def main() -> int:
     # Switches as pairs of labelled touches: one identity, two different real players.
     # Tracker: same track id. Bound: same track id AND same number read there (the track's
     # stretch for that player); a switch the numbers caught splits the identity.
-    raw = bound = raw_n = bound_n = 0
-    for i, (ta, na, ja) in enumerate(seen):
-        for tb, nb, jb in seen[i + 1:]:
+    raw = bound = raw_n = bound_n = out = out_n = 0
+    for i, (ta, na, ja, ka) in enumerate(seen):
+        for tb, nb, jb, kb in seen[i + 1:]:
             if ta != tb:
                 continue
             raw_n += 1
@@ -92,9 +94,14 @@ def main() -> int:
             if na is not None and na == nb:
                 bound_n += 1
                 bound += ja != jb
+                if ka and kb:                  # both named in the output (confidence)
+                    out_n += 1
+                    out += ja != jb
     print(f"  identity switches, pairs of labelled touches on one identity with two real "
           f"players: tracker {raw}/{raw_n} ({raw / max(raw_n, 1):.0%}), after binding numbers "
-          f"{bound}/{bound_n} ({bound / max(bound_n, 1):.0%})")
+          f"{bound}/{bound_n} ({bound / max(bound_n, 1):.0%}), as named in the output "
+          f"(confidence >= {id_cfg['min_player_confidence']}) {out}/{out_n} "
+          f"({out / max(out_n, 1):.0%})")
     return 0
 
 
