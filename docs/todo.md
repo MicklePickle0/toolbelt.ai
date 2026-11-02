@@ -29,6 +29,7 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
   - Point winner from who serves next: 35/42. Point outcome (the how): 18/42; 13 of the owner's 23 kills came out as other, ball-handling error or reception error.
   - Jerseys: 45% of our touches named, 88% right (94% at confidence >= 0.6, 66 named).
   - Pass scores: owner scored 20 of 22 receptions, average 2.8 (6x4, 6x3, 6x2, 2x1). The pipeline scored only 8 of them (75% exact, 88% within 1), averaging 3.38 where the owner gave 3.00: too few and too high, as on `pakmen-black_set2` (issues-log "Still open").
+  - **Errors cascade (measured 2026-11-02):** a rally where every touch was found with the right team is "clean". Clean rallies are rare: 8/46 (gold set 1), 9/45 (black set 2), 8/42 (titan-rise). Actions right on found touches, clean vs not: 94% vs 67% (gold), 80% vs 62% (black set 2), 89% vs 80% (titan-rise). So the touch-order rules are mostly right when their inputs are; one missed touch or wrong team shifts the place of every touch after it in that side's run, and the outcome follows the last touch.
 - Next for Claude: A15 rally-step fixes, A11 review shortcuts, A17 for the Humber sets (pose_people + find_rallies).
 - Owner, 2026-11-01: recording for Ottawa changes to 4K, keeping the 4K files and processing a 1080p60 copy. The third-set switch (A10) is deferred.
 - Processed Durham Attack sets: `pakmen-black_set1` (14/53 rallies reviewed) and `pakmen-black_set2` (46/46), both re-run with jerseys and pass scores (event DB schema v8).
