@@ -21,10 +21,18 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
   - the owner's pass rules (low pass is a 1; overpass rules in CLAUDE.md);
   - web folders, Search, reels and game summary.
 - Measured on the owner's `pakmen-black_set2` labels: jerseys 47% named, 92% right; pass scores 69% exact, 92% within 1. Attacks named: 3 of 24 (open, B5).
+- **`pakmen-gold_set1`, first new-gym test (owner reviewed all 47 rallies, 2026-11-02; exported to `data/labels/pakmen-gold_set1/events.csv`; `eval_contacts.py` + `eval_review_labels.py`).** The truth is the owner's correction of the pipeline's proposals, so a touch both missed is not counted: recall is an upper bound.
+  - Rallies: 43/46 found (6, 25 and 46 added by the owner), 4 false. Score in the DB 21-24; the real score was 21-25, so one point is not in the DB.
+  - Touches: recall 87%, precision 89% (346 labelled, 341 predicted); team right 86%; action right on found touches 64%.
+  - Missed most: blocks 6/18 found (10 of ours missed), our attacks 9 missed, their serves 6 missed. False touches: 39, mostly our set/dig/attack.
+  - Action mix-ups (owner -> pipeline): dig as set 8, set as free ball 7, set as attack 6, dig as attack 5, dig as overpass 4.
+  - Point winner from who serves next: 35/42. Point outcome (the how): 18/42; 13 of the owner's 23 kills came out as other, ball-handling error or reception error.
+  - Jerseys: 45% of our touches named, 88% right (94% at confidence >= 0.6, 66 named).
+  - Pass scores: owner scored 20 of 22 receptions, average 2.8 (6x4, 6x3, 6x2, 2x1). The pipeline scored only 8 of them (75% exact, 88% within 1), averaging 3.38 where the owner gave 3.00: too few and too high, as on `pakmen-black_set2` (issues-log "Still open").
 - Next for Claude: A15 rally-step fixes, A11 review shortcuts, A17 for the Humber sets (pose_people + find_rallies).
 - Owner, 2026-11-01: recording for Ottawa changes to 4K, keeping the 4K files and processing a 1080p60 copy. The third-set switch (A10) is deferred.
 - Processed Durham Attack sets: `pakmen-black_set1` (14/53 rallies reviewed) and `pakmen-black_set2` (46/46), both re-run with jerseys and pass scores (event DB schema v8).
-- Calibrated, not processed: `416-knight_set2/3`, `mac-platinum_set2`, `pakmen-gold_set1/2`.
+- Calibrated, not processed: `416-knight_set2/3`, `mac-platinum_set2`. `pakmen-gold_set1/2` processed 2026-11-01/02; set 1 reviewed (47/47), its mistaken rally 48 deleted at the owner's request (DB backup `data/setter_eyes.db.backup_2026-11-02_before_gold_rally48`).
 - Not calibrated: `416-knight_set1`, `mac-platinum_set1`, `pakmen-black_set3` (side switch).
 - Every other processed set still has the ball path from before the poster fix (A17).
 

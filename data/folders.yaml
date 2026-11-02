@@ -23,6 +23,12 @@ pakmen-black_set1:
 pakmen-black_set2:
   tournament: DA Invitational
   game: pakmen-black
+pakmen-gold_set1:
+  tournament: DA Invitational
+  game: pakmen-gold
+pakmen-gold_set2:
+  tournament: DA Invitational
+  game: pakmen-gold
 reach-apex_set1:
   tournament: Humber 17U
   game: reach-apex
