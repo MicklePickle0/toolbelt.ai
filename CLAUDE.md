@@ -25,6 +25,14 @@ From the laptop, each time:
    - Leave it running in that terminal. Closing the laptop doesn't stop it, but stopping the tunnel does.
 5. **Long jobs:** run them through the app's queue, or in a terminal that stays open. The work runs on the desktop, so a dropped connection doesn't kill a job the app started. Reconnect and check the Queue page.
 
+**Tailscale for the web app (set up and checked 2026-11-02):**
+- Both machines are on the `MicklePickle0` tailnet: the desktop `desktop-6lekooh` is `100.104.23.18`, and the laptop `3ds` is `100.110.36.100`.
+- "Run unattended" is on, so Tailscale works before anyone logs in to Windows.
+- On the desktop, start the app with `python scripts/serve_app.py --host 100.104.23.18` in its own window, not VS Code's. That address answers only over Tailscale, not on the home Wi-Fi.
+- On the laptop or phone (Tailscale app, same account), open `http://100.104.23.18:8000`. That loads from the laptop. `http://desktop-6lekooh:8000` did not: the name needs MagicDNS on in the Tailscale admin console and "Use Tailscale DNS" on the laptop.
+- The app does not restart by itself after a reboot. Log in at the desktop, then start it again (or reach the desktop over the tunnel and start it there).
+- Still to do: `code tunnel service install`, and pause Windows Update for the tournament week.
+
 If it won't connect:
 - **Tunnel down:** the desktop restarted or the tunnel service isn't installed. Someone at the desktop runs `code tunnel status`, then `code tunnel service install`, or just opens VS Code.
 - **Wrong account:** the laptop must sign in with the account the tunnel was registered with.
@@ -163,7 +171,7 @@ Deadline: 16U OVA Fall Classic, Ottawa, 2026-11-06/07. The owner has only a lapt
 **Phase A, Fall Classic minimum (by 2026-11-05).** Status as of 2026-11-01:
 - A1 (Owner) Push after each session; the laptop only sees what is pushed. Ongoing.
 - A2 (Owner) Calibrate the Durham Attack sets by hand in the app. 7 done; still to do: `416-knight_set1`, `mac-platinum_set1`, `pakmen-black_set3` (the last needs A10).
-- A3 DONE differently: remote access is a VS Code Remote Tunnel (top of this file), not Tailscale. Still to do: `code tunnel service install`.
+- A3 DONE: VS Code Remote Tunnel for editing and Claude, plus Tailscale for the web app since 2026-11-02 (top of this file). Still to do: `code tunnel service install`.
 - A4 (Owner) Queue the Durham Attack sets in the app. Processed: `pakmen-black_set1/2` only. Calibrated but not processed: `416-knight_set2/3`, `mac-platinum_set2`, `pakmen-gold_set1/2`.
 - A5 DONE: browser calibration page.
 - A6 DONE for now: automatic fits never count as calibrated (`app.accept_auto_calibration: false`).
