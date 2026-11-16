@@ -35,6 +35,17 @@ footage: <= 2.2 s apart within a rally, >= 14 s between rallies). The serve, in 
 A group with none of these is dropped (pepper in a timeout, a toss, a ball kicked back), and
 so is an entry serve alone whose ball is lost at once (no serve flight: a ball held up in
 front of the camera).
+Rally-step checks (roadmap E3, from pakmen-black_set2's false rallies; `rally.checks`):
+  - a seen serve (a serve-like touch, or a lone touch before the exchange) needs the ball
+    to cross the net within `serve_cross_s`, a touch confident enough
+    (`serve_sure_conf`), or the next touch by the other side; else it isn't taken as the
+    serve (ball handling before the real serve looked like one);
+  - a quick run of `one_side_touches` touches by one side (receive, set, attack whose
+    serve and crossing weren't seen) keeps its rally without a crossing, at
+    `one_side_factor` confidence. Pepper lasts longer than `one_side_max_span_s`;
+  - a short piece (`pre_serve_max_s`, at most `pre_serve_max_touches` touches, no
+    crossing) ending less than `pre_serve_gap_s` before a sure serve is dropped: ball
+    handling before that serve (drop_pre_serve_pieces).
 Touches with the ball outside our court's airspace belong to another court and are
 ignored. The rally ends at the first floor contact after its last touch, else where the
 ball is lost, at most `end_window_s` after it. Touches after the ball touched the floor are
@@ -176,6 +187,7 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
     """motion: near-side player movement, for the live-ball check (rally/live.py) that
     ends a rally before touches made after the whistle."""
     r = cfg["rally"]["from_touches"]
+    chk = cfg["rally"]["checks"]
     times = path.frames / fps
     seen_t = times[np.isfinite(path.uv).all(axis=1)]
     for c in contacts:
@@ -205,6 +217,9 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
         serve_like = [i for i in first_run if is_serve(contacts[i], arcs, g, cfg)]
         other = {"us": "them", "them": "us"}.get(teams[0])
         entry = [i for i in first_run if contacts[i].entry_serve]
+        one_side = chk["enabled"] and _quick_one_side_run(contacts, first_run, chk)
+        serve_like = [i for i in serve_like
+                      if _seen_serve_ok(contacts, grp, teams, i, arcs, g, cfg)]
         serve_i: int | None = None
         if entry:
             serve_i = entry[-1]                    # our serve, seen entering the frame
@@ -212,9 +227,10 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
             serve_i = SERVE_FROM_FLIGHT            # the hit wasn't seen; the reply was
         elif serve_like:
             serve_i = serve_like[-1]
-        elif len(first_run) == 1 and (change is not None or crosses):
+        elif len(first_run) == 1 and (change is not None or crosses) and \
+                _seen_serve_ok(contacts, grp, teams, first_run[0], arcs, g, cfg):
             serve_i = first_run[0]
-        elif other is not None and (change is not None or crosses):
+        elif other is not None and (change is not None or crosses or one_side):
             serve_i = SERVE_INFERRED               # receive/set/attack first: theirs served
         elif traced is not None:
             serve_i = SERVE_FROM_FLIGHT
@@ -256,13 +272,70 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
             r["exchange_bonus"] * (change is not None) + r["floor_bonus"] * bool(floors)
         if inferred:
             conf *= r["inferred_factor"]
+        if one_side and change is None and not crossed:
+            conf *= chk["one_side_factor"]         # kept only by the one-side run (E3)
         if dead_t is not None:
             conf *= cfg["rally"]["live_ball"]["trimmed_factor"]
         rallies.append(Rally(
             len(rallies) + 1, int(round(start_t * fps)), int(round(end_t * fps)),
             round(start_t, 3), round(end_t, 3), serving, serve_i, reason, members, crossed,
             round(min(1.0, conf), 3)))
+    if chk["enabled"]:
+        rallies = drop_pre_serve_pieces(rallies, contacts, cfg)
     return rallies
+
+
+def _seen_serve_ok(contacts: list[Contact], grp: list[int], teams: list, i: int,
+                   arcs: list[Arc], g: np.ndarray, cfg: dict) -> bool:
+    """E3: a seen serve needs the ball over the net soon after it, a sure touch, or a reply
+    by the other side. Ball handling before the real serve fails all three."""
+    chk = cfg["rally"]["checks"]
+    if not chk["enabled"]:
+        return True
+    c = contacts[i]
+    if c.confidence >= chk["serve_sure_conf"]:
+        return True
+    k = grp.index(i)
+    if k + 1 < len(grp) and teams[k + 1] and teams[k + 1] != c.team:
+        return True
+    return net_crossings(arcs, g, c.t, c.t + chk["serve_cross_s"],
+                         cfg["rally"]["min_arc_confidence"]) > 0
+
+
+def _quick_one_side_run(contacts: list[Contact], run: list[int], chk: dict) -> bool:
+    """E3: a run of `one_side_touches` touches by one side, quick like a receive, set and
+    attack (pepper in a timeout goes on longer), is a rally even when neither the serve nor
+    a net crossing was seen."""
+    if len(run) != chk["one_side_touches"]:
+        return False
+    return contacts[run[-1]].t - contacts[run[0]].t <= chk["one_side_max_span_s"]
+
+
+def drop_pre_serve_pieces(rallies: list[Rally], contacts: list[Contact],
+                          cfg: dict) -> list[Rally]:
+    """E3: a short piece with no net crossing that ends just before a rally with a sure
+    serve is ball handling before that serve (pakmen-black_set2 8:56, 14:12), not a point.
+    Its "serve" goes back to being a plain touch. Rallies are renumbered."""
+    chk = cfg["rally"]["checks"]
+    sure = chk["serve_sure_conf"]
+    out: list[Rally] = []
+    for k, r in enumerate(rallies):
+        nxt = rallies[k + 1] if k + 1 < len(rallies) else None
+        touches = [i for i in r.contacts if contacts[i].kind == "touch"]
+        if nxt is not None and r.net_crossings == 0 and \
+                r.end_t - r.start_t <= chk["pre_serve_max_s"] and \
+                len(touches) <= chk["pre_serve_max_touches"] and \
+                nxt.start_t - r.end_t <= chk["pre_serve_gap_s"] and \
+                nxt.serve_contact is not None and nxt.serve_contact >= 0:
+            s = contacts[nxt.serve_contact]
+            if s.entry_serve or s.confidence >= sure:
+                if r.serve_contact is not None and r.serve_contact >= 0:
+                    contacts[r.serve_contact].serve = False
+                continue
+        out.append(r)
+    for i, r in enumerate(out, start=1):
+        r.index = i
+    return out
 
 
 def _landed_before(contacts: list[Contact], play: list[int]) -> int:

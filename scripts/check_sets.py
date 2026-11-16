@@ -13,9 +13,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import sqlite3
 from collections import Counter
 
-from setter_eyes import config, db, match
+from setter_eyes import config, match
 from setter_eyes import folders as fold
 from setter_eyes.rally.sanity import check_set, load_set
 
@@ -28,7 +29,9 @@ def main() -> int:
     args = ap.parse_args()
     cfg = config.load("pipeline")
     paths = cfg["paths"]
-    conn = db.connect(config.repo_path(args.db or paths["db_path"]))
+    path = config.repo_path(args.db or paths["db_path"])
+    conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)   # read only
+    conn.row_factory = sqlite3.Row
     formats = match.load(config.repo_path(paths["match_formats_path"]))
     folders = fold.load(config.repo_path(paths["folders_path"]))
     sets = conn.execute("SELECT s.id, g.video_key FROM sets s JOIN games g ON s.game_id = g.id "

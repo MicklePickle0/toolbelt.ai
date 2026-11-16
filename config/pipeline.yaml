@@ -395,6 +395,19 @@ rally:
     floor_bonus: 0.2         # ended on a floor contact
     inferred_factor: 0.7     # serve inferred, not seen: right about half the time on
                              # labelled footage, so these go to the review queue
+  # Rally-step checks (rally/segment.py; roadmap E3, from pakmen-black_set2's false
+  # rallies 2026-10-31). Not yet measured on footage: compare on the desktop (eval_contacts.py
+  # on the labelled sets) with enabled true / false before trusting them.
+  checks:
+    enabled: true
+    serve_cross_s: 2.0         # a seen serve needs a net crossing this soon after it...
+    serve_sure_conf: 0.7       # ...or this touch confidence, or a reply by the other side
+    one_side_touches: 3        # receive, set, attack by one side keep a rally (serve and
+    one_side_max_span_s: 2.8   # crossing unseen) when this quick; pepper goes on longer
+    one_side_factor: 0.6       # rally confidence factor then (to review)
+    pre_serve_max_s: 4.0       # a piece this short, with this few touches and no crossing,
+    pre_serve_max_touches: 2   # ending this soon before a sure serve, is ball handling
+    pre_serve_gap_s: 10.0      # before that serve: dropped
   # Live-ball check (setter_eyes.rally.live): a trailing touch after the whistle (ball
   # caught or tossed back, e.g. after a net touch) ends the rally before it when BOTH:
   live_ball:

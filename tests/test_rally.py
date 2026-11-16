@@ -142,3 +142,50 @@ def test_plausible_teams_are_left_alone():
     cs = [_scored(1.0, 0.8), _scored(1.7, 0.7), _scored(2.3, 0.9), _scored(3.0, 0.1)]
     assert _decode(cs, "them") == ["us", "us", "us", "them"]
     assert all(c.confidence == 0.8 for c in cs)
+
+
+# ---- rally-step checks (roadmap E3) ----------------------------------------------------------
+def _weak(t, team, conf=0.5):
+    c = _touch(t, team)
+    c.confidence = conf
+    return c
+
+
+def test_a_weak_serve_with_no_crossing_or_reply_is_not_a_serve():
+    from setter_eyes.rally.segment import segment_from_touches
+
+    # Ball handling before the real serve: one weak "serve", nothing over the net.
+    contacts = [_weak(20.0, "us"), _weak(21.0, "us")]
+    assert segment_from_touches(_path(), [], contacts, G, 60.0, CFG) == []
+    # A sure serve, or a weak one the other side answers, still starts a rally.
+    sure = [_touch(30.0, "us"), _touch(31.1, "them")]
+    assert [r.start_t for r in segment_from_touches(_path(), [], sure, G, 60.0, CFG)] == [30.0]
+    answered = [_weak(50.0, "us"), _touch(51.1, "them"), _touch(52.2, "them")]
+    assert [r.serving_team for r in
+            segment_from_touches(_path(), [], answered, G, 60.0, CFG)] == ["us"]
+
+
+def test_a_quick_one_side_run_keeps_its_rally_but_pepper_does_not():
+    from setter_eyes.rally.segment import SERVE_INFERRED, segment_from_touches
+
+    quick = [_touch(40.0, "us"), _touch(41.0, "us"), _touch(42.1, "us")]      # rec, set, att
+    (r,) = segment_from_touches(_path(), [], quick, G, 60.0, CFG)
+    assert r.serving_team == "them" and r.serve_contact == SERVE_INFERRED
+    assert r.confidence < CFG["review"]["default_min_confidence"]
+    pepper = [_touch(80.0, "us"), _touch(81.5, "us"), _touch(83.0, "us")]
+    assert segment_from_touches(_path(), [], pepper, G, 60.0, CFG) == []
+    long_pepper = [_touch(80.0 + k, "us") for k in range(5)]
+    assert segment_from_touches(_path(), [], long_pepper, G, 60.0, CFG) == []
+
+
+def test_a_short_piece_just_before_a_sure_serve_is_dropped():
+    from setter_eyes.rally.segment import segment_from_touches
+
+    # 8:56-style: a weak "serve" with a reply 1 s later (so it passes the serve check),
+    # no crossing, 5 s before the real point's sure serve.
+    contacts = [_weak(100.0, "us"), _weak(101.0, "them"),
+                _touch(107.0, "us"), _touch(108.1, "them"), _touch(109.2, "them"),
+                _touch(110.4, "us")]
+    rallies = segment_from_touches(_path(), [], contacts, G, 60.0, CFG)
+    assert [r.start_t for r in rallies] == [107.0]
+    assert rallies[0].index == 1 and not contacts[0].serve
