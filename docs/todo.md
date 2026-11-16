@@ -1,7 +1,7 @@
 # To do
 
 Ordered by priority within each section. Scores are from the labelled `titan-rise_set1`
-(touches from models that never saw the rally scored). Last updated 2026-11-01; first written 2026-10-26, merging
+(touches from models that never saw the rally scored). Last updated 2026-11-16; first written 2026-10-26, merging
 the desktop and laptop conversations (see CLAUDE.md, "Working across machines").
 
 ## Fall Classic, Ottawa, 2026-11-06/07 (deadline)
@@ -345,6 +345,28 @@ Still to do:
 
 ## Now
 
+- [ ] **Ball depth anchored at touches, bounces and the net (owner, 2026-11-16).** Why:
+      from a camera ~1.7 m high behind the end line (`pakmen-black_set2`: 1.71 m, f 1534 px
+      at 1080p), the ray through the ball is nearly flat, so 1 m along it changes the
+      ball's height by only ~10 cm near the net; ball size is +-2 px of ~24 px (~+-1 m at
+      the net). Arcs fix depth by gravity alone, which fails on short flights (sets,
+      quicks, blocks). Today `ball/arcs.py` uses the floor only as a lower bound.
+      Plan (CPU only, from caches):
+      - Touch anchor: at a touch, the ball is at the toucher's hands, and the toucher's
+        depth comes from the feet (far better than the ball's). Add it as a soft
+        constraint at both ends of the flight, weighted by the toucher's confidence;
+        jumping attackers use the interpolated feet (`track/people.py` apparent height).
+      - Bounce anchor: height 0 at a floor contact.
+      - Net anchor: a flight that crosses the net reaches the net plane above the tape
+        (`games.net_height_m`).
+      - Beware circularity: the toucher is partly chosen by the ball's 3D position
+        (pass setter). Anchor only confident touchers, or iterate once.
+      - Measure before/after on the labelled sets (titan-rise_set1, mac-chrome_set1,
+        pakmen-black_set2, pakmen-gold_set1): pass spot from the ball vs the owner's
+        pass scores (`eval_passes.py`; today the setter's feet are used because the ball
+        put perfect passes 8 m from the net), team from the ball's side (64% from 3D
+        today), attack zones, arc confidence, touches found (`eval_contacts.py`).
+
 - [x] **Label `mac-chrome_set1`** (owner): done, 39 rallies, 246 touches, 20 pass scores.
       Two labelled sets plateau the touch scorer (~80% found, 88-92% real, team 90%);
       more full Humber sets add little. Next labels: ~10-15 rallies from a NEW venue (the
@@ -642,3 +664,9 @@ Ball detection is ~2 h of a ~2.4 h set (9 tiles x every 2nd 4K frame).
 - [ ] `mac-iron_set1`, `reach-apex_set2`: small leftover camera offsets (20-40 px in 4K).
 - [ ] A line judge on our sideline can get a green ring.
 - [ ] Far-side and floor positions are less precise in depth.
+
+## Later (owner, 2026-11-16: good enough for now)
+
+- [ ] Multi-frame ball detector (TrackNetV3 / WASB style: ~3 frames in, heatmap out):
+      better on motion blur and half-hidden balls, and TrackNetV3 fills in hidden stretches
+      of the path. Current single-frame RF-DETR is good enough for now.
