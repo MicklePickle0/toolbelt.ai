@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from setter_eyes import config, db
+from setter_eyes import config, db, match
 from setter_eyes import folders as fold
 from setter_eyes import rosters as rost
 from setter_eyes import search as srch
@@ -41,6 +41,7 @@ from setter_eyes.calibration.solve import error_limit_px, manual_calibration, so
 from setter_eyes.db.read import load_rallies
 from setter_eyes.ingest import frame_filename, grab_frame, probe, write_image
 from setter_eyes.labels import load_manifest
+from setter_eyes.rally.sanity import check_set, load_set
 from setter_eyes.reels import ReelMaker
 from setter_eyes.stats.sheet import COLUMNS, SHORT, stat_rows
 from setter_eyes.stats.summary import summary as stats_summary
@@ -77,6 +78,7 @@ class Settings:
     rosters_dir: Path | None = None
     missed_point_gap_s: float = 20.0      # a gap this long before a rally: a point may be missing
     folders_path: Path | None = None      # data/folders.yaml: sets -> games -> tournaments
+    match_formats_path: Path | None = None  # data/match_formats.yaml: match format per game
 
     @classmethod
     def from_config(cls) -> Settings:
@@ -100,7 +102,9 @@ class Settings:
                    background_during=a.get("background_during", []),
                    rosters_dir=config.repo_path(p["rosters_dir"]),
                    missed_point_gap_s=cfg["rally"].get("missed_point_gap_s", 20.0),
-                   folders_path=config.repo_path(p.get("folders_path", "data/folders.yaml")))
+                   folders_path=config.repo_path(p.get("folders_path", "data/folders.yaml")),
+                   match_formats_path=config.repo_path(
+                       p.get("match_formats_path", "data/match_formats.yaml")))
 
 
 class Touch(BaseModel):
@@ -192,6 +196,17 @@ class FolderIn(BaseModel):
     game: str = ""
 
 
+class FormatIn(BaseModel):
+    preset: str | None = None             # a preset name, or None with points for a custom one
+    points: list[int] | None = None
+    win_by: int = 2
+    cap_over: int | None = None
+
+
+class SetNumberIn(BaseModel):
+    set_number: int | None = None         # None: back to the key's _setN (or 1)
+
+
 class NewJob(BaseModel):
     video: str
     from_step: str | None = None
@@ -255,6 +270,30 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     def manifest():
         return load_manifest(s.manifest_path)
 
+    # ---- match format and sanity checks (roadmap E1, E2) ------------------------------------
+    def _formats() -> dict:
+        return match.load(s.match_formats_path)
+
+    def video_format(key: str, formats: dict | None = None) -> tuple[match.MatchFormat, int]:
+        formats = formats if formats is not None else _formats()
+        game = fold.folder_of(key, _folders())["game"]
+        return match.format_for(game, formats), match.set_number(key, formats)
+
+    def set_checks(c: sqlite3.Connection, set_id: int, formats: dict | None = None) -> dict:
+        row = c.execute("SELECT g.video_key FROM sets st JOIN games g ON st.game_id = g.id "
+                        "WHERE st.id = ?", (set_id,)).fetchone()
+        if row is None:
+            raise HTTPException(404, f"no set {set_id}")
+        fmt, n = video_format(row[0], formats)
+        return check_set(load_set(c, set_id), fmt, n, config.load("pipeline"))
+
+    def checks_brief(res: dict) -> dict:
+        out = {k: res[k] for k in ("status", "message", "score", "target", "set_number",
+                                   "format")}
+        out["flagged"] = len(res["flagged"])
+        out["reviewed_flagged"] = len(res["reviewed_flagged"])
+        return out
+
     reels = ReelMaker(manifest, s.cache_dir, s.calibration_dir,
                       (s.output_dir or s.cache_dir.parent / "outputs") / "reels",
                       config.load("pipeline"))
@@ -270,8 +309,11 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
 
     @app.get("/api/videos")
     def videos() -> list[dict]:
+        formats = _formats()
         with conn() as c:
             in_db = {g["video_key"]: g for g in rv.games(c)}
+            checks = {k: checks_brief(set_checks(c, g["set_id"], formats))
+                      for k, g in in_db.items() if g["rallies"]}
         assigned = rost.load_assignments(s.rosters_dir) if s.rosters_dir else {}
         roster_names = ({k: r.name for k, r in rost.load_all(s.rosters_dir).items()}
                         if s.rosters_dir else {})
@@ -295,6 +337,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 "set_id": g["set_id"] if g else None,
                 "rallies": g["rallies"] if g else 0,
                 "reviewed": g["reviewed"] if g else 0,
+                "checks": checks.get(v.key),
                 "job": {k: job[k] for k in ("id", "status", "step_name", "progress")}
                 if job else None})
         return out
@@ -307,8 +350,46 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     def folders() -> dict:
         f = _folders()
         keys = [v.key for v in manifest().videos]
+        formats = _formats()
+        games = sorted({fold.folder_of(k, f)["game"] for k in keys})
         return {"tree": fold.tree(keys, f), "folders": {k: fold.folder_of(k, f) for k in keys},
-                "unfiled": fold.UNFILED}
+                "unfiled": fold.UNFILED,
+                "formats": {g: match.format_for(g, formats).to_dict() for g in games},
+                "set_numbers": {k: match.set_number(k, formats) for k in keys},
+                "presets": {name: fm.to_dict() for name, fm in match.presets().items()},
+                "default_format": config.load("pipeline")["match"]["default"]}
+
+    @app.put("/api/games/{game}/format")
+    def set_game_format(game: str, body: FormatIn) -> dict:
+        if s.match_formats_path is None:
+            raise HTTPException(500, "no match formats file configured")
+        data = _formats()
+        spec = body.preset if body.preset is not None else {
+            "points": body.points or [], "win_by": body.win_by, "cap_over": body.cap_over}
+        try:
+            fmt = match.parse(spec)
+        except match.MatchFormatError as e:
+            raise HTTPException(400, str(e)) from e
+        if body.preset == config.load("pipeline")["match"]["default"]:
+            data["games"].pop(game, None)       # the default: nothing to store
+        else:
+            data["games"][game] = spec
+        match.save(s.match_formats_path, data)
+        return fmt.to_dict()
+
+    @app.put("/api/videos/{key}/set_number")
+    def set_set_number(key: str, body: SetNumberIn) -> dict:
+        _entry(key)
+        if s.match_formats_path is None:
+            raise HTTPException(500, "no match formats file configured")
+        if body.set_number is not None and not 1 <= body.set_number <= 9:
+            raise HTTPException(400, "set_number is 1-9")
+        data = _formats()
+        data["set_numbers"].pop(key, None)
+        if body.set_number is not None and body.set_number != match.set_number(key, data):
+            data["set_numbers"][key] = body.set_number
+        match.save(s.match_formats_path, data)
+        return {"video": key, "set_number": match.set_number(key, data)}
 
     @app.put("/api/videos/{key}/folder")
     def set_folder(key: str, body: FolderIn) -> dict:
@@ -389,6 +470,12 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                         f"({','.join('?' * len(keys))})", keys):
                     names[row[0]] = (row[1], row[2])
             rallies = [r for k in keys for r in load_rallies(c, k)]
+            formats = _formats()
+            set_ids = [(r[0], r[1]) for r in c.execute(
+                "SELECT g.video_key, st.id FROM sets st JOIN games g ON st.game_id = g.id "
+                f"WHERE g.video_key IN ({','.join('?' * len(keys))})", keys)] if keys else []
+            checks = [{"video": k, **checks_brief(set_checks(c, sid, formats))}
+                      for k, sid in set_ids] if source == "pipeline" else []
             counts = c.execute(
                 f"SELECT COUNT(r.id), COALESCE(SUM(r.reviewed), 0) FROM rallies r "
                 f"JOIN sets st ON r.set_id = st.id JOIN games g ON st.game_id = g.id "
@@ -406,16 +493,26 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             players.append({"player": "?", "name": "player not known", **unknown})
         return {"columns": COLUMNS, "short": SHORT, "team": team, "players": players,
                 "rallies": counts[0], "reviewed": counts[1], "counted": len(rallies),
-                "pass_scale": pass_scale}
+                "pass_scale": pass_scale, "checks": checks}
 
     # ---- review ----------------------------------------------------------------------------
     @app.get("/api/sets/{set_id}/rallies")
     def set_rallies(set_id: int) -> dict:
         with conn() as c:
             rows = rv.rallies(c, set_id)
+            res = set_checks(c, set_id)
         us, them = rv.score(rows)
-        return {"rallies": rows, "queue": [r["id"] for r in rv.review_queue(rows)],
-                "score_reviewed": [us, them]}
+        per = res["rallies"]
+        for r in rows:
+            r["flags"] = [f["text"] for f in per[r["id"]]["flags"]]
+            r["priority"] = per[r["id"]]["priority"]
+            r["score"] = per[r["id"]]["score"]
+        # Review queue: unreviewed rallies, the most doubtful first (confidence x failed
+        # checks, rally/sanity.py). Flagged: every rally a check flags, reviewed ones too.
+        queue = sorted((r for r in rows if not r["reviewed"]),
+                       key=lambda r: (r["priority"], r["start_t"]))
+        return {"rallies": rows, "queue": [r["id"] for r in queue], "flagged": res["flagged"],
+                "score_reviewed": [us, them], "checks": checks_brief(res)}
 
     def _rally(c: sqlite3.Connection, rally_id: int) -> dict:
         row = c.execute(
@@ -431,6 +528,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             r = _rally(c, rally_id)
             rows = rv.rallies(c, r["set_id"])
             touches = rv.touches(c, rally_id)
+            res = set_checks(c, r["set_id"])
             roster = [{"number": p[0], "name": p[1]} for p in c.execute(
                 "SELECT p.jersey_number, p.name FROM players p JOIN games g "
                 "ON p.team_id = g.team_id WHERE g.video_key = ? ORDER BY p.jersey_number",
@@ -440,7 +538,10 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             has_video = _source(r["video_key"]).exists()
         except KeyError:
             has_video = False
+        mine = res["rallies"].get(rally_id, {})
         return {"rally": r, "touches": touches, "has_video": has_video, "roster": roster,
+                "flags": [f["text"] for f in mine.get("flags", [])],
+                "score": mine.get("score"), "checks": checks_brief(res),
                 "prev": prev and {"id": prev["id"], "rally_number": prev["rally_number"],
                                   "gap_s": round(r["start_t"] - prev["end_t"], 2)},
                 "next": nxt and {"id": nxt["id"], "rally_number": nxt["rally_number"],

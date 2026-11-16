@@ -141,6 +141,9 @@ Labelling conventions decided along the way (also in `docs/labelling.md`, "Judge
 | Re-running the pipeline would wipe reviews | The DB was rewritten per video | Reviewed rallies are kept; overlapping pipeline rallies dropped | `db/pipeline.py` |
 | Play windows from motion saved little | Players move between points nearly as much as in play | Measured, not adopted (85-96% kept); see `docs/todo.md` | - |
 | Pass position from the ball was wrong in depth | Depth is the weak axis from behind the end line | The setter's feet instead (branch `pass-scoring`) | `stats/pass_score.py` |
+| Inferred scores ran past the set end (e.g. `niagara-rtw_set2` 45-22, `pakmen-black_set1` 33-19) with nothing to say so (2026-11-16) | Nothing checked the score against the match format; false rallies each add a point | Set checks (roadmap E1/E2): match format per game, legal set end, serve order, one serve, 3 touches a side, receive after their serve, outcome vs touches. A failed check lowers a rally's review priority, never changes it. On the 13 sets in the DB: 8 past the set end (111 rallies after the end), 2 short, 2 with only the last point unset, 1 ok | `match.py`, `rally/sanity.py`, `scripts/check_sets.py` |
+| Reviewed rallies kept a wrong serving team (2026-11-16) | Review sets the winner, but the rally's serving team stays the pipeline's guess unless changed; side-out and serve-point stats use it | Found by the set checks (`serving_team_wrong`: the serve touch and the previous winner disagree with it): 4 rallies on `pakmen-black_set2`, 4 on `pakmen-gold_set1`. Flagged in review; fix by setting the serving team there | `rally/sanity.py` |
+| `pakmen-gold_set1` reviewed but 21-24, one point short (2026-11-16) | A point the pipeline missed and review didn't add | The set checks place it: the serve-order break after an 82 s gap between rallies 38 and 39 (`missed_point`) | `rally/sanity.py` |
 
 ## 10. Tooling and process
 

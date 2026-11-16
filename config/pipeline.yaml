@@ -10,6 +10,7 @@ paths:
   # Rosters (players, numbers, heights) and which videos they played: human work, in git.
   rosters_dir: data/rosters
   folders_path: data/folders.yaml   # sets -> games -> tournaments (folders.py)
+  match_formats_path: data/match_formats.yaml   # match format per game (match.py)
   db_path: data/setter_eyes.db
   # Ground truth from hand-labelled footage. Same schema as db_path but a
   # separate file, so pipeline output can be evaluated against it.
@@ -326,6 +327,36 @@ serve:
   traced_height_m: [1.0, 4.2]
   min_speed_mps: 8.0         # horizontal speed at the start of that flight
   max_trace_back_s: 1.2
+
+# Match format per game (match.py; roadmap E1). Each game picks a preset or a custom
+# format in data/match_formats.yaml (the Stats page's "Edit folders"); games not in it use
+# `default`. Sets that pass or fall short of a legal end are flagged (rally/sanity.py).
+match:
+  default: best_of_3
+  formats:
+    best_of_3: {points: [25, 25, 15], win_by: 2, cap_over: null}              # OVA usual
+    best_of_5: {points: [25, 25, 25, 25, 15], win_by: 2, cap_over: null}      # 18U / HS playoffs
+    best_of_3_to_15: {points: [15, 15, 15], win_by: 2, cap_over: null}
+    best_of_3_capped: {points: [25, 25, 15], win_by: 2, cap_over: 2}     # 27 / 17 wins
+
+# Score and stat sanity checks (rally/sanity.py; roadmap E2). A failed check multiplies the
+# rally's review priority (its confidence) by its factor: lower comes first in review.
+# Nothing is changed automatically.
+sanity:
+  factors:
+    past_end: 0.2              # rallies with a winner after the set was over
+    maybe_false: 0.4           # least sure rallies when the score passes a legal end
+    gap_before: 0.7            # set short: a long gap before this rally may hide a point
+    serve_order: 0.5           # the winner should serve next
+    missed_point: 0.4          # ...broken after a long gap: a point is probably missing
+    serving_team_wrong: 0.5    # the rally's serving team disagrees with its serve touch
+    no_serve: 0.8              # a serve can be off-screen, so only a mild doubt
+    two_serves: 0.4            # two points joined?
+    serve_not_first: 0.7
+    four_touches: 0.5
+    receive_on_own_serve: 0.5
+    receive_not_first: 0.7
+    outcome_side: 0.5
 
 rally:
   max_ball_gap_s: 1.0        # the ball lost longer than this ends an episode

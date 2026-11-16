@@ -32,7 +32,8 @@ from pathlib import Path
 
 import numpy as np
 
-from setter_eyes import config, db
+from setter_eyes import config, db, match
+from setter_eyes import folders as fold
 from setter_eyes import rosters as rost
 from setter_eyes.ball.arcs import Arc
 from setter_eyes.ball.tracker import BallPath
@@ -47,6 +48,7 @@ from setter_eyes.identity.server import name_servers
 from setter_eyes.identity.toucher import LiberoColour, Poses, TouchPicker, assign_players
 from setter_eyes.labels import load_manifest
 from setter_eyes.rally.live import PlayerMotion
+from setter_eyes.rally.sanity import check_set, load_set
 from setter_eyes.rally.segment import (
     SERVE_FROM_FLIGHT,
     flag_gaps,
@@ -237,10 +239,19 @@ def main() -> int:
         w = write_video(conn, manifest, entry, fps, [r.to_dict() for r in rallies],
                         [c.to_dict() for c in contacts],
                         rosters_dir=config.repo_path(paths["rosters_dir"]))
-        conn.close()
         print(f"event DB: {w.rallies} rallies, {w.contacts} touches written, {w.kept_reviewed} "
               f"reviewed rallies kept ({w.guesses} pass scores / players guessed on their "
               f"touches) -> {paths['db_path']}")
+        # Score and stat sanity checks on what was written (rally/sanity.py, roadmap E2).
+        formats = match.load(config.repo_path(paths["match_formats_path"]))
+        game = fold.folder_of(entry.key, fold.load(config.repo_path(paths["folders_path"])))["game"]
+        set_id = conn.execute("SELECT id FROM sets WHERE game_id = ?",
+                              (w.game_id,)).fetchone()[0]
+        res = check_set(load_set(conn, set_id), match.format_for(game, formats, cfg),
+                        match.set_number(entry.key, formats), cfg)
+        conn.close()
+        print(f"set checks: {res['status']}: {res['message']} {len(res['flagged'])} rallies "
+              "flagged for review")
     return 0
 
 

@@ -48,7 +48,8 @@ def client(tmp_path):
                  tmp_path / "cache", tmp_path / "logs", ["find_play"], [], 640, 2.0,
                  ["serve", "receive", "set", "attack", "dig", "block"],
                  ["kill", "attack_error", "ace", "service_error", "other", "replay"],
-                 rosters_dir=tmp_path / "rosters", folders_path=tmp_path / "folders.yaml")
+                 rosters_dir=tmp_path / "rosters", folders_path=tmp_path / "folders.yaml",
+                 match_formats_path=tmp_path / "match_formats.yaml")
     return TestClient(create_app(s, start_worker=False))
 
 
@@ -84,6 +85,29 @@ def test_review_round_trip(client):
     assert d["rally"]["reviewed"] == 1 and d["touches"][3]["action"] == "dig"
     bad = {**body, "winner": "maybe"}
     assert client.post(f"/api/rallies/{rid}/review", json=bad).status_code == 400
+
+
+def test_set_checks_and_match_format(client):
+    v = client.get("/api/videos").json()[0]
+    # One point won by us: far short of a set to 25 (roadmap E2).
+    assert v["checks"]["status"] == "short" and v["checks"]["score"] == [1, 0]
+    lst = client.get(f"/api/sets/{v['set_id']}/rallies").json()
+    assert lst["checks"]["set_number"] == 1 and "flags" in lst["rallies"][0]
+    assert "flagged" in lst and lst["rallies"][0]["score"] == [1, 0]
+    d = client.get(f"/api/rallies/{lst['rallies'][0]['id']}").json()
+    assert d["checks"]["format"]["preset"] == "best_of_3" and d["score"] == [1, 0]
+    fd = client.get("/api/folders").json()
+    assert fd["formats"]["v1"]["points"] == [25, 25, 15] and "best_of_5" in fd["presets"]
+    r = client.put("/api/games/v1/format", json={"preset": "best_of_5"})
+    assert r.status_code == 200 and r.json()["best_of"] == 5
+    assert client.get("/api/folders").json()["formats"]["v1"]["best_of"] == 5
+    r = client.put("/api/games/v1/format", json={"points": [15, 15, 15], "win_by": 2})
+    assert r.status_code == 200 and r.json()["preset"] is None
+    assert client.put("/api/games/v1/format", json={"preset": "nope"}).status_code == 400
+    r = client.put("/api/videos/v1/set_number", json={"set_number": 3})
+    assert r.json()["set_number"] == 3
+    st = client.get("/api/stats", params={"videos": "v1"}).json()
+    assert st["checks"][0]["set_number"] == 3 and st["checks"][0]["target"] == 15
 
 
 def test_job_queue_runs_steps_and_stops_without_calibration(tmp_path):

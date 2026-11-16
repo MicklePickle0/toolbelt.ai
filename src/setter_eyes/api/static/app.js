@@ -213,8 +213,22 @@ function videoCard(v) {
       calChip,
       h("a", { class: "chip " + (v.roster ? "good" : ""), href: "#/rosters" +
         (v.roster ? `/${v.roster.slug}` : "") }, v.roster ? `roster: ${v.roster.name}` : "no roster"),
+      checksChip(v),
       ...steps),
     jobLine);
+}
+
+// The set's score and sanity checks (rally/sanity.py): legal end, flagged rallies.
+const CHECK_STATUS = { ok: ["good", "score ok"], past_end: ["bad", "score past the set end"],
+  short: ["warn", "set ends short"], last_point_unknown: ["good", "last point to set"] };
+function checksChip(v) {
+  const c = v.checks;
+  if (!c) return null;
+  const [cls, text] = CHECK_STATUS[c.status] || ["", c.status];
+  return h("a", { class: "chip " + cls, title: c.message,
+    href: v.set_id ? `#/review/${v.set_id}?mode=flagged` : "#/" },
+    `set ${c.set_number}: ${c.score[0]}-${c.score[1]}, ${text}` +
+    (c.flagged ? ` · ${c.flagged} flagged` : ""));
 }
 
 // ---- queue --------------------------------------------------------------------------------
@@ -314,6 +328,33 @@ async function statsPage(params) {
       "the list or type a new one). Leave the tournament empty for none."),
     h("datalist", { id: "dl-tournaments" }, ...tournaments.map(t => h("option", { value: t }))),
     h("datalist", { id: "dl-games" }, ...games.map(g => h("option", { value: g }))),
+    h("div", { class: "small muted", style: "margin-top:8px" }, "Match format per game (sets " +
+      "to 25 or 15, best of 3 or 5): the score checks use it."),
+    ...[...new Set(vids.map(v => fd.folders[v.key].game))].sort().map(g => {
+      const cur = fd.formats[g] || fd.presets[fd.default_format];
+      const pick = h("select", { onchange: async e => {
+        try {
+          await api(`/games/${encodeURIComponent(g)}/format`, { method: "PUT",
+            body: { preset: e.target.value } });
+          toast(`${g}: ${fd.presets[e.target.value].label}`);
+        } catch (err) { toast(err.message, 5000); } } },
+      ...Object.entries(fd.presets).map(([k, p]) => h("option", { value: k,
+        selected: k === (cur.preset || "") }, p.label)),
+      cur.preset ? null : h("option", { value: "", selected: true }, "custom: " + cur.label));
+      return h("div", { class: "row folder-edit" }, h("span", { class: "mono small" }, g), pick);
+    }),
+    h("div", { class: "small muted", style: "margin-top:8px" }, "Which set of its match each " +
+      "video is (from the name's _setN unless changed here):"),
+    ...vids.map(v => h("div", { class: "row folder-edit" },
+      h("span", { class: "mono small" }, v.key),
+      h("input", { type: "number", min: 1, max: 9, value: fd.set_numbers[v.key],
+        onchange: async e => {
+          try {
+            const res = await api(`/videos/${v.key}/set_number`, { method: "PUT",
+              body: { set_number: +e.target.value || null } });
+            toast(`${v.key}: set ${res.set_number}`);
+          } catch (err) { toast(err.message, 5000); } } }))),
+    h("div", { class: "small muted", style: "margin-top:8px" }, "Folders:"),
     ...vids.map(v => {
       const f = fd.folders[v.key];
       const tIn = h("input", { list: "dl-tournaments", placeholder: "tournament",
@@ -409,7 +450,13 @@ function statsBody(st, src) {
     ? `${st.counted} rallies counted; ${st.reviewed} of ${st.rallies} reviewed by you. ` +
       "Unreviewed rallies use the pipeline's guesses (winner from who serves next)."
     : `${st.counted} hand-labelled rallies.`;
-  return [tiles, h("p", { class: "small muted" }, note),
+  const bad = (st.checks || []).filter(c => c.status !== "ok" &&
+    c.status !== "last_point_unknown");
+  const checks = bad.length ? h("div", { class: "flags" },
+    h("strong", {}, "Score checks: these stats may be off"),
+    h("ul", {}, ...bad.map(c => h("li", {}, `${c.video}: ${c.message}` +
+      (c.flagged ? ` ${c.flagged} rallies flagged for review.` : ""))))) : null;
+  return [tiles, checks, h("p", { class: "small muted" }, note),
     h("div", { class: "scroll" }, h("table", {}, h("thead", {}, head), h("tbody", {}, rows))),
     h("p", { class: "small muted" }, cols.map(c => `${st.short[c]} = ${label(c)}`).join(" · "))];
 }
@@ -424,19 +471,26 @@ function fmt(v) {
 
 // ---- review -------------------------------------------------------------------------------
 async function reviewPage(setId, rallyId, params) {
-  const showAll = params.get("all") === "1";
+  // Modes: the review queue (unreviewed, most doubtful first), the rallies a sanity check
+  // flags (reviewed ones too), or every rally in order.
+  const mode = params.get("all") === "1" ? "all" : (params.get("mode") || "queue");
+  const showAll = mode === "all";
   const list = await api(`/sets/${setId}/rallies`);
   const byId = Object.fromEntries(list.rallies.map(r => [r.id, r]));
-  const order = showAll ? list.rallies.map(r => r.id) : list.queue;
+  const order = mode === "all" ? list.rallies.map(r => r.id)
+    : mode === "flagged" ? list.flagged : list.queue;
+  const modeSuffix = mode === "all" ? "?all=1" : mode === "flagged" ? "?mode=flagged" : "";
   if (!rallyId) {
     if (!order.length) {
       view.replaceChildren(h("h1", {}, "Review"),
-        h("p", {}, "Every rally of this set is reviewed. "),
+        h("p", {}, mode === "flagged" ? "No rally of this set is flagged by the checks. " :
+          "Every rally of this set is reviewed. "),
+        h("p", { class: "small muted" }, list.checks.message),
         h("button", { onclick: () => { location.hash = `#/review/${setId}?all=1`; } },
           "Show all rallies"));
       return;
     }
-    location.replace(`#/review/${setId}/${order[0]}` + (showAll ? "?all=1" : ""));
+    location.replace(`#/review/${setId}/${order[0]}` + modeSuffix);
     return;
   }
   let d;
@@ -448,7 +502,7 @@ async function reviewPage(setId, rallyId, params) {
     if (!byId[rallyId]) {
       toast("That rally was rebuilt by a pipeline re-run (it has a new number now): " +
         "showing this set's review queue.", 6000);
-      location.replace(`#/review/${setId}` + (showAll ? "?all=1" : ""));
+      location.replace(`#/review/${setId}` + modeSuffix);
       return;
     }
     throw e;
@@ -464,7 +518,7 @@ async function reviewPage(setId, rallyId, params) {
     serving: r.serving_team, checked: true, suggested: null, endDetail: r.end_detail || null,
   };
   const t0 = () => Math.max(0, r.start_t - S.before);
-  const suffix = showAll ? "?all=1" : "";
+  const suffix = modeSuffix;
   const pos = order.indexOf(rallyId);
   const nextId = pos >= 0 && pos + 1 < order.length ? order[pos + 1] : null;
 
@@ -474,18 +528,25 @@ async function reviewPage(setId, rallyId, params) {
   ...(order.includes(rallyId) ? order : [rallyId, ...order]).map(id => {
     const x = byId[id];
     return h("option", { value: id, selected: id === rallyId },
-      `${x.reviewed ? "✓ " : ""}#${x.rally_number}  ${clock(x.start_t)}  conf ` +
-      `${(x.segment_confidence || 0).toFixed(2)}`);
+      `${x.reviewed ? "✓ " : ""}${x.flags.length ? "⚠ " : ""}#${x.rally_number}  ` +
+      `${clock(x.start_t)}  ${x.score[0]}-${x.score[1]}  conf ${(x.priority || 0).toFixed(2)}`);
   }));
   const reviewed = list.rallies.filter(x => x.reviewed).length;
   const top = h("div", { class: "card" },
     h("div", { class: "row spread" },
       h("strong", {}, `${r.video_key}: rally ${r.rally_number}`),
-      seg([["0", "Review queue"], ["1", "All in order"]], showAll ? "1" : "0", v => {
-        location.hash = `#/review/${setId}` + (v === "1" ? "?all=1" : ""); })),
+      seg([["queue", "Review queue"], ["flagged", `Flagged (${list.flagged.length})`],
+        ["all", "All in order"]], mode, v => {
+        location.hash = `#/review/${setId}` + (v === "all" ? "?all=1" :
+          v === "flagged" ? "?mode=flagged" : ""); })),
     h("div", { class: "small muted" }, `${reviewed}/${list.rallies.length} reviewed · ` +
       `score from reviewed rallies ${list.score_reviewed[0]}-${list.score_reviewed[1]} · ` +
       `${clock(r.start_t)}-${clock(r.end_t)} (${(r.end_t - r.start_t).toFixed(1)} s)`),
+    h("div", { class: "small " + (list.checks.status === "ok" ||
+      list.checks.status === "last_point_unknown" ? "muted" : "warntext") },
+      `Set ${list.checks.set_number} (${list.checks.format.label}): ${list.checks.message}`),
+    d.flags.length ? h("div", { class: "flags" }, h("strong", {}, "Checks flag this rally"),
+      h("ul", {}, ...d.flags.map(f => h("li", {}, f)))) : null,
     h("div", { style: "margin-top:8px" }, picker));
 
   // player
