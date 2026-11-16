@@ -410,8 +410,24 @@ pipeline flags as unsure. Order: accuracy first, then the cloud (owner's choice)
         the net, front/back, tempo and height range for each call), not code. Unclear
         sets go to review with their measurements; corrected calls become training data
         for a small classifier later.
-      - Needs a good 3D arc for the set (short, high flights near the net: the depth
-        anchors come first) and a named hitter for the back-row calls.
+      - Most cues don't need good depth. Position along the net is the camera's strong
+        (sideways) axis. Height near the net shifts only ~10 cm per metre of depth error.
+        Tempo is a time, read straight off the video. Only "how far off the net" (and
+        front vs back row from depth) waits for the depth anchors. Back-row calls also need
+        a named hitter.
+      - Fusion (owner's question, 2026-11-16): several cues each score every call:
+        - along-net contact point;
+        - tempo (set-to-hit time, and the hitter's approach start vs the set, from pose);
+        - apex height;
+        - which hitter and from where;
+        - the setter's facing (back set).
+
+        Combine the scores into one calibrated probability per call: sum log-likelihoods at
+        first, a learned model once corrections exist. Don't just take the top single
+        score: scores from different cues aren't on one scale, and cues built on the same
+        arc fail together. The rally helps too: a set to a zone-4 hitter makes "4 ball"
+        likelier. Cues agree: high confidence. Cues split, or the top two calls are close:
+        review.
 - [ ] **Practice mode vs game mode** (owner, 2026-11-16). Game mode is the current pipeline.
       Practice mode:
       - pass scores and set location/arc only;
