@@ -378,6 +378,24 @@ pipeline flags as unsure. Order: accuracy first, then the cloud (owner's choice)
       - where the set goes: the hitter's contact point, by set type (left, right, middle,
         pipe, back set), needing the ball's 3D at the hit (better after the depth anchors).
         Leads into milestone 10 (set arcs).
+- [ ] **Situational stats: as much as each video can give (owner, 2026-11-16).** Example: a
+      setter who sets well in system but struggles off the net. All are SQL over the event
+      DB (CLAUDE.md: never re-run vision), with the counts shown next to each % (small samples).
+      - Setter: where each set is played from (distance and direction from the target) and
+        where it goes (zone, set type), in vs out of system; the result of the attack that
+        follows (kill %, efficiency) by setter location. Later tempo and arc (milestone 10).
+      - Passer: pass average and error rate by receive zone (1, 6, 5, and 2/4 when they pass
+        in front); a court map of their contact points (milestone 11).
+      - Hitter: efficiency (kills - errors) / attempts by attack zone (4, 3, 2, pipe/back
+        row), by set type, in vs out of system, by setter.
+      - Server: placement by zone (milestone 12), coarse and with confidences.
+      - "In system": draft = pass 3-4 (setter near the target), a setting in config;
+        owner to confirm.
+      - **Data gap first:** in the DB only 479 of 3551 touches have the toucher's feet
+        (`contacts.player_x`); ours: sets 118/438, attacks 86/403, receives 64/239. It is
+        filled only when a toucher track is picked (pose + `TouchPicker`), and many sets
+        predate the pose re-run (A17). The splits are only as good as this coverage: re-run
+        the processed sets, then raise the toucher rate (track linking, depth anchors).
 - [ ] **Practice mode vs game mode** (owner, 2026-11-16). Game mode is the current pipeline.
       Practice mode:
       - pass scores and set location/arc only;
