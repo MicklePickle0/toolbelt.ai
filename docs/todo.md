@@ -343,6 +343,55 @@ Still to do:
 - [ ] Block-outs (tooled): already a kill for the attacker by the winner rule; the touch
       itself isn't marked.
 
+## Owner's priorities after Ottawa (2026-11-16)
+
+Goal: hands-free. Most rallies and stats right without review; review only what the
+pipeline flags as unsure. Order: accuracy first, then the cloud (owner's choice).
+- [ ] **Score and stat sanity checks** (extends A15's impossible-score check, not started).
+      Sets end at 25 (third set 15), win by 2, no cap; settings, not hardcoded, since
+      formats vary by tournament. Today nothing stops a set reaching 33-17
+      (`pakmen-black_set1`). Rules:
+      - the inferred score must end exactly at a legal set end;
+      - when the score passes a legal end, the rallies around the break are flagged;
+      - when it falls short, missed rallies are likely: look for gaps with play but no rally;
+      - send the least sure point winners to review first.
+      Stat checks:
+      - one serve per rally;
+      - the serving team follows the point winners;
+      - kills <= attacks;
+      - at most 3 touches a side (plus a block);
+      - a receive only after their serve.
+      Each failed check lowers the confidence of the rallies involved, so they rise in the
+      review queue, never silently "fixed".
+- [ ] **Ball depth anchors** (see "Now").
+- [ ] **Track linking over the whole rally, without rotation** (roadmap B5). Only rules
+      that can't be wrong:
+      - one number on one player at a time;
+      - no faster than a sprint;
+      - a number read before or after an attack carries across it.
+      Rotation is NOT a hard rule (owner, 2026-11-16): a missed serve, a wrong point winner
+      or an unnoticed mis-rotation would shift every later rally. At most a weak hint that
+      number reads override. Works per rally, so it fits cloud processing after each set.
+- [ ] **Set maps (owner: both), next to the existing pass map on Stats:**
+      - where sets are played from: density per setter, not coloured by pass score (same
+        spot as the pass map: the setter's feet);
+      - where the set goes: the hitter's contact point, by set type (left, right, middle,
+        pipe, back set), needing the ball's 3D at the hit (better after the depth anchors).
+        Leads into milestone 10 (set arcs).
+- [ ] **Practice mode vs game mode** (owner, 2026-11-16). Game mode is the current pipeline.
+      Practice mode:
+      - pass scores and set location/arc only;
+      - no rallies, score, point winners or outcomes;
+      - a pass is a ball coming over the net, or from a coach or a toss, then our first
+        and second touches.
+      Chosen per video at upload; the review and Stats pages show only what that mode makes.
+- [ ] Possible: SAM 2 / SAMURAI around our attacks to name attackers (3 of 24 on
+      `pakmen-black_set2`). Estimate ~3-6 GPU min a set if only ~3 s before each attack.
+      Test first on set 2's 24 labelled attacks (~1 h GPU). Owner hasn't decided.
+- [ ] **Cloud (D8), after the accuracy work** (owner, 2026-11-16): AWS / Azure / other, so
+      not everything runs on the home GPU. Processing stays fast after each set (target
+      ~10-20 min), not live (owner chose this over near-live and live, 2026-11-16).
+
 ## Now
 
 - [ ] **Ball depth anchored at touches, bounces and the net (owner, 2026-11-16).** Why:

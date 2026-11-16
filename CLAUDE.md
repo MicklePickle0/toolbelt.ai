@@ -50,6 +50,9 @@ An automated alternative to Hudl / DataVolley / VolleyStation. Input: a match or
 - Every automated decision carries a confidence score. Low-confidence items go to a review queue. Human corrections are stored and become training data.
 - Pass quality (serve receive, first ball only) uses the 0-4 scale below. Thresholds live in config, never hardcoded.
 - Camera angle varies per game (different diagonals, low to the ground). Do not assume a fixed viewpoint across games.
+- Two modes per video (owner, 2026-11-16): **game mode** (the full pipeline) and **practice mode** (pass scores and set location/arc only; no rallies or score).
+- Processing stays after the set, never live (owner chose this on 2026-11-16, also for the cloud). Rotation is never a hard rule for identity: a missed serve or an unnoticed mis-rotation would shift every later rally.
+- Goal: hands-free. Sanity checks (legal set scores, stat consistency) lower confidence so that only doubtful rallies need review.
 
 ## Pipeline (build in this order, verify each visually before moving on)
 1. **Ingest**: read video (OpenCV/ffmpeg), keep original fps + timestamps, cache frames/crops. Footage from 1080p30 up to 4K60: whole-video passes sample at 30 Hz (`video.sample_hz`) and pixel settings are written for 4K and scale with the video's width (`video.reference_width`).
@@ -227,6 +230,10 @@ Deadline: 16U OVA Fall Classic, Ottawa, 2026-11-06/07. The owner has only a lapt
 - D9 Login, if the app is ever exposed beyond Tailscale.
 - D10 Optional: rename the package/repo to Toolbelt.
 - D11 Practice-footage features (later).
+
+**After Ottawa (owner, 2026-11-16):** accuracy first, then the cloud (D8). Accuracy order:
+score/stat sanity checks, ball depth anchors (touch, bounce, net), track linking within a
+rally without rotation, set maps (from and to), practice mode. Details in `docs/todo.md`.
 
 **Order (revised 2026-11-01; the 2026-10-28 order slipped by ~2 days):**
 1. 2026-11-01, done: A16, B8, B2-B4 (jerseys), D1 (folders, Search, reels, game summary), A17 for `pakmen-black_set1/2`.
