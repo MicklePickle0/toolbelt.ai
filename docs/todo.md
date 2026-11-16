@@ -348,8 +348,10 @@ Still to do:
 Goal: hands-free. Most rallies and stats right without review; review only what the
 pipeline flags as unsure. Order: accuracy first, then the cloud (owner's choice).
 - [ ] **Score and stat sanity checks** (extends A15's impossible-score check, not started).
-      Sets end at 25 (third set 15), win by 2, no cap; settings, not hardcoded, since
-      formats vary by tournament. Today nothing stops a set reaching 33-17
+      Match format per game, not hardcoded (owner, 2026-11-16): best of 3 (25, 25, 15) is
+      usual, but 18U and high-school playoffs can be best of 5 (25, 25, 25, 25, 15). Store
+      per game: points per set as a list, win by 2, optional cap; presets plus custom, like
+      the net height. Today nothing stops a set reaching 33-17
       (`pakmen-black_set1`). Rules:
       - the inferred score must end exactly at a legal set end;
       - when the score passes a legal end, the rallies around the break are flagged;
@@ -396,6 +398,20 @@ pipeline flags as unsure. Order: accuracy first, then the cloud (owner's choice)
         filled only when a toucher track is picked (pose + `TouchPicker`), and many sets
         predate the pose re-run (A17). The splits are only as good as this coverage: re-run
         the processed sets, then raise the toucher rate (track linking, depth anchors).
+- [ ] **Set type detection (owner, 2026-11-16), practice mode first, then games.** Calls
+      to recognise: tempo, go ball, shoot (30/31/gap), 34, 4 ball, 2 ball (52), meter
+      (1 ball / 51), quick (50), back quick (60), red/flare, RS tempo, pipe, bic, and left
+      or right shoulder for pipe and bic.
+      - Measured per set (from the ball arc and the people tracks): the setter's release
+        point; where the hitter contacts it along the net (m from the left antenna) and
+        how far off the net; front or back set; apex height above the tape; time from set
+        to attack contact (tempo); front-row or back-row hitter; offset from the setter.
+      - Names vary by club, so the calls are a table in config (owner fills: where along
+        the net, front/back, tempo and height range for each call), not code. Unclear
+        sets go to review with their measurements; corrected calls become training data
+        for a small classifier later.
+      - Needs a good 3D arc for the set (short, high flights near the net: the depth
+        anchors come first) and a named hitter for the back-row calls.
 - [ ] **Practice mode vs game mode** (owner, 2026-11-16). Game mode is the current pipeline.
       Practice mode:
       - pass scores and set location/arc only;
