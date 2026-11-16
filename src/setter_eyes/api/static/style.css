@@ -163,3 +163,4 @@ td a, p a { color: var(--accent); }
          color: var(--text); background: var(--panel); }
 .flags strong { color: var(--warn); font-size: 13px; }
 .flags ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+.touch.sel { background: var(--chip); outline: 2px solid var(--accent); border-radius: 6px; }

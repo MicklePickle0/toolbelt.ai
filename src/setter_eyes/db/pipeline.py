@@ -14,6 +14,11 @@ false rally the reviewer dismissed doesn't come back). Rally numbers then follow
 
 A video is one set (set 1 unless the manifest's lineups say otherwise). With a lineup, each
 rally gets its rotation and our serves their server (db/rotation.py).
+
+Each touch's people track (the toucher's tracker id) is stored in `tracks`, one row per
+tracker id of the game, and `contacts.track_id` points at it (roadmap E5): a player fixed in
+review then carries over to the track's other touches (ui/review.py). Reviewed touches
+without one get it from the matching pipeline touch.
 """
 
 from __future__ import annotations
@@ -97,6 +102,7 @@ def write_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry,
 
         players = {r[0]: r[1] for r in conn.execute(
             "SELECT jersey_number, id FROM players WHERE team_id = ?", (team_id,))}
+        track_ids = _tracks(conn, game_id, contacts)
         n_rallies = n_contacts = 0
         for r in rallies:
             if any(min(r["end_t"], b) > max(r["start_t"], a) for a, b in kept):
@@ -122,48 +128,81 @@ def write_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry,
                     "INSERT INTO contacts (rally_id, t, frame, contact_confidence, team, "
                     "action, action_confidence, ball_x, ball_y, ball_z, pass_score, "
                     "pass_confidence, pass_x, pass_y, player_x, player_y, player_id, "
-                    "player_confidence, reviewed) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+                    "player_confidence, track_id, reviewed) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
                     (rally_id, c["t"], c["frame"], c["confidence"], c["team"],
                      c.get("action"), c.get("action_confidence"), x, y, z,
                      c.get("pass_score"), c.get("pass_confidence"),
                      *(c.get("pass_xy") or (None, None)), *(c.get("player_xy") or (None, None)),
                      player,
-                     c.get("player_confidence") if player else None),
+                     c.get("player_confidence") if player else None,
+                     track_ids.get(c.get("track_id"))),
                 )
                 n_contacts += 1
-        guesses = _guess_on_reviewed(conn, set_id, contacts, players)
+        guesses = _guess_on_reviewed(conn, set_id, contacts, players, track_ids)
         renumber(conn, set_id)
     apply_rotation(conn, set_id)
     return WriteSummary(game_id, n_rallies, n_contacts, len(kept), guesses)
 
 
+def _tracks(conn: sqlite3.Connection, game_id: int, contacts: list[dict]) -> dict[int, int]:
+    """tracker id -> tracks.id for the touches' people tracks (one row per tracker id of the
+    game, kept across re-runs so reviewed touches keep theirs; spans from the touches)."""
+    spans: dict[int, list[int]] = {}
+    for c in contacts:
+        tid = c.get("track_id")
+        if c.get("kind") == "touch" and tid is not None and tid >= 0:
+            s = spans.setdefault(int(tid), [c["frame"], c["frame"]])
+            s[0], s[1] = min(s[0], c["frame"]), max(s[1], c["frame"])
+    have = {r[0]: r[1] for r in conn.execute(
+        "SELECT tracker_track_id, id FROM tracks WHERE game_id = ?", (game_id,))}
+    out = {}
+    for tid, (f0, f1) in spans.items():
+        if tid in have:
+            conn.execute("UPDATE tracks SET first_frame = MIN(first_frame, ?), "
+                         "last_frame = MAX(last_frame, ?) WHERE id = ?", (f0, f1, have[tid]))
+            out[tid] = have[tid]
+        else:
+            out[tid] = conn.execute(
+                "INSERT INTO tracks (game_id, tracker_track_id, first_frame, last_frame) "
+                "VALUES (?, ?, ?, ?)", (game_id, tid, f0, f1)).lastrowid
+    return out
+
+
 def _guess_on_reviewed(conn, set_id: int, contacts: list[dict], players: dict[int, int],
+                       track_ids: dict[int, int] | None = None,
                        max_dt_s: float = 0.15) -> int:
     """Pass scores and players the reviewer hasn't given yet, on touches of reviewed
     rallies, from the pipeline touch of the same team within max_dt_s: guesses with the
     pipeline's confidence (< 1), shown as such in review; never over a value already
     there. Returns how many were filled."""
+    track_ids = track_ids or {}
     ours = [c for c in contacts if c["kind"] == "touch" and c["team"] == "us"
             and (c.get("pass_score") is not None or c.get("jersey") is not None
-                 or c.get("pass_xy") or c.get("player_xy"))]
+                 or c.get("pass_xy") or c.get("player_xy")
+                 or track_ids.get(c.get("track_id")) is not None)]
     if not ours:
         return 0
     t = sorted(ours, key=lambda c: c["t"])
     times = [c["t"] for c in t]
     filled = 0
     rows = conn.execute(
-        "SELECT c.id, c.t, c.action, c.pass_score, c.player_id, c.pass_x FROM contacts c "
-        "JOIN rallies r ON c.rally_id = r.id WHERE r.set_id = ? AND r.reviewed = 1 "
-        "AND c.team = 'us' AND (c.pass_score IS NULL OR c.player_id IS NULL "
-        "OR c.player_x IS NULL OR (c.action = 'receive' AND c.pass_x IS NULL))",
+        "SELECT c.id, c.t, c.action, c.pass_score, c.player_id, c.pass_x, c.track_id "
+        "FROM contacts c JOIN rallies r ON c.rally_id = r.id WHERE r.set_id = ? "
+        "AND r.reviewed = 1 AND c.team = 'us' AND (c.pass_score IS NULL OR c.player_id IS NULL "
+        "OR c.player_x IS NULL OR c.track_id IS NULL "
+        "OR (c.action = 'receive' AND c.pass_x IS NULL))",
         (set_id,)).fetchall()
-    for cid, ct, action, pass_score, player_id, pass_x in rows:
+    for cid, ct, action, pass_score, player_id, pass_x, track_id in rows:
         k = bisect.bisect_left(times, ct)
         near = [t[j] for j in (k - 1, k) if 0 <= j < len(t) and abs(t[j]["t"] - ct) <= max_dt_s]
         if not near:
             continue
         p = min(near, key=lambda c: abs(c["t"] - ct))
+        if track_id is None and track_ids.get(p.get("track_id")) is not None:
+            # Which people track touched it: a player fixed in review follows the track.
+            conn.execute("UPDATE contacts SET track_id = ? WHERE id = ?",
+                         (track_ids[p["track_id"]], cid))
         if pass_x is None and action == "receive" and p.get("pass_xy"):
             # Where it went (for the pass map), even when the reviewer set the score.
             conn.execute("UPDATE contacts SET pass_x = ?, pass_y = ? WHERE id = ?",

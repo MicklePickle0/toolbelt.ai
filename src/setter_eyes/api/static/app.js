@@ -591,8 +591,12 @@ async function reviewPage(setId, rallyId, params) {
       h("button", { onclick: () => seek(now() + 0.1) }, "+0.1 s"), slowBtn),
     h("div", { class: "row", style: "margin-top:8px" },
       widen("before", "s before"), widen("after", "s after")),
-    h("p", { class: "small muted" }, "Keys: , and . step a frame, space plays. Times below " +
-      "are seconds into the clip (the \"clip\" time above)."),
+    h("p", { class: "small muted" }, "Keys: , . step a frame · space plays · ↑ ↓ (or k j) " +
+      "pick a touch and jump to it · on that touch: s serve, r receive, e set, a attack, " +
+      "b block, d dig, p dump, f free ball, o overpass, c coverage, x switches team, " +
+      "0-4 pass score, t moves it to now, Delete removes it · n adds a touch now · " +
+      "w we won, l they won, R replay, N not a rally · Enter saves and goes to the next, " +
+      "Shift+Enter saves. Times below are seconds into the clip (the \"clip\" time above)."),
     mergeButtons());
 
   function mergeButtons() {
@@ -658,10 +662,12 @@ async function reviewPage(setId, rallyId, params) {
 
   // touches
   const touchBox = h("div");
+  const visible = () => S.touches.filter(x => !x.delete).sort((a, b) => a.t - b.t);
   function drawTouches() {
-    const rows = S.touches.filter(x => !x.delete).sort((a, b) => a.t - b.t).map(x => {
-      const row = h("div", { class: "touch " + (x.team || "") },
-        h("button", { class: "iconbtn", title: "go to this touch", onclick: () => seek(x.t) }, "▶"),
+    const rows = visible().map(x => {
+      const row = h("div", { class: "touch " + (x.team || "") + (x === S.sel ? " sel" : "") },
+        h("button", { class: "iconbtn", title: "go to this touch", onclick: () => {
+          S.sel = x; seek(x.t); drawTouches(); } }, "▶"),
         h("input", { type: "number", step: 0.001, value: (x.t - t0()).toFixed(3),
           onchange: e => { x.t = t0() + (+e.target.value); suggest(); } }),
         select(["us", "them"], x.team, v => { x.team = v; drawTouches(); suggest(); }),
@@ -676,18 +682,21 @@ async function reviewPage(setId, rallyId, params) {
     });
     touchBox.replaceChildren(...rows,
       h("div", { class: "row", style: "margin-top:8px" },
-        h("button", { onclick: () => {
-          S.touches.push({ id: null, t: now(), team: "us", action: null, delete: false });
-          drawTouches(); suggest(); } }, "+ Touch at the current frame")));
+        h("button", { onclick: addTouch }, "+ Touch at the current frame")));
+  }
+
+  function addTouch() {
+    const x = { id: null, t: now(), team: "us", action: null, delete: false };
+    S.touches.push(x); S.sel = x; drawTouches(); suggest();
   }
 
   // Who touched it (our touches) and, on our receive, the pass score 0-4.
   // A pipeline guess shows how sure it was and a ✓ to confirm it as it is; setting a value
   // confirms it too. Only confirmed ones count as labels (export_reviewed.py).
   function extraRow(x) {
-    const guess = (v, c, checked, confirm) =>
+    const guess = (v, c, checked, confirm, from = "pipeline guess") =>
       v !== null && v !== undefined && !checked && c !== null && c !== undefined && c < 1
-        ? h("span", { class: "row small muted" }, `pipeline guess, sure ${c.toFixed(2)}`,
+        ? h("span", { class: "row small muted" }, `${from}, sure ${c.toFixed(2)}`,
           h("button", { class: "iconbtn", title: "it's right", onclick: confirm }, "✓"))
         : null;
     const who = h("select", { onchange: e => {
@@ -697,7 +706,8 @@ async function reviewPage(setId, rallyId, params) {
         `#${p.number} ${p.name}`)));
     const parts = [h("label", { class: "row small" }, "Player", who,
       guess(x.jersey, x.player_confidence, x.jersey_checked,
-        () => { x.jersey_checked = true; drawTouches(); }))];
+        () => { x.jersey_checked = true; drawTouches(); },
+        x.player_from_fix ? "from your fix on this player's track" : "pipeline guess"))];
     if (x.action === "receive") {                 // an overpass on serve receive is an automatic 0
       parts.push(h("span", { class: "row small" }, "Pass",
         seg([0, 1, 2, 3, 4].map(n => [String(n), String(n)]),
@@ -789,10 +799,43 @@ async function reviewPage(setId, rallyId, params) {
         h("button", { class: "primary", onclick: () => save(true) }, "Save & next")))));
   drawTouches(); drawSpan(); drawPoint(); loadClip(); suggest();
 
+  // Keys (roadmap E4): review a rally without the mouse. Letters act on the selected touch
+  // (highlighted; ↑/↓ or j/k move it and jump the clip there).
+  const KEY_ACTIONS = { s: "serve", r: "receive", e: "set", a: "attack", b: "block", d: "dig",
+    p: "dump", f: "free_ball", o: "overpass", c: "coverage" };
+  function pickTouch(step) {
+    const v = visible();
+    if (!v.length) return;
+    const i = v.indexOf(S.sel);
+    S.sel = v[i < 0 ? (step > 0 ? 0 : v.length - 1) : Math.max(0, Math.min(v.length - 1, i + step))];
+    seek(S.sel.t); drawTouches();
+  }
+  function setWinner(w) { S.winner = w; drawPoint(); suggest(); }
   document.onkeydown = e => {
     if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
-    if (e.key === ",") frame(-1);
-    else if (e.key === ".") frame(1);
-    else if (e.key === " ") { e.preventDefault(); video.paused ? video.play() : video.pause(); }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const k = e.key, x = S.sel && !S.sel.delete ? S.sel : null;
+    let done = true;
+    if (k === ",") frame(-1);
+    else if (k === ".") frame(1);
+    else if (k === " ") video.paused ? video.play() : video.pause();
+    else if (k === "Enter") save(!e.shiftKey);
+    else if (k === "w") setWinner("us");
+    else if (k === "l") setWinner("them");
+    else if (k === "R") setWinner("replay");
+    else if (k === "N") setWinner("not_a_rally");
+    else if (k === "ArrowDown" || k === "j") pickTouch(1);
+    else if (k === "ArrowUp" || k === "k") pickTouch(-1);
+    else if (k === "n") addTouch();
+    else if (x && k === "x") { x.team = x.team === "us" ? "them" : "us"; drawTouches(); suggest(); }
+    else if (x && k === "t") { x.t = now(); drawTouches(); suggest(); }
+    else if (x && KEY_ACTIONS[k]) { x.action = KEY_ACTIONS[k]; drawTouches(); suggest(); }
+    else if (x && /^[0-4]$/.test(k) && x.team === "us" && x.action === "receive") {
+      x.pass_score = +k; x.pass_checked = true; drawTouches(); }
+    else if (x && (k === "Delete" || k === "Backspace")) {
+      const v = visible(), i = v.indexOf(x);
+      x.delete = true; S.sel = v[i + 1] || v[i - 1] || null; drawTouches(); suggest(); }
+    else done = false;
+    if (done) e.preventDefault();
   };
 }

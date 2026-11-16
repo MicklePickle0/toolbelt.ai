@@ -12,6 +12,12 @@ Saving a rally's review, in one transaction:
   - the rally is marked reviewed, and so are its touches when the reviewer says they are
     all right. Re-running the pipeline keeps reviewed rallies (db/pipeline.py).
 
+A player set or confirmed on one of our touches carries over to the other touches of the
+same people track (contacts.track_id, roadmap E5) that nobody has confirmed: as a guess
+(`PROPAGATED_CONFIDENCE`, below 1, shown as such), logged in `corrections` with
+`propagated_from` pointing at the fix. Tracks can change hands (about 1 in 5 carry two
+players), so a guess is never written over a player the reviewer set.
+
 A point the pipeline split in two is put back together with merge_rallies() (the
 neighbour's touches move over, the time span covers both, the neighbour goes); two points
 it joined into one are pulled apart with split_rally() at the second point's serve.
@@ -29,6 +35,7 @@ from setter_eyes.classify.outcome import rally_outcome
 from setter_eyes.db.pipeline import renumber
 
 REPLAY = "replay"
+PROPAGATED_CONFIDENCE = 0.9     # a player carried along the track from a fix in review
 NOT_A_RALLY = "not_a_rally"     # a false rally (warm-up, another court): kept as reviewed so
                                 # re-runs don't bring it back; its touches are false ones
 
@@ -67,7 +74,11 @@ def touches(conn: sqlite3.Connection, rally_id: int) -> list[dict]:
     return [dict(r) for r in conn.execute(
         "SELECT c.id, c.t, c.team, c.action, c.contact_confidence, c.action_confidence, "
         "c.reviewed, c.pass_score, c.pass_confidence, c.player_confidence, "
-        "p.jersey_number AS jersey "
+        "p.jersey_number AS jersey, "
+        # the player was carried along the track from a fix in review (E5), not guessed
+        "EXISTS (SELECT 1 FROM corrections k WHERE k.table_name = 'contacts' AND "
+        "k.row_id = c.id AND k.field = 'jersey' AND k.propagated_from IS NOT NULL) "
+        "AS player_from_fix "
         "FROM contacts c LEFT JOIN players p ON c.player_id = p.id "
         "WHERE c.rally_id = ? ORDER BY c.t", (rally_id,))]
 
@@ -117,13 +128,40 @@ def suggest_outcome(edits: list[TouchEdit], winner: str | None,
     return rally_outcome([(e.team, e.action, None) for e in kept], winner)[0]
 
 
-def _log(conn, table: str, row_id: int, field: str, old, new, author: str) -> None:
+def _log(conn, table: str, row_id: int, field: str, old, new, author: str,
+         propagated_from: int | None = None) -> int | None:
+    """Log a changed field in `corrections`; returns the row id (None when unchanged)."""
     if old == new:
-        return
-    conn.execute("INSERT INTO corrections (table_name, row_id, field, old_value, new_value, "
-                 "author) VALUES (?, ?, ?, ?, ?, ?)",
-                 (table, row_id, field, None if old is None else str(old),
-                  None if new is None else str(new), author))
+        return None
+    return conn.execute(
+        "INSERT INTO corrections (table_name, row_id, field, old_value, new_value, author, "
+        "propagated_from) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (table, row_id, field, None if old is None else str(old),
+         None if new is None else str(new), author, propagated_from)).lastrowid
+
+
+def propagate_player(conn: sqlite3.Connection, contact_id: int, player_id: int,
+                     correction_id: int | None, author: str = "owner") -> int:
+    """The player of touch `contact_id`, set or confirmed in review, onto the other touches
+    of its people track whose player nobody confirmed (player_confidence < 1 or none): as a
+    guess at PROPAGATED_CONFIDENCE. Only touches of ours. Returns how many changed."""
+    row = conn.execute("SELECT track_id FROM contacts WHERE id = ?", (contact_id,)).fetchone()
+    if row is None or row[0] is None:
+        return 0
+    jersey = {r[0]: r[1] for r in conn.execute("SELECT id, jersey_number FROM players")}
+    n = 0
+    for cid, old, conf in conn.execute(
+            "SELECT id, player_id, player_confidence FROM contacts WHERE track_id = ? AND "
+            "id != ? AND team = 'us' AND (player_confidence IS NULL OR player_confidence < 1)",
+            (row[0], contact_id)).fetchall():
+        if old == player_id and (conf or 0) >= PROPAGATED_CONFIDENCE:
+            continue
+        conn.execute("UPDATE contacts SET player_id = ?, player_confidence = ? WHERE id = ?",
+                     (player_id, PROPAGATED_CONFIDENCE, cid))
+        _log(conn, "contacts", cid, "jersey", jersey.get(old), jersey.get(player_id), author,
+             propagated_from=correction_id)
+        n += 1
+    return n
 
 
 def save_review(conn: sqlite3.Connection, rally_id: int, fps: float, winner: str | None,
@@ -139,6 +177,7 @@ def save_review(conn: sqlite3.Connection, rally_id: int, fps: float, winner: str
     with conn:
         old = dict(conn.execute("SELECT * FROM rallies WHERE id = ?", (rally_id,)).fetchone())
         before = {r["id"]: r for r in touches(conn, rally_id)}
+        fixed: list[tuple[int, int, int | None]] = []   # (touch, player, correction): carry on
         players = _player_ids(conn, rally_id)
         if start_t is None:
             start_t = old["start_t"]
@@ -175,10 +214,15 @@ def save_review(conn: sqlite3.Connection, rally_id: int, fps: float, winner: str
                 e.pass_score, e.jersey = b["pass_score"], b["jersey"]
             score, player = _extra(e, players)
             jersey = e.jersey if player else None
+            fix_id = None
             for field, new in (("t", round(e.t, 3)), ("team", e.team), ("action", e.action),
                                ("pass_score", score), ("jersey", jersey)):
                 old_v = round(b[field], 3) if field == "t" else b[field]
-                _log(conn, "contacts", e.id, field, old_v, new, author)
+                cid = _log(conn, "contacts", e.id, field, old_v, new, author)
+                if field == "jersey":
+                    fix_id = cid
+            if player is not None and (e.jersey_checked or jersey != b["jersey"]):
+                fixed.append((e.id, player, fix_id))
             # A confirmed touch, or one the reviewer changed, is certain from now on. Its pass
             # score and player only when the reviewer set or confirmed them: a pipeline guess
             # left as it was stays a guess (and isn't exported as a label).
@@ -195,6 +239,8 @@ def save_review(conn: sqlite3.Connection, rally_id: int, fps: float, winner: str
                          "reviewed = ? WHERE id = ?",
                          (e.t, round(e.t * fps), e.team, e.action, touch_conf, action_conf,
                           score, pass_conf, player, player_conf, int(touches_checked), e.id))
+        for cid, player, fix_id in fixed:
+            propagate_player(conn, cid, player, fix_id, author)
         for field, new in (("point_winner", point_winner), ("outcome", outcome),
                            ("serving_team", serving_team), ("start_t", round(start_t, 3)),
                            ("end_t", round(end_t, 3)), ("end_detail", end_detail)):

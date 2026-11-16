@@ -253,3 +253,53 @@ def test_rerun_guesses_pass_and_player_on_reviewed_touches_without_overwriting(t
     assert (t[1]["pass_score"], t[1]["jersey"]) == (3, 7)          # filled in...
     assert t[1]["pass_confidence"] < 1 and t[1]["player_confidence"] < 1   # ...as guesses
     assert t[2]["jersey"] == 9                                      # the reviewer's stays
+
+
+def test_a_player_fixed_in_review_carries_along_its_track(tmp_path):
+    """Roadmap E5: one fix names the track's other touches (as a guess, never over a
+    player the reviewer set), and re-runs keep the track on reviewed touches."""
+    from setter_eyes.labels.manifest import RosterEntry
+    conn = db.connect(":memory:")
+    manifest = Manifest(tmp_path / "manifest.yaml", "Venom",
+                        [RosterEntry(7, "Sam"), RosterEntry(9, "Ali")], [])
+    entry = VideoEntry("v1", tmp_path / "v1.mp4", venue="Humber", ball="mikasa")
+
+    def touch(t, team, action, track):
+        return {"kind": "touch", "t": t, "frame": int(t * 60), "confidence": 0.6, "team": team,
+                "ball_xyz": None, "action": action, "action_confidence": 0.5,
+                "track_id": track}
+
+    contacts = [touch(10.0, "them", "serve", 2), touch(11.0, "us", "receive", 5),
+                touch(12.0, "us", "set", 8), touch(40.0, "us", "serve", 5),
+                touch(60.0, "them", "serve", 2), touch(61.0, "us", "receive", 5)]
+    rallies = [{"index": i + 1, "start_frame": int(a * 60), "end_frame": int(b * 60),
+                "start_t": a, "end_t": b, "confidence": 0.4, "serving_team": s,
+                "contacts": cs}
+               for i, (a, b, s, cs) in enumerate(((10.0, 13.0, "them", [0, 1, 2]),
+                                                   (40.0, 43.0, "us", [3]),
+                                                   (60.0, 63.0, "them", [4, 5])))]
+    write_video(conn, manifest, entry, 60.0, rallies, contacts)
+    assert conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0] == 3
+    ids = [r["id"] for r in rv.rallies(conn, rv.games(conn)[0]["set_id"])]
+    # The reviewer names #9 on the third rally's receive first: confirmed, not to be touched.
+    t3 = rv.touches(conn, ids[2])
+    rv.save_review(conn, ids[2], 60.0, "us", None, "them", 63.0,
+                   [rv.TouchEdit(t3[0]["id"], 60.0, "them", "serve"),
+                    rv.TouchEdit(t3[1]["id"], 61.0, "us", "receive", jersey=9,
+                                 keep_extra=False, jersey_checked=True)], True)
+    # Then #7 on the first rally's receive (track 5): the serve on track 5 follows.
+    t1 = rv.touches(conn, ids[0])
+    edits = [rv.TouchEdit(x["id"], x["t"], x["team"], x["action"]) for x in t1]
+    edits[1] = rv.TouchEdit(t1[1]["id"], 11.0, "us", "receive", jersey=7, keep_extra=False)
+    rv.save_review(conn, ids[0], 60.0, "us", None, "them", 13.0, edits, True)
+    serve = rv.touches(conn, ids[1])[0]
+    assert (serve["jersey"], serve["player_confidence"]) == (7, rv.PROPAGATED_CONFIDENCE)
+    assert rv.touches(conn, ids[2])[1]["jersey"] == 9            # the reviewer's stays
+    assert rv.touches(conn, ids[0])[2]["jersey"] is None          # another track: untouched
+    prop = conn.execute("SELECT propagated_from FROM corrections WHERE row_id = ? AND "
+                        "field = 'jersey'", (serve["id"],)).fetchone()[0]
+    assert prop is not None
+    # A re-run rebuilds the unreviewed rally; reviewed touches keep their track.
+    write_video(conn, manifest, entry, 60.0, rallies, contacts)
+    assert conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0] == 3
+    assert conn.execute("SELECT COUNT(*) FROM contacts WHERE track_id IS NULL").fetchone()[0] == 0
