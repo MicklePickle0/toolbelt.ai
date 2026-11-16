@@ -155,6 +155,12 @@ The quickest way to write `events.csv` is the keyboard labeller,
   and the rally is left out of all stats.
 - **Timeouts:** no labels. Label rallies in an unbroken run, so the scorer can count fake rallies between them.
 
+### Counting rule: second touches by non-setters (owner, 2026-11-16)
+
+A scrappy second touch by someone who isn't the setter (the libero or an outside bump-sets or
+hand-sets the second ball after a bad pass) is labelled `set` and counts as a set for whoever
+made it, with an assist when the attack after it kills. Same as a setter's set.
+
 ## Box labels (`boxes.coco.json`)
 
 Use standard COCO detection JSON, from any tool (CVAT, Roboflow, Label Studio).

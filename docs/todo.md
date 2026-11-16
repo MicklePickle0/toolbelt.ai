@@ -347,9 +347,50 @@ Still to do:
 
 Phases E-I and order: CLAUDE.md "Roadmap" (revised 2026-11-16). Details below.
 
+**Phase E built on the laptop, 2026-11-16** (no footage there: everything from the event DB):
+- E1 match format per game: presets best of 3 / best of 5 / to 15 / capped, or custom
+  (`config/pipeline.yaml` `match`, `data/match_formats.yaml`); set number from the key's
+  `_setN`, changeable. Stats > Edit folders.
+- E2 set checks (`rally/sanity.py`; `python scripts/check_sets.py [--rallies]`, read only).
+  Shown on the video cards, the Stats page and every review page, plus a "Flagged" review
+  mode; the review queue is ordered by confidence x failed checks. Measured on the 13 sets
+  in the DB: 8 pass a legal end (111 rallies after the end, e.g. `niagara-rtw_set2` 45-22),
+  2 short, 2 only missing the last point, 1 legal (`pakmen-black_set2`). On the two fully
+  reviewed sets the checks found real errors left after review:
+  - 4 + 4 rallies whose stored serving team is wrong (side-out stats use it);
+  - `pakmen-gold_set1`'s missing point, placed between rallies 38 and 39 (82 s gap,
+    serve-order break);
+  - 3 four-touch runs and one receive of our own serve.
+- E3 rally-step checks in `rally/segment.py` (`rally.checks`, on by default): unit-tested
+  only. **On the desktop:** compare `eval_contacts.py` on the labelled sets with
+  `rally.checks.enabled` true vs false (rallies found, false rallies) before trusting it.
+- E4 review keys (on the page): arrows / j k pick a touch; s r e a b d p f o c set its
+  action; x team; 0-4 pass; t time; Delete; n add; w / l / R / N the point; Enter save & next.
+- E5 tracks in the DB (`tracks`, `contacts.track_id`) from the next re-run; a player set in
+  review fills the same track's unconfirmed touches at 0.9, logged with `propagated_from`.
+- E6 **to run on the desktop:** `python scripts/rerun_sets.py --dry-run`, then without
+  `--dry-run`. Baseline before it (event DB, 2026-11-16): our touches located (toucher's
+  feet) 447 of 1879 (24%), named 437 (23%). The Durham Attack sets processed with pose are
+  at 77-93% located; the 9 Humber sets are at 0% (processed before pose_people), so the
+  re-run alone should close most of the gap. Paste its table here.
+- E7/E8 Stats > "Setting and situations" (`stats/situational.py`):
+  - where sets were played from (dots by in/out of system, or density, per setter) and
+    where they went (by result);
+  - setters in vs out of system;
+  - passers by receive zone;
+  - hitters by zone / system / setter;
+  - trends per game.
+
+  On the two reviewed sets: #17 set 63 balls, 36 in system (hitting .059 after them) vs 23
+  out (.000); 57 of 74 sets have a spot, 32 of 74 attacks. "In system" is a draft (pass 3-4,
+  else setter within 2 m of the target; `config/pass_scale.yaml` `in_system`): owner to
+  confirm. Set type waits for G1.
+- E9 decided: non-setter second touches count as sets (and assists), as before
+  (docs/labelling.md).
+
 Goal: hands-free. Most rallies and stats right without review; review only what the
 pipeline flags as unsure. Order: accuracy first, then the cloud (owner's choice).
-- [ ] **Score and stat sanity checks** (extends A15's impossible-score check, not started).
+- [x] **Score and stat sanity checks** (E2, done 2026-11-16; see above).
       Match format per game, not hardcoded (owner, 2026-11-16): best of 3 (25, 25, 15) is
       usual, but 18U and high-school playoffs can be best of 5 (25, 25, 25, 25, 15). Store
       per game: points per set as a list, win by 2, optional cap; presets plus custom, like

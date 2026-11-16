@@ -181,29 +181,36 @@ do it.
 Standing: (Owner) push after each session (was A1). Recording plan stays as A14: 4K, phone
 low and centred behind our end line, whole court in frame, process a 1080p60 copy.
 
-**Phase E, stats you can trust now (CPU, no new labels):**
-- E1 Match format per game: best of 3 or 5 (25, 25, 15 / 25, 25, 25, 25, 15), points per
+**Phase E, stats you can trust now (CPU, no new labels).** Built on the laptop 2026-11-16
+(E1-E5, E7-E9 done; E3 and E6 need the desktop's caches, below):
+- E1 DONE (`match.py`, `data/match_formats.yaml`, Stats > Edit folders). Match format per game: best of 3 or 5 (25, 25, 15 / 25, 25, 25, 25, 15), points per
   set as a list, win by 2, optional cap; presets plus custom, like the net height.
-- E2 Score and stat sanity checks (extends A15's impossible-score check): legal set ends,
+- E2 DONE (`rally/sanity.py`, `scripts/check_sets.py`; review "Flagged" mode). Score and stat
+  sanity checks (extends A15's impossible-score check): legal set ends,
   one serve a rally, serving team follows the point winners, kills <= attacks, at most 3
   touches a side, a receive only after their serve. A failed check lowers the confidence of
   the rallies involved so they rise in the review queue; nothing is fixed silently.
-- E3 Rally-step fixes (was A15): a serve needs a net crossing or enough confidence; a short
+- E3 BUILT, NOT MEASURED (`rally.checks` in pipeline.yaml; needs the desktop's caches). Rally-step
+  fixes (was A15): a serve needs a net crossing or enough confidence; a short
   piece before a sure serve is dropped; three touches by one side keep the rally.
-- E4 Review speed (was A11): review only what E2 flags; keys for point us/them, actions and
+- E4 DONE (keys listed on the review page). Review speed (was A11): review only what E2 flags; keys for point us/them, actions and
   team, next/previous touch, Enter = save & next. Reviewed stats are the right stats today.
-- E5 Fix a touch's player in review; one fix relabels the whole track (was B7).
-- E6 Re-run every processed set with the current pipeline (was A17, A4, C9): the Humber sets,
+- E5 DONE: a player fixed in review fills the track's other unconfirmed touches as a guess
+  (0.9). Tracks reach the DB from the next re-run (E6). (was B7)
+- E6 READY, RUN ON THE DESKTOP: `python scripts/rerun_sets.py` (backs up the DB, checks
+  reviewed rallies survive, reports coverage). Re-run every processed set with the current pipeline (was A17, A4, C9): the Humber sets,
   `416-knight_set2/3`, `mac-platinum_set2`. Back up the DB first and check reviewed rallies
   survive. Then measure toucher coverage (today 479 of 3551 touches have a location).
-- E7 Set maps on Stats: where sets are played from (per setter) and where they go, next to
+- E7 DONE (Stats > Setting and situations). Set maps on Stats: where sets are played from (per setter) and where they go, next to
   the pass map.
-- E8 Situational splits, SQL with counts shown (was D2, D4):
+- E8 DONE except set type (needs G1) (`stats/situational.py`). Situational splits, SQL with
+  counts shown (was D2, D4):
   - setter in vs out of system (draft: pass 3-4; owner to confirm);
   - passer average and errors by receive zone;
   - hitter efficiency by zone, set type, system and setter;
   - trends across games.
-- E9 (Owner decides, was D3) How scrappy non-setter second touches are counted.
+- E9 DECIDED (owner, 2026-11-16): a non-setter's second touch counts as a set for whoever
+  made it, with an assist when the attack kills (as the stat sheet already did). (was D3)
 
 **Phase F, who and where (identity and 3D):**
 - F1 Retrain the touch scorer on all reviewed rallies (was A18, C3); test on a held-out gym
@@ -262,7 +269,7 @@ Still open from Ottawa:
    GPU only for the sets missing pose).
 2. Claude: E7-E8 set maps and situational splits on the reviewed sets, so the owner has
    coaching stats now; E4-E5 review speed alongside.
-3. Owner: confirm "in system" (E8), fill the set-call table (G1), decide E9 and F4.
+3. Owner: confirm "in system" (E8), fill the set-call table (G1), decide F4.
 4. Claude: F1-F3, with G1-G2 alongside (set types and practice mode don't wait for depth).
 5. Then H (cloud), then I in the order that matters to the owner's coaching.
 

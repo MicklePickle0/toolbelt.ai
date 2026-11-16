@@ -638,7 +638,7 @@ async function reviewPage(setId, rallyId, params) {
       : null;
     const draw = () => box.replaceChildren(
       h("strong", {}, "Missed point in this clip?"),
-      gapNote,
+      gapNote || "",                      // replaceChildren would print a null as "null"
       h("div", { class: "small muted" }, "Widen the clip (s before / after) to see it, then " +
         "mark where it starts (the serve) and ends."),
       h("div", { class: "row", style: "margin-top:6px" },
