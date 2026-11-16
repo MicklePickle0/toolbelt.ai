@@ -168,70 +168,103 @@ Background and venue variety:
 11. Serve-receive by zone: for each first ball after the serve, record the player, the court zone (1-6, near side) and floor point of the contact, and the 0-4 pass score. Per player: a court map of contact points colored by pass score, plus average score and error rate per zone, so it shows who passes best and worst in each position.
 12. Serve placement: where our serves go on the opponent side, by zone (1-6) as percentages. Show a court map with each serve as a dot (colored by outcome: ace, in play, error) and a heatmap toggle. Landing point comes from the ball's 3D arc (floor crossing or the opponent's first contact). This is the ball only, not far-side player tracking, but far-side depth accuracy is weaker, so keep zones coarse, attach a confidence to each landing point and send low-confidence ones to the review queue.
 
-## Roadmap (revised 2026-11-16; details and measurements in docs/todo.md)
-The Ottawa roadmap (Phases A-D, 2026-10-28 to 11-05) is in git history and `docs/todo.md`.
-Goal now: hands-free. Most rallies and stats right without review, and as much data from
-each video as it can give. Accuracy first, then the cloud (owner, 2026-11-16).
+## Roadmap (revised 2026-11-16 after Ottawa; progress and measurements live in docs/todo.md)
+The 16U OVA Fall Classic (Ottawa, 2026-11-06/07) has passed; the team placed well. The
+Ottawa roadmap (Phases A-D) is in git history; its open items are carried below with their
+old IDs. Goal now (owner, 2026-11-16): stats the owner can coach from, hands-free (most
+rallies and stats right without review), and as much data from each video as it can give.
+Accuracy and stats first, then the cloud. Processing stays after the set, never live.
+Ordering principle: what one low camera measures well comes first (along the net, timing,
+height near the net); anything that needs depth waits for F2. (Owner) = only the owner can
+do it.
 
-Ordering principle: what the camera measures well comes first. Side to side (along the net),
-timing and height near the net are reliable from one low camera. Distance in depth is not,
-so anything that needs it waits for Phase 2's depth work. (Owner) = only the owner can do it.
+Standing: (Owner) push after each session (was A1). Recording plan stays as A14: 4K, phone
+low and centred behind our end line, whole court in frame, process a 1080p60 copy.
 
-**Phase 1: trust the numbers (CPU, no new labels).**
-1. Match format per game: best of 3 or 5, points per set as a list, win by 2, optional cap
-   (presets and custom, like the net height).
-2. Score and stat sanity checks: legal set ends, one serve a rally, serving team follows the
-   point winners, kills <= attacks, at most 3 touches a side. A failed check lowers the
-   confidence of the rallies involved, so only doubtful rallies need review.
-3. Rally-step fixes (old A15): a serve needs a net crossing or enough confidence, plus
-   the other three rules in `docs/todo.md`.
-4. Re-run every processed set with the current pipeline (old A17), then measure how many of
-   our touches have a located, named toucher (today 479 of 3551 touches in the DB).
-5. Retrain the touch scorer on all reviewed rallies (old A18/C3), and test on a held-out gym.
+**Phase E, stats you can trust now (CPU, no new labels):**
+- E1 Match format per game: best of 3 or 5 (25, 25, 15 / 25, 25, 25, 25, 15), points per
+  set as a list, win by 2, optional cap; presets plus custom, like the net height.
+- E2 Score and stat sanity checks (extends A15's impossible-score check): legal set ends,
+  one serve a rally, serving team follows the point winners, kills <= attacks, at most 3
+  touches a side, a receive only after their serve. A failed check lowers the confidence of
+  the rallies involved so they rise in the review queue; nothing is fixed silently.
+- E3 Rally-step fixes (was A15): a serve needs a net crossing or enough confidence; a short
+  piece before a sure serve is dropped; three touches by one side keep the rally.
+- E4 Review speed (was A11): review only what E2 flags; keys for point us/them, actions and
+  team, next/previous touch, Enter = save & next. Reviewed stats are the right stats today.
+- E5 Fix a touch's player in review; one fix relabels the whole track (was B7).
+- E6 Re-run every processed set with the current pipeline (was A17, A4, C9): the Humber sets,
+  `416-knight_set2/3`, `mac-platinum_set2`. Back up the DB first and check reviewed rallies
+  survive. Then measure toucher coverage (today 479 of 3551 touches have a location).
+- E7 Set maps on Stats: where sets are played from (per setter) and where they go, next to
+  the pass map.
+- E8 Situational splits, SQL with counts shown (was D2, D4):
+  - setter in vs out of system (draft: pass 3-4; owner to confirm);
+  - passer average and errors by receive zone;
+  - hitter efficiency by zone, set type, system and setter;
+  - trends across games.
+- E9 (Owner decides, was D3) How scrappy non-setter second touches are counted.
 
-**Phase 2: who and where (identity and 3D).**
-1. Ball depth fixed at touches (the toucher's feet), bounces and the net.
-2. Linking a player's track pieces within a rally without rotation: one number on one
-   player at a time, sprint speed limit, number reads carried across an attack (old B5).
-3. (Owner decides) Test SAM 2 / SAMURAI on `pakmen-black_set2`'s 24 labelled attacks
-   (~1 h GPU), then ~3-6 min a set if it pays off.
-4. Fix a touch's player in review; one fix relabels the whole track (old B7).
-5. Self-labelling (old C1): confident ball arcs become detector labels, so new gyms
-   don't need hand labels.
+**Phase F, who and where (identity and 3D):**
+- F1 Retrain the touch scorer on all reviewed rallies (was A18, C3); test on a held-out gym
+  (was C2).
+- F2 Ball depth fixed at touches (the toucher's feet), bounces and the net.
+- F3 Track linking within a rally without rotation (was B5): one number on one player at a
+  time, sprint speed limit, number reads carried across an attack. Attackers are the gap
+  (3 of 24 named on `pakmen-black_set2`).
+- F4 (Owner decides) SAM 2 / SAMURAI on `pakmen-black_set2`'s 24 labelled attacks (~1 h GPU);
+  ~3-6 min a set if it pays off.
+- F5 Self-labelling (was C1): confident ball arcs become detector labels; new gyms stop
+  needing hand labels. (Owner) ~50 ball frames per new gym until then (was A9).
+- F6 Actions with pose (was C4: dump, free ball vs attack, block), then a learned action
+  classifier from corrections (was C5). Errors cascade: one missed touch shifts every later
+  action in that side's run (clean rallies 94% actions right vs 67%).
+- F7 Roster and starting lineup (was B1, owner); rotation and libero as a soft hint only,
+  never a hard rule (was B6).
 
-**Phase 3: setting and situational stats (mostly depth-free; can start alongside Phase 2).**
-1. Set maps on Stats: where sets are played from, and where they go. The pass map stays.
-2. Set type detection. Several cues each score every call, combined into one calibrated
-   probability; cues that disagree send the set to review. The cues: along-net contact
-   point, tempo, apex height, hitter, setter facing. (Owner) fills the table of calls:
-   tempo, go, shoot, 34, 4, 52, 51, 50, 60, red, RS tempo, pipe, bic, shoulders.
-3. Situational splits as SQL with counts:
-   - setter in vs out of system (draft: pass 3-4; owner to confirm);
-   - passer by receive zone;
-   - hitter efficiency by zone, set type, system and setter.
-4. Practice mode: pass scores and set location/type only, chosen per video at upload.
-5. Distance-off-the-net features (set depth, front vs back row from depth) once Phase 2.1 lands.
+**Phase G, setting and practice (mostly depth-free; can run alongside F):**
+- G1 Set type detection. Several cues each score every call, combined into one calibrated
+  probability; cues that disagree send the set to review. The cues: along-net contact
+  point, tempo, apex height, hitter, setter facing. (Owner) fills the table of calls:
+  tempo, go, shoot (30/31/gap), 34, 4, 52, 51, 50, 60, red/flare, RS tempo, pipe, bic,
+  shoulders.
+- G2 Practice mode (was D11): pass scores and set location/type only, no rallies or score;
+  chosen per video at upload.
+- G3 Setting arcs (was D6, milestone 10): release, apex, tempo, landing vs antennas, per
+  setter and set type; overlay and side view. Off-the-net distance after F2.
+- G4 Serve-receive by zone maps (was D4, milestone 11) and serve placement (was D5,
+  milestone 12, coarse zones with confidences).
 
-**Phase 4: cloud (after Phases 1-2 are measured good enough).**
-1. Upload a file or a link in the app (old A7).
-2. Container, job queue, storage bucket, GPU workers on AWS, Azure or another provider.
-   Target: ~10-20 min a set, after the set (never live). The home GPU stays as a fallback.
-3. Login before anything is exposed beyond Tailscale (old D9).
+**Phase H, cloud (after E and F measure good enough):**
+- H1 Upload a file or a link in the app (was A7).
+- H2 Container, job queue, storage bucket, GPU workers on AWS, Azure or another provider
+  (was D8). Target ~10-20 min a set, after the set. The home GPU stays as a fallback.
+- H3 Login before anything is exposed beyond Tailscale (was D9).
 
-**Phase 5: later.**
-- Multi-frame ball detector (TrackNetV3 / WASB style).
-- Actions with pose (dump, free ball vs attack, block; old C4), then a learned action
-  classifier from corrections (old C5).
-- Rotation and libero as a soft hint only (old B6); roster and lineup entry (old B1).
-- Serve-receive by zone maps (milestone 11), serve placement (milestone 12), set arc
-  overlay and side view (milestone 10).
-- Combos and trends across games; DataVolley export.
-- Third-set side switch (old A10); the player app; renaming the package to Toolbelt.
+**Phase I, later:**
+- I1 Multi-frame ball detector (TrackNetV3 / WASB style).
+- I2 DataVolley export (was D7).
+- I3 Third-set side switch (was A10).
+- I4 Smaller accuracy items:
+  - dead ball, net shake, other courts' balls (was C6);
+  - off-screen servers (was C7);
+  - stuff blocks (was C8);
+  - known issues (was C10).
+- I5 Manual stat tracker on the phone (was A12); player app; rename to Toolbelt (was D10).
 
 Still open from Ottawa:
-- (Owner) `code tunnel service install`.
-- (Owner) Calibrate `416-knight_set1`, `mac-platinum_set1` and `pakmen-black_set3`.
-- (Owner) How scrappy non-setter second touches are counted.
+- (Owner) `code tunnel service install` (was A3).
+- (Owner) Calibrate `416-knight_set1`, `mac-platinum_set1` and `pakmen-black_set3` (was A2;
+  set 3 needs I3).
+
+**Order (2026-11-16):**
+1. Claude: E1-E3 (match format, sanity checks, rally fixes), then E6 re-runs (overnight
+   GPU only for the sets missing pose).
+2. Claude: E7-E8 set maps and situational splits on the reviewed sets, so the owner has
+   coaching stats now; E4-E5 review speed alongside.
+3. Owner: confirm "in system" (E8), fill the set-call table (G1), decide E9 and F4.
+4. Claude: F1-F3, with G1-G2 alongside (set types and practice mode don't wait for depth).
+5. Then H (cloud), then I in the order that matters to the owner's coaching.
 
 ## Product shape (later; do not build yet)
 Decided 2026-10-27, for further down the road. Perfect the local pipeline first (accuracy,

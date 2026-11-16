@@ -345,7 +345,7 @@ Still to do:
 
 ## Owner's priorities after Ottawa (2026-11-16)
 
-Phases and order: CLAUDE.md "Roadmap" (revised 2026-11-16). Details below.
+Phases E-I and order: CLAUDE.md "Roadmap" (revised 2026-11-16). Details below.
 
 Goal: hands-free. Most rallies and stats right without review; review only what the
 pipeline flags as unsure. Order: accuracy first, then the cloud (owner's choice).
