@@ -1,14 +1,40 @@
-# toolbelt.ai
+# Toolbelt
 
-Offline volleyball stat tracker. Input: a match video filmed low from behind one end of the court.
-Output: per-player stats for the near-side team, a ball-path overlay, and an editable event database.
+Automated volleyball video analysis: an affordable alternative to Hudl, DataVolley and
+VolleyStation. Film a match or practice from low behind one end of the court with a phone;
+Toolbelt finds every rally and touch, names the player, grades serve-receive passes and
+builds per-player stats, with a web app to review and correct what it found.
 
-Design, constraints and milestones: see [CLAUDE.md](CLAUDE.md).
+Only the near-side team is analysed. Processing is offline (after the set), runs on a local
+NVIDIA GPU, and every automated decision carries a confidence score so that unsure items go
+to a review queue. Corrections are stored and become training data.
+
+Design, constraints and milestones: see [CLAUDE.md](CLAUDE.md). Plan and measured results:
+[docs/todo.md](docs/todo.md). What broke and how it was fixed: [docs/issues-log.md](docs/issues-log.md).
+
+(The repo folder and the Python package `setter_eyes` keep the project's old name.)
+
+## How it works
+
+| Step | What it does | Built with |
+|---|---|---|
+| Ingest | Reads 1080p30 to 4K60 footage, samples 30 times a second, GPU decoding | OpenCV, ffmpeg (NVDEC) |
+| Play spans | Skips the time between rallies with a cheap motion score | NumPy |
+| Court calibration | Camera pose from court points tapped in the app (automatic line fitting as a draft), then follows the camera as it pans | OpenCV `solvePnP`, optical flow |
+| Ball detection | Fine-tuned detector on tiled frames; follows a moving ball with a single window | RF-DETR (PyTorch), fp16 |
+| Ball tracking | Joins detections into tracks, drops spare balls, fits each flight as a 3D arc where gravity fixes the depth | Hand-written Kalman filter, SciPy least squares |
+| People | Detects and tracks everyone, places them on the court by their feet, keeps our near-side players | RF-DETR (COCO `person`), `supervision` |
+| Pose and jerseys | Keypoints for who touched the ball; back numbers read and voted per track, limited to the roster | RTMPose (`rtmlib`, ONNX Runtime GPU), PARSeq |
+| Touches and rallies | Fuses trajectory breaks, hand-to-ball distance and rally rules into touches; finds serves, rally ends and the point winner from who serves next | Learned touch scorer (gradient boosting, scikit-learn) |
+| Outcomes and actions | Serve, receive, set, attack, block, dig; kill, ace, error; 0-4 pass scores from where the setter takes the ball | Rules + `config/pass_scale.yaml` |
+| Event database | Rallies and touches are the source of truth; stats are queries, never re-run vision | SQLite |
+| Web app | Processing queue, calibration, rally review, stat sheet, pass map, search with clips and highlight reels | FastAPI, Uvicorn, vanilla JS |
 
 Footage: 1080p at 30 fps is enough; anything up to 4K at 60 fps works too. The pipeline
 samples 30 times a second either way, so higher settings mostly cost decoding time and disk
 space, not extra detection passes. To run the whole pipeline over several videos (play
-spans, ball and people detection, tracking, rallies), use `.\scripts\process_videos.ps1`.
+spans, ball and people detection, tracking, rallies), use `.\scripts\process_videos.ps1`,
+or queue them in the web app.
 
 ## Setup
 
@@ -55,6 +81,11 @@ python scripts/serve_app.py                  # http://localhost:8000 on this PC
 python scripts/serve_app.py --host 0.0.0.0   # reachable over Tailscale: http://<pc>:8000
 python scripts/serve_app.py --no-worker      # review and stats only, no processing
 ```
+
+Pages: Videos (queue and progress), Calibrate, Review (rally by rally: fix touches, actions,
+players, pass scores and the point winner; Save & next), Stats (team and player
+sheets, game summary, pass map), Search (player, action, result, pass score, set by; clips
+and highlight reels with the player ringed). Sets can be grouped in tournament/game folders.
 
 Each video is calibrated on its Calibrate page (tap the court points on a frame); processing
 waits for it before following the camera. No login: only expose it on a private network
