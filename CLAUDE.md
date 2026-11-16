@@ -168,93 +168,70 @@ Background and venue variety:
 11. Serve-receive by zone: for each first ball after the serve, record the player, the court zone (1-6, near side) and floor point of the contact, and the 0-4 pass score. Per player: a court map of contact points colored by pass score, plus average score and error rate per zone, so it shows who passes best and worst in each position.
 12. Serve placement: where our serves go on the opponent side, by zone (1-6) as percentages. Show a court map with each serve as a dot (colored by outcome: ace, in play, error) and a heatmap toggle. Landing point comes from the ball's 3D arc (floor crossing or the opponent's first contact). This is the ball only, not far-side player tracking, but far-side depth accuracy is weaker, so keep zones coarse, attach a confidence to each landing point and send low-confidence ones to the review queue.
 
-## Roadmap (agreed 2026-10-28; progress and measurements live in docs/todo.md)
-Deadline: 16U OVA Fall Classic, Ottawa, 2026-11-06/07. The owner has only a laptop and a phone there and wants each day's sets analysed the same day (6-9 sets on day 1). Flow: record each set in 4K (owner, 2026-11-01; keep the 4K files, since numbers read better), upload a 1080p60 copy after the set (no live streaming), process it as a batch on the home PC (cloud GPUs as a backup), review and read stats in the web app over the VS Code tunnel. Live AI stats are out of scope. (Owner) = only the owner can do it.
+## Roadmap (revised 2026-11-16; details and measurements in docs/todo.md)
+The Ottawa roadmap (Phases A-D, 2026-10-28 to 11-05) is in git history and `docs/todo.md`.
+Goal now: hands-free. Most rallies and stats right without review, and as much data from
+each video as it can give. Accuracy first, then the cloud (owner, 2026-11-16).
 
-**Phase A, Fall Classic minimum (by 2026-11-05).** Status as of 2026-11-01:
-- A1 (Owner) Push after each session; the laptop only sees what is pushed. Ongoing.
-- A2 (Owner) Calibrate the Durham Attack sets by hand in the app. 7 done; still to do: `416-knight_set1`, `mac-platinum_set1`, `pakmen-black_set3` (the last needs A10).
-- A3 DONE: VS Code Remote Tunnel for editing and Claude, plus Tailscale for the web app since 2026-11-02 (top of this file). Still to do: `code tunnel service install`.
-- A4 (Owner) Queue the Durham Attack sets in the app. Processed: `pakmen-black_set1/2` only. Calibrated but not processed: `416-knight_set2/3`, `mac-platinum_set2`, `pakmen-gold_set1/2`.
-- A5 DONE: browser calibration page.
-- A6 DONE for now: automatic fits never count as calibrated (`app.accept_auto_calibration: false`).
-- A7 Upload a video or paste a YouTube/Drive link in the app; it joins the manifest. Until then: drag the file into the VS Code explorer over the tunnel. Measure the upload size and time on the dry run: a 20-min 1080p60 file is several GB.
-- A8 DONE: ~33 min per 20-min 1080p set (was ~2 h).
-- A9 (Owner labels) ~50 ball frames from each of 2-3 Durham Attack gyms, then retrain at 1080p. Add the poster stretches of `pakmen-black_set2` as hard negatives, plus self-labels from its reviewed rallies (C1).
-- A10 Third-set side switch: DEFERRED by the owner (2026-11-01). Most OVA tournaments have no side switch. Likely fix: find the switch, then process the two halves with their own calibrations and combine them.
-- A11 Review speed (6-9 sets to review in a day): one key for point us/them, keys for actions and team, next/previous touch, Enter = save & next.
-- A12 Manual stat tracker on the phone. Dropped for Ottawa unless time is left over.
-- A13 (Owner) Dry run 2026-11-03/04 from the laptop away from home on Durham Attack sets.
-- A14 (Owner) Recording plan: 4K (process a 1080p60 copy), phone low and CENTRED behind our end line (corner views cost accuracy at Durham Attack: worse depth, false entry serves), whole court in frame, no posters or windows behind the far court if there's a choice, spare battery, upload after each set.
-- A15 (added 2026-10-31) Rally-step fixes from `pakmen-black_set2` (issues-log "Still open"):
-  - a "serve" needs a net crossing soon after it, or enough confidence;
-  - a short piece with no crossing just before a sure serve is dropped;
-  - three touches by one side keep the rally without a crossing;
-  - an impossible-score check (`pakmen-black_set1` inferred 33-17).
-  CPU only; measure on set 2 and the two Humber sets. Not started (2026-11-01).
-- A16 DONE 2026-10-31. Pass score and jersey number on each touch in review (none is editable in the web app today), so Ottawa gets pass averages and per-player stats from review even before the pipeline is right. Pass scores entered there become B8's labelled passes.
-- A17 (added 2026-10-31) Re-run the processed sets with the 2026-10-31 fixes (poster, 1080p features, team decoder). CPU, from cached detections. First check that writing the event DB keeps every reviewed rally (`pakmen-black_set1/2`), and back up the DB. PARTLY DONE 2026-11-01: `pakmen-black_set1/2` re-run with pose_people (jerseys, pass scores), reviewed rallies kept, backups `data/setter_eyes.db.backup_2026-10-31_before_jerseys` and `..._2026-11-01_before_pass_spots`. The Humber sets still need pose_people + find_rallies.
-- A18 (added 2026-10-31) Retrain the touch scorer with `pakmen-black_set2`'s reviewed rallies (C3, first Durham Attack data), then test on `pakmen-black_set1`'s reviewed rallies.
+Ordering principle: what the camera measures well comes first. Side to side (along the net),
+timing and height near the net are reliable from one low camera. Distance in depth is not,
+so anything that needs it waits for Phase 2's depth work. (Owner) = only the owner can do it.
 
-**Phase B, per-player stats (after Ottawa, or earlier if Phase A goes well):**
-- B1 (Owner) Roster (numbers + names) and each set's starting lineup.
-- B2 DONE 2026-10-31 (moved before Ottawa): toucher by forearms/hands at the ball (identity/toucher.py, RTMPose in scripts/pose_people.py).
-- B3 DONE 2026-10-31: PARSeq (owner's OK) limited to the roster, on back views (identity/numbers.py). Fine-tune on reviewed crops later if needed.
-- B4 DONE 2026-10-31, differently: tracks pass between players, so a touch takes its track's reads within +-4 s, and one number is on one player at a time. titan-rise_set1 at 1080p: 50% of our touches named, 91% right.
-- B5 Re-attach broken tracks by appearance, holding a player's label as long as possible, even between clips (owner, 2026-11-01). Tried 2026-11-01, not built in: DINOv2 kNN 52%, per-video classifier 52-60%, elimination by on-court numbers (3-5 candidates left), speed-gated links (no change). Attackers are the gap: 3 of 24 named on `pakmen-black_set2`. Next try: an athlete re-ID model, 4K, or the starting lineup.
-- B6 Rotation state machine and libero swaps. Also a server fallback from the rotation: if we serve and win the point, the same player serves again (owner, 2026-11-01). Done so far: the server is the deepest player who walks into view after the serve, and the libero never serves.
-- B7 Fix a touch's player in review; one fix relabels the whole track.
-- B8 DONE 2026-10-31: pass scores in the pipeline (from the setter's feet), with a confidence. On the owner's `pakmen-black_set2` labels: 69% exact, 92% within 1. Jerseys there: 47% of our touches named, 92% right.
+**Phase 1: trust the numbers (CPU, no new labels).**
+1. Match format per game: best of 3 or 5, points per set as a list, win by 2, optional cap
+   (presets and custom, like the net height).
+2. Score and stat sanity checks: legal set ends, one serve a rally, serving team follows the
+   point winners, kills <= attacks, at most 3 touches a side. A failed check lowers the
+   confidence of the rallies involved, so only doubtful rallies need review.
+3. Rally-step fixes (old A15): a serve needs a net crossing or enough confidence, plus
+   the other three rules in `docs/todo.md`.
+4. Re-run every processed set with the current pipeline (old A17), then measure how many of
+   our touches have a located, named toucher (today 479 of 3551 touches in the DB).
+5. Retrain the touch scorer on all reviewed rallies (old A18/C3), and test on a held-out gym.
 
-**Phase C, accuracy and new gyms without labelling:**
-- C1 Self-labelling: confident ball arcs become detector labels; retrain overnight on new footage.
-- C2 Test on a whole held-out gym (Durham Attack); this defines "good enough without labels".
-- C3 Retrain the touch scorer with reviewed rallies.
-- C4 Action stage 2 with pose (dump, free ball vs attack, block).
-- C5 Learned action classifier from corrections.
-- C6 Rest of the dead-ball check (net shake); other courts' balls by size.
-- C7 Serve-only rallies from an off-screen server; better inferred serves.
-- C8 Stuff blocks checked on more footage.
-- C9 Process the 3 remaining Humber sets.
-- C10 Small known issues (mac-chrome_set2 camera jump, camera offsets, line judge marked as a player).
+**Phase 2: who and where (identity and 3D).**
+1. Ball depth fixed at touches (the toucher's feet), bounces and the net.
+2. Linking a player's track pieces within a rally without rotation: one number on one
+   player at a time, sprint speed limit, number reads carried across an attack (old B5).
+3. (Owner decides) Test SAM 2 / SAMURAI on `pakmen-black_set2`'s 24 labelled attacks
+   (~1 h GPU), then ~3-6 min a set if it pays off.
+4. Fix a touch's player in review; one fix relabels the whole track (old B7).
+5. Self-labelling (old C1): confident ball arcs become detector labels, so new gyms
+   don't need hand labels.
 
-**Phase D, deeper stats and product:**
-- D1 PARTLY DONE 2026-11-01: Search tab (player, play, result, pass score, set by) with clips and highlight reels with the player ringed; game summary (set distribution, pass map) on Stats; tournament/game folders.
-- D2 Combos (setter-to-hitter kill %), trends across games. (Search's set-by filter and the summary's sets-by-hitter cover the basics, 2026-11-01.)
-- D3 (Owner decides) How scrappy non-setter second touches are counted.
-- D4 Milestone 11, serve-receive by zone.
-- D5 Milestone 12, serve placement.
-- D6 Milestone 10, setting arcs.
-- D7 DataVolley export.
-- D8 Cloud GPUs (container, job queue, upload bucket; ~$5-10/day), so it doesn't need the home PC.
-- D9 Login, if the app is ever exposed beyond Tailscale.
-- D10 Optional: rename the package/repo to Toolbelt.
-- D11 Practice-footage features (later).
+**Phase 3: setting and situational stats (mostly depth-free; can start alongside Phase 2).**
+1. Set maps on Stats: where sets are played from, and where they go. The pass map stays.
+2. Set type detection. Several cues each score every call, combined into one calibrated
+   probability; cues that disagree send the set to review. The cues: along-net contact
+   point, tempo, apex height, hitter, setter facing. (Owner) fills the table of calls:
+   tempo, go, shoot, 34, 4, 52, 51, 50, 60, red, RS tempo, pipe, bic, shoulders.
+3. Situational splits as SQL with counts:
+   - setter in vs out of system (draft: pass 3-4; owner to confirm);
+   - passer by receive zone;
+   - hitter efficiency by zone, set type, system and setter.
+4. Practice mode: pass scores and set location/type only, chosen per video at upload.
+5. Distance-off-the-net features (set depth, front vs back row from depth) once Phase 2.1 lands.
 
-**After Ottawa (owner, 2026-11-16):** accuracy first, then the cloud (D8). Accuracy order:
-score/stat sanity checks, ball depth anchors (touch, bounce, net), track linking within a
-rally without rotation, set maps (from and to), practice mode. Details in `docs/todo.md`.
+**Phase 4: cloud (after Phases 1-2 are measured good enough).**
+1. Upload a file or a link in the app (old A7).
+2. Container, job queue, storage bucket, GPU workers on AWS, Azure or another provider.
+   Target: ~10-20 min a set, after the set (never live). The home GPU stays as a fallback.
+3. Login before anything is exposed beyond Tailscale (old D9).
 
-**Order (revised 2026-11-01; the 2026-10-28 order slipped by ~2 days):**
-1. 2026-11-01, done: A16, B8, B2-B4 (jerseys), D1 (folders, Search, reels, game summary), A17 for `pakmen-black_set1/2`.
-2. 2026-11-01, owner:
-   - restart the app (event DB schema v8);
-   - A2 calibrate `416-knight_set1` and `mac-platinum_set1`;
-   - A4 queue the 5 calibrated Durham Attack sets overnight (dry-run material; `pakmen-gold` is the new-gym test). Close other GPU programs first;
-   - review `pakmen-black_set1`'s remaining 39 rallies (14/53 done) and dismiss the 4 false rallies on set 2;
-   - put the sets in tournament/game folders (Stats > Edit folders);
-   - `code tunnel service install`.
-3. 2026-11-02, Claude:
-   - A15 rally-step fixes;
-   - A11 review shortcuts;
-   - A17 for the Humber sets;
-   - A7 upload, if time.
-4. 2026-11-02, overnight GPU:
-   - A18 touch scorer retrain;
-   - A9 1080p ball detector retrain (owner's DA boxes, if done).
-5. 2026-11-03/04: A13 dry run, fix what breaks. 2026-11-05: freeze; no new features.
-6. After Ottawa: the rest of Phase B (B2-B4 and B8 were done 2026-10-31), with Phase C alongside (C1 first, so new gyms stop needing labels).
-7. Then Phase D in the order that matters to the owner's coaching.
+**Phase 5: later.**
+- Multi-frame ball detector (TrackNetV3 / WASB style).
+- Actions with pose (dump, free ball vs attack, block; old C4), then a learned action
+  classifier from corrections (old C5).
+- Rotation and libero as a soft hint only (old B6); roster and lineup entry (old B1).
+- Serve-receive by zone maps (milestone 11), serve placement (milestone 12), set arc
+  overlay and side view (milestone 10).
+- Combos and trends across games; DataVolley export.
+- Third-set side switch (old A10); the player app; renaming the package to Toolbelt.
+
+Still open from Ottawa:
+- (Owner) `code tunnel service install`.
+- (Owner) Calibrate `416-knight_set1`, `mac-platinum_set1` and `pakmen-black_set3`.
+- (Owner) How scrappy non-setter second touches are counted.
 
 ## Product shape (later; do not build yet)
 Decided 2026-10-27, for further down the road. Perfect the local pipeline first (accuracy,
