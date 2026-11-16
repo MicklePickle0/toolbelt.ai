@@ -65,3 +65,11 @@ pipeline:
 low_pass:
   max_apex_m: 2.4            # flight peaks below this: a 1
   min_arc_confidence: 0.3    # only flights this sure give a height
+
+# In or out of system, for the situational stats (stats/situational.py; roadmap E8).
+# DRAFT (2026-11-16): owner to confirm. A set is in system when the pass before it scored
+# one of `pass_scores`; with no pass score (a dig, a free ball), when the setter played it
+# within `max_target_distance_m` of the target above.
+in_system:
+  pass_scores: [3, 4]
+  max_target_distance_m: 2.0

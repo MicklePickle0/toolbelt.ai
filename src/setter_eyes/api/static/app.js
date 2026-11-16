@@ -309,6 +309,7 @@ async function statsPage(params) {
   const src = params.get("src") || "pipeline";
   // Ask for the summary now, alongside the stat sheet, not after it.
   const summaryP = src === "pipeline" ? summaryFetch(chosen) : null;
+  const situP = src === "pipeline" ? situationalFetch(chosen) : null;
   let scale = params.get("pass");
   if (scale !== "3" && scale !== "4") {
     try { scale = localStorage.getItem("passScale"); } catch (_) { scale = null; }
@@ -394,7 +395,7 @@ async function statsPage(params) {
     if (src === "pipeline") {
       const names = new Map(st.players.filter(p => p.player !== "?")
         .map(p => [+p.player, p.name]));
-      body.push(summarySection(summaryP, names));
+      body.push(summarySection(summaryP, names), situationalSection(situP, names));
     }
   } catch (e) {
     body = [h("p", { class: "muted" }, e.message)];

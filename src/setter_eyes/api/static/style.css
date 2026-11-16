@@ -164,3 +164,31 @@ td a, p a { color: var(--accent); }
 .flags strong { color: var(--warn); font-size: 13px; }
 .flags ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
 .touch.sel { background: var(--chip); outline: 2px solid var(--accent); border-radius: 6px; }
+/* Set maps (situational.js): in/out of system, attack result. Colour is never the only cue:
+   every dot has a tooltip and the tables below carry the numbers. */
+:root { --viz-sys-in: #1b6a36; --viz-sys-out: #e0603c; --viz-sys-unknown: #98a2b3;
+        --viz-res-kill: #1b6a36; --viz-res-error: #a51d1d; --viz-res-play: #2a78d6;
+        --viz-density: #2a78d6; }
+@media (prefers-color-scheme: dark) {
+  :root { --viz-sys-in: #4aa756; --viz-sys-out: #f08a5d;
+    --viz-sys-unknown: #667085; --viz-res-kill: #4aa756; --viz-res-error: #d63f36;
+    --viz-res-play: #3987e5; --viz-density: #3987e5; }
+}
+.court-zone { stroke: var(--line); stroke-width: 0.03; }
+.set-dot { stroke: var(--panel); stroke-width: 0.05; }
+.set-dot:hover { stroke: var(--text); }
+.sys-in { fill: var(--viz-sys-in); background: var(--viz-sys-in); }
+.sys-out { fill: var(--viz-sys-out); background: var(--viz-sys-out); }
+.sys-unknown { fill: var(--viz-sys-unknown); background: var(--viz-sys-unknown); }
+.res-kill { fill: var(--viz-res-kill); background: var(--viz-res-kill); }
+.res-error { fill: var(--viz-res-error); background: var(--viz-res-error); }
+.res-play { fill: var(--viz-res-play); background: var(--viz-res-play); }
+.density { fill: var(--viz-density); }
+/* Second cue besides colour: errors and out-of-system sets are rings, not discs. */
+.set-dot.res-error, .set-dot.sys-out { fill: var(--panel); stroke-width: 0.12; }
+.set-dot.res-error { stroke: var(--viz-res-error); }
+.set-dot.sys-out { stroke: var(--viz-sys-out); }
+.swatch.res-error, .swatch.sys-out { background: var(--panel); border: 2px solid; }
+.swatch.res-error { border-color: var(--viz-res-error); }
+.swatch.sys-out { border-color: var(--viz-sys-out); }
+.density-num { fill: var(--text); }

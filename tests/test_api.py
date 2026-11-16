@@ -110,6 +110,12 @@ def test_set_checks_and_match_format(client):
     assert st["checks"][0]["set_number"] == 3 and st["checks"][0]["target"] == 15
 
 
+def test_situational_stats(client):
+    out = client.get("/api/situational", params={"videos": "v1"}).json()
+    assert out["sets"]["n"] == 1 and out["hitters"][0]["att"] == 1
+    assert out["in_system_rule"]["pass_scores"] == [3, 4] and out["trends"][0]["game"] == "v1"
+
+
 def test_job_queue_runs_steps_and_stops_without_calibration(tmp_path):
     (tmp_path / "scripts").mkdir()
     for step in ("a", "b"):

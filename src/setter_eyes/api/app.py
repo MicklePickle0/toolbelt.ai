@@ -44,6 +44,7 @@ from setter_eyes.labels import load_manifest
 from setter_eyes.rally.sanity import check_set, load_set
 from setter_eyes.reels import ReelMaker
 from setter_eyes.stats.sheet import COLUMNS, SHORT, stat_rows
+from setter_eyes.stats.situational import situational
 from setter_eyes.stats.summary import summary as stats_summary
 from setter_eyes.ui import review as rv
 
@@ -427,6 +428,13 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         scale = config.load("pass_scale")["target"]
         out["pass_target"] = {"x": scale["x"], "y": scale["y"]}
         return out
+
+    @app.get("/api/situational")
+    def situational_stats(videos: str) -> dict:
+        """Setting and situational splits (roadmap E7/E8; stats/situational.py)."""
+        keys = [k for k in videos.split(",") if k]
+        with conn() as c:
+            return situational(c, keys, config.load("pass_scale"), _folders())
 
     @app.post("/api/reels")
     def new_reel(body: ReelIn) -> dict:
