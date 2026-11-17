@@ -41,17 +41,17 @@ typography:
     lineHeight: 1.3
   body:
     fontFamily: Barlow
-    fontSize: 15px
+    fontSize: 16px
     fontWeight: 400
-    lineHeight: 1.45
+    lineHeight: 1.5
   table:
     fontFamily: Barlow
-    fontSize: 14px
+    fontSize: 15px
     fontWeight: 400
     fontFeature: tnum
   small:
     fontFamily: Barlow
-    fontSize: 13px
+    fontSize: 14px
     fontWeight: 400
 rounded:
   none: 0px
@@ -170,10 +170,16 @@ sentence and rally strip, C's setter grids and tables.
    flags as plain sentences and the touches on the right. The current touch is outlined in
    ball yellow all the way round (not a stripe on its left: a coloured side stripe is a
    stock generated-design move). Keys are listed once in a small muted paragraph.
-4. **Stats.** Stat sheet. The set's name, then the filter bar (which sets, touches from,
-   pass scale), then the opening sentence, then the rally strip, the box score (players by rows, team total last in 600),
-   the passing and set maps, the setter grids, and the situational tables. Every rate shows
-   its count next to it in muted ("0.059 on 34").
+4. **Stats.** Stat sheet. The set's name, the filter bar (which sets, touches from, pass
+   scale), then tabs, one view at a time, so nothing important sits at the bottom of a long
+   scroll (owner, 2026-11-17). Each tab is its own address and only loads what it shows:
+   - Summary: the key figures and the rally strip;
+   - Box score: players by rows, team total last in 600;
+   - Passing: pass scores, the pass map, passers by zone;
+   - Setting: the setter grids, set maps, setters in and out of system, who the sets went to;
+   - Hitting: hitters by zone, system and setter;
+   - Trends: game by game.
+   Every rate shows its count ("0.059 on 34", or the count in brackets in tables).
 5. **Search, Rosters, Queue.** Same sheet, same tables; filters in a well.
 
 ## Elevation & depth
@@ -205,11 +211,16 @@ squircles, no fully rounded chips.
   `:focus-visible`, on paper and on film.
 - **Empty and loading states:** one plain sentence saying what will be here and how to get it
   ("No reviewed rallies yet. Review a set to see its stats.").
-- **Opening sentence (lead):** a page of numbers opens with one sentence in the lead size
-  that carries them: "Won 32 to 23. Hit 0.297 on 37 attacks, passed 2.38 on 26 serves,
-  sided out 58% of 19, 6 aces and 5 service errors." The figures are 600 ink, their counts
-  muted. No number is picked out in a colour; weight does the work. It replaces stat tiles
-  (a big number over a small label), which are not used.
+- **Scores** are written with a hyphen, ours first: "25-17", never "25 to 17" (owner,
+  2026-11-17).
+- **Tabs:** plain words in a row, 17px; the current one ink 600 with a 3px ink rule under
+  it, the rest muted; one 1px well line under the row. No pills or boxes.
+- **Key figures** (Stats > Summary): the numbers a coach reads first, large (Barlow
+  Condensed 600, 52px), each with its name above in 600 and what it is out of below in
+  muted ("Hitting / 0.297 / 37 attacks, 12 kills, 5 errors"). No boxes or borders around
+  them, no colour. The owner found the opening sentence too small to read (2026-11-17), so
+  readability wins over the scanner's dislike of big-number rows. The lead sentence size
+  stays for the Videos page's opening line.
 - **Rally strip:** every rally of a set in order, a 14 by 22px block each, court blue for our
   point, them grey for theirs, well for no winner; each block links to that rally in
   Review. One line under it: the longest run.

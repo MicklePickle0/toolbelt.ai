@@ -10,15 +10,6 @@ function situationalFetch(keys) {
   return p;
 }
 
-function situationalSection(pending, names) {
-  const title = () => h("h2", {}, "Setting and situations");
-  const box = h("section", {}, title(), h("p", { class: "small muted" }, "Loading"));
-  pending
-    .then(s => box.replaceChildren(title(), ...situationalBody(s, names)))
-    .catch(e => box.replaceChildren(title(), h("p", { class: "muted" }, e.message)));
-  return box;
-}
-
 const effTxt = d => !d || !d.att ? "-" :
   `${d.eff >= 0 ? "" : "-"}${Math.abs(d.eff).toFixed(3).replace(/^0/, "")} (${d.k}-${d.e}/${d.att})`;
 const avgTxt = d => !d || !d.n ? "-" : `${d.avg.toFixed(2)} (${d.n})`;
@@ -53,7 +44,8 @@ function setterGrid(points, title, sub) {
       `${unplaced} attack${unplaced === 1 ? "" : "s"} without a zone`) : null);
 }
 
-function situationalBody(s, names) {
+// The Stats tabs' pieces: { setting, passing, hitting, trends }, each a list of elements.
+function situationalParts(s, names) {
   const zn = z => z === "?" ? "not located" : (s.zone_names[z] || z);
   const rule = s.in_system_rule;
   const setters = [...new Set(s.sets.points.map(p => p.setter))];
@@ -130,33 +122,38 @@ function situationalBody(s, names) {
     String(g.sets), g.points, g.pass_avg === null ? "-" : `${g.pass_avg.toFixed(2)} (${g.pass_n})`,
     g.hitting_eff === null ? "-" : `${g.hitting_eff.toFixed(3)} (${g.attacks})`,
     g.side_out === null ? "-" : `${Math.round(100 * g.side_out)}% (${g.side_out_n})`]);
-  return [
-    h("div", { class: "row", style: "margin-bottom:12px" },
-      h("span", { class: "small" }, "Setter"), setterPick),
-    h("h3", {}, "Where the setter went"),
-    gridBox,
-    h("p", { class: "small muted", style: "margin-top:6px" }, "Net above the front row. Blue " +
-      `efficiency ${effStr(GRID_BANDS.high)} and up, grey ${effStr(GRID_BANDS.low)} to ` +
-      `${effStr(GRID_BANDS.high - 0.001)}, red under ${effStr(GRID_BANDS.low)}, light under ` +
-      `${GRID_BANDS.minAttacks} attacks. In system: the pass before the set scored ${passes}; ` +
-      `after a dig or free ball, the setter within ${rule.max_target_distance_m} m of the ` +
-      "target (a draft, set in config/pass_scale.yaml)."),
-    maps,
-    h("h3", {}, "Setters: the attack after the set, in and out of system"),
-    table(["Setter", "Sets", "In sys", "Eff in sys", "Out sys", "Eff out sys", "Unknown",
-      "Where the sets went (zone: n)"], setterRows, true),
-    h("h3", {}, "Serve receive by zone: average (passes)"),
-    table(["Passer", "All", "Errors", ...pzones.map(zn), "Located"], passerRows),
-    h("h3", {}, "Hitters: efficiency by zone, system and setter"),
-    table(["Hitter", "All", ...hzones.map(zn), "In sys", "Out sys", "By setter"], hitterRows, true),
-    h("p", { class: "small muted", style: "margin-top:6px" }, "Efficiency is (kills - errors) " +
-      "/ attacks, shown with (kills-errors/attacks)."),
-    h("h3", {}, "Trends across games"),
-    table(["Game", "Sets", "Points", "Pass avg", "Hitting eff", "Side-out"], trendRows),
-    h("p", { class: "small muted", style: "margin-top:6px" }, "Only touches whose player was " +
-      "found have a spot or a zone (\"located\"); unreviewed rallies use the pipeline's " +
-      "guesses. Set types (tempo, 4, 52, pipe) come later (roadmap G1)."),
-  ];
+  const effNote = h("p", { class: "small muted", style: "margin-top:8px" }, "Efficiency is " +
+    "(kills - errors) / attacks; in brackets kills-errors/attacks.");
+  return {
+    setting: [
+      h("div", { class: "row spread", style: "margin:8px 0 16px" },
+        h("h2", { style: "margin:0" }, "Where the setter went"),
+        h("label", { class: "row" }, h("span", {}, "Setter"), setterPick)),
+      gridBox,
+      h("p", { class: "small muted", style: "margin-top:8px" }, "Net above the front row. Blue " +
+        `efficiency ${effStr(GRID_BANDS.high)} and up, grey ${effStr(GRID_BANDS.low)} to ` +
+        `${effStr(GRID_BANDS.high - 0.001)}, red under ${effStr(GRID_BANDS.low)}, light under ` +
+        `${GRID_BANDS.minAttacks} attacks. In system: pass ${passes}, or after a dig the ` +
+        `setter within ${rule.max_target_distance_m} m of the target.`),
+      maps,
+      h("h2", {}, "Setters in and out of system"),
+      table(["Setter", "Sets", "In sys", "Eff in sys", "Out sys", "Eff out sys", "Unknown",
+        "Where the sets went (zone: n)"], setterRows, true),
+      effNote],
+    passing: [
+      h("h2", {}, "Passers by zone"),
+      h("p", { class: "muted" }, "Average pass score, with the number of passes in brackets."),
+      table(["Passer", "All", "Errors", ...pzones.map(zn), "Located"], passerRows)],
+    hitting: [
+      h("h2", { style: "margin-top:16px" }, "Hitters by zone, system and setter"),
+      table(["Hitter", "All", ...hzones.map(zn), "In sys", "Out sys", "By setter"], hitterRows, true),
+      effNote],
+    trends: [
+      h("h2", { style: "margin-top:16px" }, "Game by game"),
+      table(["Game", "Sets", "Points", "Pass avg", "Hitting eff", "Side-out"], trendRows),
+      h("p", { class: "small muted", style: "margin-top:8px" }, "Pick a tournament or All " +
+        "tournaments above to compare games.")],
+  };
 }
 
 function courtBase(label) {

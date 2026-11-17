@@ -250,7 +250,7 @@ function videoRow(v, s) {
     h("div", { class: "stack" }, h("span", { class: "name" }, v.key),
       details ? h("span", { class: "small muted" }, details) : null),
     h("span", { class: "num" + (scoreBad ? " bad" : ""), title: c ? c.message : "" },
-      c ? `${c.score[0]} to ${c.score[1]}` : ""),
+      c ? `${c.score[0]}-${c.score[1]}` : ""),
     h("div", { class: "stack" }, h("span", { class: s.next === "queue" ? "bad" : "" }, s.status),
       flagged ? h("span", { class: "small" }, flagged) : null),
     h("div", { class: "row acts" },
@@ -338,17 +338,21 @@ async function statsPage(params) {
   let chosen = (params.get("v") || "").split(",").filter(Boolean);
   if (!chosen.length && vids.length) chosen = [vids[0].key];
   const src = params.get("src") || "pipeline";
-  // Ask for the summary now, alongside the stat sheet, not after it.
-  const summaryP = src === "pipeline" ? summaryFetch(chosen) : null;
-  const situP = src === "pipeline" ? situationalFetch(chosen) : null;
+  const tab = STAT_TABS.some(([k]) => k === params.get("tab")) ? params.get("tab") : "summary";
+  // The tabs past the box score need the game summary and the situational stats: ask for
+  // them now, alongside the stat sheet, and only on those tabs.
+  const deep = src === "pipeline" && ["passing", "setting", "hitting", "trends"].includes(tab);
+  const summaryP = deep ? summaryFetch(chosen) : null;
+  const situP = deep ? situationalFetch(chosen) : null;
   let scale = params.get("pass");
   if (scale !== "3" && scale !== "4") {
     try { scale = localStorage.getItem("passScale"); } catch (_) { scale = null; }
     if (scale !== "3" && scale !== "4") scale = "4";
   }
-  const go = (keys, s, p = scale) => {
+  const hashFor = (keys, s, p, t) => `#/stats?v=${keys.join(",")}&src=${s}&pass=${p}&tab=${t}`;
+  const go = (keys, s, p = scale, t = tab) => {
     try { localStorage.setItem("passScale", p); } catch (_) { /* private mode */ }
-    location.hash = `#/stats?v=${keys.join(",")}&src=${s}&pass=${p}`; };
+    location.hash = hashFor(keys, s, p, t); };
 
   // Sets in folders: tournament -> game -> sets. "Edit folders" moves sets between them.
   const folderTree = scopePicker(fd, vids, chosen, keys => go(keys, src));
@@ -420,23 +424,74 @@ async function statsPage(params) {
     h("button", { class: "quiet", onclick: () => { editor.style.display =
       editor.style.display === "none" ? "" : "none"; } }, "Edit folders"));
 
-  let lead = null, body;
+  // One tab at a time, each its own address (back and forward work, a tab can be linked).
+  const tabs = h("nav", { class: "tabs", "aria-label": "Stats" }, ...STAT_TABS.map(([k, text]) =>
+    h("a", { href: hashFor(chosen, src, scale, k), class: k === tab ? "on" : "",
+      "aria-current": k === tab ? "page" : null }, text)));
+
+  let body;
   try {
     const st = await api(`/stats?videos=${encodeURIComponent(chosen.join(","))}&source=${src}&pass_scale=${scale}`);
-    lead = statsLead(st, chosen.length);
-    body = [rallyStrips(vids.filter(v => chosen.includes(v.key))), ...statsBody(st, src)];
-    if (src === "pipeline") {
-      const names = new Map(st.players.filter(p => p.player !== "?")
-        .map(p => [+p.player, p.name]));
-      body.push(summarySection(summaryP, names), situationalSection(situP, names));
+    const names = new Map(st.players.filter(p => p.player !== "?")
+      .map(p => [+p.player, p.name]));
+    if (tab === "summary") {
+      body = [keyFigures(st, chosen.length), scoreChecks(st),
+        rallyStrips(vids.filter(v => chosen.includes(v.key)))];
+    } else if (tab === "box") {
+      body = statsBody(st, src);
+    } else if (!deep) {
+      body = [h("p", {}, "This tab needs the pipeline's touches: set Touches from to " +
+        "Pipeline and review.")];
+    } else {
+      const [sm, si] = await Promise.all([summaryP, situP]);
+      const parts = situationalParts(si, names);
+      body = tab === "passing" ? [...summaryPassing(sm, names), ...parts.passing]
+        : tab === "setting" ? [...parts.setting, ...summarySets(sm, names)]
+          : tab === "hitting" ? parts.hitting : parts.trends;
     }
   } catch (e) {
-    body = [h("p", { class: "muted" }, e.message)];
+    body = [h("p", { class: "bad" }, e.message)];
   }
   // The title says what is shown: "Pakmen Black, set 2", "Pakmen Black", "Humber 17U".
   const title = scopeTitle(fd, vids, chosen);
   // replaceChildren prints a null as the text "null": leave the empty parts out.
-  view.replaceChildren(...[h("h1", {}, title), picker, lead, editor, ...body].filter(Boolean));
+  view.replaceChildren(...[h("h1", {}, title), picker, editor, tabs, ...body].filter(Boolean));
+}
+
+const STAT_TABS = [["summary", "Summary"], ["box", "Box score"], ["passing", "Passing"],
+  ["setting", "Setting"], ["hitting", "Hitting"], ["trends", "Trends"]];
+
+// Summary tab: the numbers a coach looks for first, large, each with what it is out of.
+function keyFigures(st, nSets) {
+  const t = st.team;
+  const pct = (a, b) => b ? Math.round(100 * a / b) + "%" : "-";
+  const fig = (name, value, sub) => h("div", { class: "figure" },
+    h("div", { class: "name" }, name), h("div", { class: "value" }, value),
+    h("div", { class: "sub" }, sub));
+  const us = t.points_us, them = t.points_them;
+  return h("div", { class: "figures" },
+    fig(nSets === 1 ? (us > them ? "Won" : us < them ? "Lost" : "Tied") : `Points, ${nSets} sets`,
+      `${us}-${them}`, nSets === 1 ? "final score" : "us-them"),
+    fig("Hitting", t.attacks ? effStr(t.hitting_eff) : "-",
+      `${t.attacks || 0} attacks, ${t.kills || 0} kills, ${t.attack_errors || 0} errors`),
+    fig("Passing", t.pass_n ? t.pass_avg.toFixed(2) : "-",
+      `${t.pass_n || 0} serves received`),
+    fig("Side-out", pct(t.side_out_won, t.side_out_chances),
+      `${t.side_out_won || 0} of ${t.side_out_chances || 0} their serves`),
+    fig("Point on our serve", pct(t.serve_points_won, t.serve_points_played),
+      `${t.serve_points_won || 0} of ${t.serve_points_played || 0}`),
+    fig("Aces", String(t.aces || 0),
+      `${t.service_errors || 0} service errors on ${t.serves || 0} serves`));
+}
+
+// The score checks' warning, if any set fails them.
+function scoreChecks(st) {
+  const bad = (st.checks || []).filter(c => c.status !== "ok" &&
+    c.status !== "last_point_unknown");
+  return bad.length ? h("div", { class: "flags" },
+    h("strong", {}, "These stats may be off. The score checks found:"),
+    h("ul", {}, ...bad.map(c => h("li", {}, `${c.video}: ${c.message}` +
+      (c.flagged ? ` ${c.flagged} rallies flagged for review.` : ""))))) : null;
 }
 
 function scopeTitle(fd, vids, chosen) {
@@ -451,37 +506,6 @@ function scopeTitle(fd, vids, chosen) {
   if (games.size === 1) return opp(chosen[0]);
   if (tours.size === 1 && !tours.has(fd.unfiled)) return [...tours][0];
   return `${chosen.length} sets`;
-}
-
-// The page opens with one sentence: the result and the numbers a coach looks for first, each
-// rate with its count. No colour picks out a number; weight does.
-function statsLead(st, nSets) {
-  const t = st.team;
-  const n = (v, txt) => [h("strong", {}, v), h("span", { class: "muted" }, " " + txt)];
-  const parts = [];
-  if (t.hitting_eff !== null && t.hitting_eff !== undefined && t.attacks) {
-    parts.push(["Hit ", ...n(effStr(t.hitting_eff), `on ${t.attacks} attacks`)]);
-  }
-  if (t.pass_avg !== null && t.pass_avg !== undefined && t.pass_n) {
-    parts.push(["passed ", ...n(t.pass_avg.toFixed(2), `on ${t.pass_n} serves`)]);
-  }
-  if (t.side_out_chances) {
-    parts.push(["sided out ", ...n(Math.round(100 * t.side_out_won / t.side_out_chances) + "%",
-      `of ${t.side_out_chances}`)]);
-  }
-  if (t.serves) {
-    parts.push([h("strong", {}, String(t.aces || 0)), ` ace${t.aces === 1 ? "" : "s"} and `,
-      h("strong", {}, String(t.service_errors || 0)),
-      ` service error${t.service_errors === 1 ? "" : "s"}`]);
-  }
-  if (parts.length && typeof parts[0][0] === "string") {
-    parts[0][0] = parts[0][0][0].toUpperCase() + parts[0][0].slice(1);
-  }
-  const us = t.points_us, them = t.points_them;
-  const result = nSets === 1 ? `${us > them ? "Won" : us < them ? "Lost" : "Tied"} ${us} to ${them}. `
-    : `Points ${us} to ${them} over ${nSets} sets. `;
-  return h("p", { class: "lead" }, result,
-    ...parts.flatMap((p, i) => [i ? ", " : "", ...p]), parts.length ? "." : "");
 }
 
 function effStr(v) { return (v < 0 ? "-" : "") + Math.abs(v).toFixed(3); }
@@ -511,12 +535,12 @@ function rallyStrips(vids) {
         }
         return [
           sets.length > 1 ? h("div", { class: "small", style: "margin-top:12px" }, name(v),
-            h("span", { class: "muted" }, `, ${won} to ${lost}, longest run of ours ${best}`)) : null,
+            h("span", { class: "muted" }, `, ${won}-${lost}, longest run of ours ${best}`)) : null,
           h("div", { class: "strip", role: "list", "aria-label": `${v.key}: ${won} points to ${lost}` },
             ...l.rallies.map(r => h("a", { role: "listitem",
               class: r.point_winner === "us" ? "us" : r.point_winner === "them" ? "" : "none",
               href: `#/review/${v.set_id}/${r.id}?all=1`,
-              title: `Rally ${r.rally_number}, ${r.score[0]} to ${r.score[1]}: ` +
+              title: `Rally ${r.rally_number}, ${r.score[0]}-${r.score[1]}: ` +
                 (r.point_winner === "us" ? "our point" : r.point_winner === "them" ? "their point"
                   : label(r.outcome || "no winner")) }))),
           sets.length > 1 ? null : h("p", { class: "small muted" },
@@ -593,36 +617,26 @@ function setName(key, game) {
   return m ? `Set ${m[1]}` : rest.replaceAll("_", " ");
 }
 
+// Box score tab: the table, one line on what it counts, the column key.
 function statsBody(st, src) {
   const t = st.team;
-  const pct = (a, b) => b ? Math.round(100 * a / b) + "%" : "-";
-  const serveLine = h("p", { class: "small muted" },
-    `Points on our serve ${pct(t.serve_points_won, t.serve_points_played)} ` +
-    `(${t.serve_points_won} of ${t.serve_points_played}). Pass average on the ` +
-    `${st.pass_scale}-point scale.`);
   const cols = st.columns;
   const head = h("tr", {}, h("th", {}, "Player"), ...cols.map(c => h("th", { title: label(c) },
     st.short[c])));
   const rows = [...st.players, { player: "TEAM", ...t, team: true }].map(r =>
     h("tr", { class: r.team ? "team" : "" },
-      h("td", {}, r.team ? "Team" : (r.player === "?" ? "#?" : "#" + r.player) +
-        (r.name && r.player !== "?" ? " " + r.name : "") +
-        (r.height_cm ? ` (${Math.round(r.height_cm)} cm)` : "")),
-      ...cols.map(c => h("td", {}, fmt(r[c])))));
+      h("td", {}, r.team ? "Team" : (r.player === "?" ? "Player not known" : "#" + r.player) +
+        (r.name && r.player !== "?" ? " " + r.name : "")),
+      ...cols.map(c => h("td", {}, r[c] === null || r[c] === undefined ? "-"
+        : c === "hitting_eff" ? effStr(r[c]) : c === "pass_avg" ? r[c].toFixed(2) : fmt(r[c])))));
   const note = src === "pipeline"
-    ? `${st.counted} rallies counted; ${st.reviewed} of ${st.rallies} reviewed by you. ` +
-      "Unreviewed rallies use the pipeline's guesses (winner from who serves next)."
+    ? `${st.counted} rallies, ${st.reviewed} reviewed by you. The rest use the pipeline's guesses.`
     : `${st.counted} hand-labelled rallies.`;
-  const bad = (st.checks || []).filter(c => c.status !== "ok" &&
-    c.status !== "last_point_unknown");
-  const checks = bad.length ? h("div", { class: "flags" },
-    h("strong", {}, "The score checks say these stats may be off:"),
-    h("ul", {}, ...bad.map(c => h("li", {}, `${c.video}: ${c.message}` +
-      (c.flagged ? ` ${c.flagged} rallies flagged for review.` : ""))))) : null;
-  return [checks, h("h2", {}, "Box score"), h("p", { class: "small muted" }, note),
-    h("div", { class: "scroll" }, h("table", {}, h("thead", {}, head), h("tbody", {}, rows))),
-    h("p", { class: "small muted" }, cols.map(c => `${st.short[c]} ${label(c)}`).join(", ") + "."),
-    serveLine];
+  return [h("p", { class: "muted" }, note),
+    h("div", { class: "scroll" }, h("table", { class: "big" }, h("thead", {}, head),
+      h("tbody", {}, rows))),
+    h("p", { class: "small muted", style: "margin-top:12px" },
+      cols.map(c => `${st.short[c]} ${label(c)}`).join(", ") + ".")];
 }
 
 function fmt(v) {
@@ -689,7 +703,7 @@ async function reviewPage(setId, rallyId, params) {
   ...(order.includes(rallyId) ? order : [rallyId, ...order]).map(id => {
     const x = byId[id];
     return h("option", { value: id, selected: id === rallyId },
-      `Rally ${x.rally_number}, ${clock(x.start_t)}, ${x.score[0]} to ${x.score[1]}, ` +
+      `Rally ${x.rally_number}, ${clock(x.start_t)}, ${x.score[0]}-${x.score[1]}, ` +
       `sure ${(x.priority || 0).toFixed(2)}` + (x.reviewed ? ", reviewed" : "") +
       (x.flags.length ? ", flagged" : ""));
   }));
@@ -702,7 +716,7 @@ async function reviewPage(setId, rallyId, params) {
       class: x.id === rallyId ? "current" : x.flags.length ? "flagged" : x.reviewed ? "reviewed" : "",
       style: `flex:${Math.max(1, x.end_t - x.start_t).toFixed(1)}`,
       href: `#/review/${setId}/${x.id}${suffix}`,
-      title: `Rally ${x.rally_number}, ${x.score[0]} to ${x.score[1]}` +
+      title: `Rally ${x.rally_number}, ${x.score[0]}-${x.score[1]}` +
         (x.reviewed ? ", reviewed" : "") + (x.flags.length ? ", flagged" : "") })));
   const top = h("div", {},
     h("div", { class: "review-top" },
@@ -710,10 +724,9 @@ async function reviewPage(setId, rallyId, params) {
         h("h1", {}, `${r.video_key}, rally ${r.rally_number}`),
         h("div", { class: "small muted" }, `${reviewed} of ${list.rallies.length} reviewed, ` +
           `${clock(r.start_t)} to ${clock(r.end_t)} (${(r.end_t - r.start_t).toFixed(1)} s). ` +
-          `Score from reviewed rallies ${list.score_reviewed[0]} to ${list.score_reviewed[1]}.`)),
-      h("div", { class: "score", "aria-label": `Score ${score[0]} to ${score[1]}` },
-        h("span", {}, String(score[0])), h("span", { class: "to" }, "to"),
-        h("span", { class: "them" }, String(score[1]))),
+          `Score from reviewed rallies ${list.score_reviewed[0]}-${list.score_reviewed[1]}.`)),
+      h("div", { class: "score", "aria-label": `Score ${score[0]}-${score[1]}` },
+        `${score[0]}-${score[1]}`),
       seg([["queue", "Review queue"], ["flagged", `Flagged (${list.flagged.length})`],
         ["all", "All in order"]], mode, v => {
         location.hash = `#/review/${setId}` + (v === "all" ? "?all=1" :

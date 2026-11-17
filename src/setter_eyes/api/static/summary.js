@@ -15,19 +15,11 @@ function svg(tag, attrs = {}, ...kids) {
 
 function summaryFetch(keys) {
   const p = api(`/summary?videos=${encodeURIComponent(keys.join(","))}`);
-  p.catch(() => {});                    // shown by summarySection; not an unhandled rejection
+  p.catch(() => {});                    // the Stats tab awaits it; not an unhandled rejection
   return p;
 }
 
 // The summary card, filled in when `pending` (from summaryFetch) arrives.
-function summarySection(pending, names) {
-  const title = () => h("h2", {}, "Passing and where the sets went");
-  const box = h("section", {}, title(), h("p", { class: "small muted" }, "Loading"));
-  pending
-    .then(s => box.replaceChildren(title(), ...summaryBody(s, names)))
-    .catch(e => box.replaceChildren(title(), h("p", { class: "muted" }, e.message)));
-  return box;
-}
 
 function who(j, names) { return j === null || j === undefined ? "player not known"
   : `#${j}` + (names.get(j) ? " " + names.get(j) : ""); }
@@ -42,23 +34,27 @@ function barList(rows, max, valueText) {
     h("span", { class: "barvalue small" }, valueText(r)))));
 }
 
-function summaryBody(s, names) {
-  const sets = s.sets, passes = s.passes;
+// Setting tab, after the grids: who our sets went to and in which zone, as bars.
+function summarySets(s, names) {
+  const sets = s.sets;
   const kv = r => `${r.n} set${r.n === 1 ? "" : "s"}` +
     (r.kills ? `, ${r.kills} kill${r.kills === 1 ? "" : "s"}` : "") +
     (r.errors ? `, ${r.errors} error${r.errors === 1 ? "" : "s"}` : "");
   const maxH = Math.max(0, ...sets.by_hitter.map(r => r.n));
   const maxZ = Math.max(0, ...sets.by_zone.map(r => r.n));
-  const setsCol = h("div", { class: "viz-col" },
-    h("div", { class: "viz-title" }, `Where the sets went (${sets.n} attacks off our sets)`),
-    sets.n ? barList(sets.by_hitter.map(r => ({ ...r, label: who(r.jersey, names) })), maxH, kv)
-      : h("p", { class: "muted small" }, "No attacks off our sets yet."),
-    sets.n ? h("div", { class: "viz-sub" }, "By zone of the attack") : null,
-    sets.n ? barList(sets.by_zone.map(r => ({ ...r, label: r.zone })), maxZ, kv) : null,
-    sets.by_setter.length ? h("p", { class: "small muted" }, "Set by: " +
-      sets.by_setter.map(r => `${who(r.jersey, names)} ${r.n}`).join(", ")) : null);
+  if (!sets.n) return [h("h2", {}, "Who the sets went to"), h("p", { class: "muted" }, "No attacks off our sets yet.")];
+  return [h("div", { class: "viz-grid", style: "margin-top:48px" },
+    h("div", {}, h("h2", { style: "margin-top:0" }, "Who the sets went to"),
+      barList(sets.by_hitter.map(r => ({ ...r, label: who(r.jersey, names) })), maxH, kv),
+      sets.by_setter.length ? h("p", { class: "small muted", style: "margin-top:8px" }, "Set by " +
+        sets.by_setter.map(r => `${who(r.jersey, names)} ${r.n}`).join(", ")) : null),
+    h("div", {}, h("h2", { style: "margin-top:0" }, "Zone of the attack"),
+      barList(sets.by_zone.map(r => ({ ...r, label: r.zone })), maxZ, kv)))];
+}
 
-  // Pass scores 0-4: counts, then where each pass was played.
+// Passing tab: pass scores 0-4 as counts, then where each pass was played.
+function summaryPassing(s, names) {
+  const passes = s.passes;
   const maxP = Math.max(1, ...passes.by_score.map(r => r.n));
   const scoreBars = h("div", { class: "scorebars" }, ...passes.by_score.map(r =>
     h("div", { class: "scorebar", title: `${r.n} pass${r.n === 1 ? "" : "es"} scored ${r.score}` },
@@ -73,19 +69,19 @@ function summaryBody(s, names) {
   const legend = h("div", { class: "row small" }, h("span", { class: "muted" }, "Pass score"),
     ...[0, 1, 2, 3, 4].map(n => h("span", { class: "legend-item" },
       h("span", { class: "swatch", style: `background:var(--pass-${n})` }), String(n))));
-  const passCol = h("div", { class: "viz-col" },
-    h("div", { class: "viz-title" }, `Serve receive (${passes.n} scored` +
-      (passes.avg !== null ? `, average ${passes.avg.toFixed(2)}` : "") + ")"),
-    scoreBars,
-    h("div", { class: "row spread", style: "margin-top:10px" },
-      h("div", { class: "viz-sub" }, `Where the passes went (${passes.points.length} located)`),
-      seg([["dots", "Dots"], ["heat", "Heatmap"]], mode, v => { mode = v; drawMap(); })),
-    mapBox, legend, missingLine(passes),
-    h("p", { class: "small muted" }, "Our half of the court from behind our end line, the " +
-      "net at the top, the cross the setter's target. A pass is placed where the setter played " +
-      "it (their feet). Heatmap: each square is the average score of the passes played " +
-      "there, n = how many."));
-  return [h("div", { class: "viz-grid" }, setsCol, passCol)];
+  return [h("div", { class: "viz-grid" },
+    h("div", {},
+      h("h2", { style: "margin-top:0" }, "Pass scores"),
+      h("p", { class: "muted" }, `${passes.n} serves received` +
+        (passes.avg !== null ? `, average ${passes.avg.toFixed(2)}` : "")),
+      scoreBars),
+    h("div", {},
+      h("div", { class: "row spread" },
+        h("h2", { style: "margin:0" }, "Where the passes went"),
+        seg([["dots", "Dots"], ["heat", "Heatmap"]], mode, v => { mode = v; drawMap(); })),
+      mapBox, legend, missingLine(passes),
+      h("p", { class: "small muted" }, "Placed where the setter played the pass. The cross " +
+        "is the setter's target; the heatmap shows the average score per square.")))];
 }
 
 // Scored passes with no spot on the map, by score. Bad passes are the ones most often
