@@ -131,13 +131,15 @@ async function route() {
   }
   const { parts, params } = parseHash();
   const page = parts[0] || "videos";
+  // DESIGN.md's two rooms: Review and Calibrate are the dark film room, the rest is paper.
+  document.body.classList.toggle("film", page === "review" || page === "calibrate");
   document.querySelectorAll("nav a").forEach(a =>
     a.classList.toggle("on", a.dataset.nav ===
       (page === "review" || page === "calibrate" ? "videos" : page)));
   // Say so when a page takes a moment (over the tunnel), instead of showing the old one.
   const old = view.firstChild;
   const slow = setTimeout(() => { if (view.firstChild === old)
-    view.replaceChildren(h("p", { class: "muted" }, "Loading…")); }, 250);
+    view.replaceChildren(h("p", { class: "muted" }, "Loading")); }, 250);
   try {
     if (page === "queue") await queuePage();
     else if (page === "stats") await statsPage(params);
@@ -154,7 +156,7 @@ async function route() {
 }
 
 function errorBox(e) {
-  return h("div", { class: "card" }, h("strong", {}, "Something went wrong: "), e.message);
+  return h("p", { class: "bad" }, "Something went wrong: " + e.message);
 }
 
 window.addEventListener("hashchange", route);
@@ -163,86 +165,115 @@ route();
 // ---- videos -------------------------------------------------------------------------------
 async function videosPage() {
   const draw = async (fresh = false) => {
-    const vids = await api("/videos", { fresh });
-    const list = vids.map(videoCard);
+    const [vids, fd] = await Promise.all([api("/videos", { fresh }), api("/folders")]);
+    const st = vids.map(videoState);
+    const n = pred => st.filter(pred).length;
+    const review = n(s => s.next === "review"), uncal = n(s => s.next === "calibrate"),
+      busy = n(s => s.active);
+    const lead = h("p", { class: "lead" }, `${vids.length} video${vids.length === 1 ? "" : "s"}.`,
+      ...[[review, "to review"], [uncal, "not calibrated"], [busy, "processing"]]
+        .filter(([k]) => k).flatMap(([k, what], i) =>
+          [i ? ", " : " ", h("strong", {}, String(k)), " " + what]),
+      review || uncal || busy ? "." : " Nothing waiting.");
+    // Grouped as in the folders (tournament, then its games), anything unfiled last.
+    const byKey = new Map(vids.map((v, i) => [v.key, [v, st[i]]]));
+    const seen = new Set();
+    const groups = fd.tree.map(t => {
+      const keys = t.games.flatMap(g => g.videos).filter(k => byKey.has(k));
+      keys.forEach(k => seen.add(k));
+      return [t.tournament, keys];
+    }).filter(([, keys]) => keys.length);
+    const rest = vids.map(v => v.key).filter(k => !seen.has(k));
+    if (rest.length) groups.push([fd.unfiled || "Other videos", rest]);
     view.replaceChildren(
-      h("h1", {}, META.team + ": videos"),
+      h("h1", {}, "Videos"), lead,
       h("p", { class: "muted small" }, "Process a video on this PC's GPU, then review its " +
-        "rallies and read the stats. Least confident rallies come first in review."),
-      ...list);
+        "rallies and read the stats. The least confident rallies come first in review."),
+      ...groups.flatMap(([title, keys]) => [h("h2", {}, title),
+        h("div", { class: "vrow vhead" }, h("span", {}, "Set"), h("span", {}, "Score"),
+          h("span", {}, "Status"), h("span", {})),
+        ...keys.map(k => videoRow(...byKey.get(k)))]));
   };
   await draw();
   timer = setInterval(() => draw(true).catch(() => {}), 5000);
 }
 
-function videoCard(v) {
-  const cal = v.calibration;
-  const calibrated = cal && cal.usable;
-  const calChip = !cal ? h("span", { class: "chip bad" }, "not calibrated")
-    : !calibrated ? h("span", { class: "chip bad" }, "auto fit only: tap the court")
-    : h("span", { class: "chip " + (cal.needs_review ? "warn" : "good") },
-        `calibrated` + (cal.rms_px ? ` (${cal.rms_px} px)` : "") +
-        (cal.needs_review ? ", check it" : ""));
-  const steps = Object.entries(v.cache).map(([k, ok]) =>
-    h("span", { class: "chip " + (ok ? "good" : "") }, (ok ? "✓ " : "· ") + k));
-  const job = v.job;
-  const active = job && (job.status === "queued" || job.status === "running");
-  const jobLine = job ? h("div", { class: "small muted" },
-    `job ${job.id}: ${label(job.status)}` + (job.step_name ? `, ${job.step_name}` : "") +
-    (job.status === "running" && job.progress ? ` · ${job.progress}` : "")) : null;
-  const buttons = h("div", { class: "row" },
-    v.has_video ? h("button", { class: calibrated ? "" : "primary", onclick: () => {
-      location.hash = `#/calibrate/${v.key}`; } }, calibrated ? "Recalibrate" : "Calibrate")
-      : null,
-    v.set_id ? h("button", { class: "primary", onclick: () => {
-      location.hash = `#/review/${v.set_id}`; } },
-      `Review (${v.reviewed}/${v.rallies})`) : null,
-    v.rallies ? h("button", { onclick: () => { location.hash = `#/stats?v=${v.key}`; } },
-      "Stats") : null,
-    v.has_video && !active ? h("button", { onclick: async () => {
-      try { await api("/jobs", { body: { video: v.key } }); toast("Queued " + v.key); route(); }
-      catch (e) { toast(e.message, 5000); } } }, "Process") : null);
-  return h("div", { class: "card" },
-    h("div", { class: "row spread" },
-      h("div", {}, h("strong", {}, v.key),
-        h("div", { class: "small muted" },
-          [v.opponent && "vs " + v.opponent, v.venue, v.played_on].filter(Boolean).join(" · "))),
-      buttons),
-    h("div", { class: "row", style: "margin-top:8px" },
-      v.has_video ? null : h("span", { class: "chip" }, "video not on this machine"),
-      calChip,
-      h("a", { class: "chip " + (v.roster ? "good" : ""), href: "#/rosters" +
-        (v.roster ? `/${v.roster.slug}` : "") }, v.roster ? `roster: ${v.roster.name}` : "no roster"),
-      checksChip(v),
-      ...steps),
-    jobLine);
+// What a video needs next, and the one sentence that says so.
+function videoState(v) {
+  const cal = v.calibration, calibrated = cal && cal.usable;
+  const job = v.job, active = job && (job.status === "queued" || job.status === "running");
+  const toReview = v.set_id ? v.rallies - v.reviewed : 0;
+  let next = null, status;
+  if (active) {
+    status = job.status === "queued" ? "Queued for processing"
+      : `Processing, ${job.step_name || "starting"}` + (job.progress ? `, ${job.progress}` : "");
+  } else if (v.has_video && !calibrated) {
+    next = "calibrate";
+    status = cal ? "Only an automatic court fit: tap the court to calibrate" : "Not calibrated";
+  } else if (job && ["failed", "interrupted", "needs_calibration"].includes(job.status)) {
+    next = "queue"; status = `Processing stopped: ${label(job.status)}`;
+  } else if (toReview > 0) {
+    next = "review";
+    status = `${toReview} of ${v.rallies} rallies to review`;
+  } else if (v.rallies) {
+    next = "stats"; status = "Reviewed";
+  } else if (v.has_video) {
+    next = "process"; status = "Calibrated, not processed yet";
+  } else {
+    status = "The video isn't on this machine";
+  }
+  return { next, status, active, calibrated };
 }
 
-// The set's score and sanity checks (rally/sanity.py): legal end, flagged rallies.
-const CHECK_STATUS = { ok: ["good", "score ok"], past_end: ["bad", "score past the set end"],
-  short: ["warn", "set ends short"], last_point_unknown: ["good", "last point to set"] };
-function checksChip(v) {
+function videoRow(v, s) {
   const c = v.checks;
-  if (!c) return null;
-  const [cls, text] = CHECK_STATUS[c.status] || ["", c.status];
-  return h("a", { class: "chip " + cls, title: c.message,
-    href: v.set_id ? `#/review/${v.set_id}?mode=flagged` : "#/" },
-    `set ${c.set_number}: ${c.score[0]}-${c.score[1]}, ${text}` +
-    (c.flagged ? ` · ${c.flagged} flagged` : ""));
+  const go = hash => () => { location.hash = hash; };
+  const process = async () => {
+    try { await api("/jobs", { body: { video: v.key } }); toast("Queued " + v.key); route(); }
+    catch (e) { toast(e.message, 5000); } };
+  const btn = (kind, text, onclick) => h("button", { class: s.next === kind ? "primary" : "",
+    onclick }, text);
+  const flagged = c && c.flagged ? h("a", { href: `#/review/${v.set_id}?mode=flagged` },
+    `${c.flagged} flagged by the score checks`) : null;
+  const scoreBad = c && (c.status === "past_end" || c.status === "short");
+  // Only what tells the sets apart; the rest is in the hover text.
+  const cal = v.calibration;
+  const details = [v.opponent && "against " + v.opponent, v.venue, v.played_on,
+    v.roster ? null : "no roster"].filter(Boolean).join(", ");
+  const more = [s.calibrated ? "Calibrated" + (cal.rms_px ? ` to ${cal.rms_px} px` : "") +
+      (cal.needs_review ? ", worth a check" : "") : null,
+    v.roster ? "roster " + v.roster.name : null,
+    v.has_video && Object.values(v.cache).some(ok => !ok)
+      ? "steps not done: " + Object.entries(v.cache).filter(([, ok]) => !ok).map(([k]) => k).join(", ")
+      : null].filter(Boolean).join(", ");
+  return h("div", { class: "vrow", title: more },
+    h("div", { class: "stack" }, h("span", { class: "name" }, v.key),
+      details ? h("span", { class: "small muted" }, details) : null),
+    h("span", { class: "num" + (scoreBad ? " bad" : ""), title: c ? c.message : "" },
+      c ? `${c.score[0]} to ${c.score[1]}` : ""),
+    h("div", { class: "stack" }, h("span", { class: s.next === "queue" ? "bad" : "" }, s.status),
+      flagged ? h("span", { class: "small" }, flagged) : null),
+    h("div", { class: "row acts" },
+      v.has_video ? btn("calibrate", s.calibrated ? "Recalibrate" : "Calibrate",
+        go(`#/calibrate/${v.key}`)) : null,
+      v.set_id ? btn("review", "Review", go(`#/review/${v.set_id}`)) : null,
+      v.rallies ? btn("stats", "Stats", go(`#/stats?v=${v.key}`)) : null,
+      s.next === "queue" ? btn("queue", "Queue", go("#/queue")) : null,
+      v.has_video && !s.active ? btn("process", "Process", process) : null));
 }
 
 // ---- queue --------------------------------------------------------------------------------
 function bar(share, text) {
   const pct = Math.round(100 * Math.max(0, Math.min(1, share || 0)));
-  return h("div", { class: "bar", title: `${pct}%` },
-    h("div", { class: "fill", style: `width:${pct}%` }),
-    h("span", {}, `${text} ${pct}%`));
+  return h("div", { class: "bar" },
+    h("div", { class: "small" }, `${text}, ${pct}%`),
+    h("div", { class: "track" }, h("div", { class: "fill", style: `width:${pct}%` })));
 }
 
 async function queuePage() {
   let openLog = null;
   // One log box, kept across refreshes so it doesn't flicker or lose its scroll position.
-  const logPre = h("pre", { class: "log" }, "loading…");
+  const logPre = h("pre", { class: "log" }, "loading");
   const refreshLog = async () => {
     if (openLog === null) return;
     const atEnd = logPre.scrollHeight - logPre.scrollTop - logPre.clientHeight < 40;
@@ -255,8 +286,7 @@ async function queuePage() {
     const cards = jobs.map(j => {
       const n = j.steps.length;
       const done = j.status === "done" ? n : j.step;
-      const chipClass = { done: "good", running: "warn", failed: "bad",
-        needs_calibration: "bad", interrupted: "bad" }[j.status] || "";
+      const stopped = ["failed", "needs_calibration", "interrupted"].includes(j.status);
       const actions = h("div", { class: "row" },
         ["queued", "running"].includes(j.status) ? h("button", { onclick: async () => {
           await api(`/jobs/${j.id}/cancel`, { body: {} }); draw(); } }, "Cancel") : null,
@@ -266,7 +296,7 @@ async function queuePage() {
             catch (e) { toast(e.message, 5000); } } }, "Resume") : null,
         h("button", { onclick: () => {
           openLog = openLog === j.id ? null : j.id;
-          logPre.textContent = "loading…"; draw().then(refreshLog); } },
+          logPre.textContent = "loading"; draw().then(refreshLog); } },
           openLog === j.id ? "Hide log" : "Log"));
       const live = j.status === "running";
       const bars = (live || j.status === "queued") ? h("div", { style: "margin:6px 0" },
@@ -277,23 +307,24 @@ async function queuePage() {
         : null;
       const card = h("div", { class: "card" },
         h("div", { class: "row spread" },
-          h("div", {}, h("strong", {}, `#${j.id} ${j.video}`), " ",
-            h("span", { class: "chip " + chipClass }, label(j.status))),
+          h("div", {}, h("strong", {}, j.video), " ",
+            h("span", { class: stopped ? "bad" : "muted" }, label(j.status)),
+            h("span", { class: "muted small" }, `, job ${j.id}`)),
           actions),
-        h("div", { class: "small" }, `step ${Math.min(done + 1, n)}/${n}: ` +
+        h("div", { class: "small" }, `Step ${Math.min(done + 1, n)} of ${n}: ` +
           (j.step_name || "finished") +
-          (j.status === "running" ? ` (${ago(j.step_started)})` : "")),
+          (j.status === "running" ? `, for ${ago(j.step_started)}` : "")),
         bars,
-        j.progress ? h("div", { class: "small mono muted" }, j.progress) : null,
-        j.error ? h("div", { class: "small", style: "color:var(--bad)" }, j.error) : null,
-        h("div", { class: "small muted" }, "queued " + ago(j.created) + " ago" +
+        j.progress ? h("div", { class: "small muted" }, j.progress) : null,
+        j.error ? h("div", { class: "small bad" }, j.error) : null,
+        h("div", { class: "small muted" }, "Queued " + ago(j.created) + " ago" +
           (j.started ? ", started " + ago(j.started) + " ago" : "")));
       if (openLog === j.id) card.append(logPre);
       return card;
     });
-    view.replaceChildren(h("h1", {}, "Processing queue"),
+    view.replaceChildren(h("h1", {}, "Queue"),
       h("p", { class: "muted small" }, "One video at a time on this PC's GPU. Steps: " +
-        META.steps.join(" → ") + ". Detection resumes where it stopped."),
+        META.steps.join(", ") + ". Detection resumes where it stopped."),
       ...(cards.length ? cards : [h("p", { class: "muted" }, "Nothing queued yet.")]));
   };
   await draw();
@@ -324,7 +355,7 @@ async function statsPage(params) {
   const tournaments = [...new Set(Object.values(fd.folders).map(f => f.tournament)
     .filter(t => t !== fd.unfiled))];
   const games = [...new Set(Object.values(fd.folders).map(f => f.game))];
-  const editor = h("div", { class: "card", style: "display:none" },
+  const editor = h("div", { class: "well", style: "display:none" },
     h("div", { class: "small muted" }, "Type a tournament and a game for each set (pick from " +
       "the list or type a new one). Leave the tournament empty for none."),
     h("datalist", { id: "dl-tournaments" }, ...tournaments.map(t => h("option", { value: t }))),
@@ -342,12 +373,12 @@ async function statsPage(params) {
       ...Object.entries(fd.presets).map(([k, p]) => h("option", { value: k,
         selected: k === (cur.preset || "") }, p.label)),
       cur.preset ? null : h("option", { value: "", selected: true }, "custom: " + cur.label));
-      return h("div", { class: "row folder-edit" }, h("span", { class: "mono small" }, g), pick);
+      return h("div", { class: "row folder-edit" }, h("span", { class: "small" }, g), pick);
     }),
     h("div", { class: "small muted", style: "margin-top:8px" }, "Which set of its match each " +
       "video is (from the name's _setN unless changed here):"),
     ...vids.map(v => h("div", { class: "row folder-edit" },
-      h("span", { class: "mono small" }, v.key),
+      h("span", { class: "small" }, v.key),
       h("input", { type: "number", min: 1, max: 9, value: fd.set_numbers[v.key],
         onchange: async e => {
           try {
@@ -369,12 +400,12 @@ async function statsPage(params) {
         } catch (e) { toast(e.message, 5000); }
       };
       tIn.onchange = save; gIn.onchange = save;
-      return h("div", { class: "row folder-edit" }, h("span", { class: "mono small" }, v.key),
+      return h("div", { class: "row folder-edit" }, h("span", { class: "small" }, v.key),
         tIn, gIn);
     }),
     h("button", { onclick: () => route() }, "Done"));
 
-  const picker = h("div", { class: "card" },
+  const picker = h("div", { class: "well" },
     h("div", { class: "row spread" }, h("strong", {}, "Sets"),
       h("div", { class: "row" },
         h("button", { onclick: () => go(vids.map(v => v.key), src) }, "All"),
@@ -388,10 +419,11 @@ async function statsPage(params) {
       seg([["4", "4-point scale"], ["3", "3-point scale (4s count as 3)"]], scale,
         p => go(chosen, src, p))));
 
-  let body;
+  let lead = null, body;
   try {
     const st = await api(`/stats?videos=${encodeURIComponent(chosen.join(","))}&source=${src}&pass_scale=${scale}`);
-    body = statsBody(st, src);
+    lead = statsLead(st, chosen.length);
+    body = [rallyStrips(vids.filter(v => chosen.includes(v.key))), ...statsBody(st, src)];
     if (src === "pipeline") {
       const names = new Map(st.players.filter(p => p.player !== "?")
         .map(p => [+p.player, p.name]));
@@ -400,7 +432,77 @@ async function statsPage(params) {
   } catch (e) {
     body = [h("p", { class: "muted" }, e.message)];
   }
-  view.replaceChildren(h("h1", {}, "Stat sheet"), picker, editor, ...body);
+  const title = chosen.length === 1 ? chosen[0] : chosen.length ? `${chosen.length} sets` : "Stats";
+  // replaceChildren prints a null as the text "null": leave the empty parts out.
+  view.replaceChildren(...[h("h1", {}, title), lead, picker, editor, ...body].filter(Boolean));
+}
+
+// The page opens with one sentence: the result and the numbers a coach looks for first, each
+// rate with its count. No colour picks out a number; weight does.
+function statsLead(st, nSets) {
+  const t = st.team;
+  const n = (v, txt) => [h("strong", {}, v), h("span", { class: "muted" }, " " + txt)];
+  const parts = [];
+  if (t.hitting_eff !== null && t.hitting_eff !== undefined && t.attacks) {
+    parts.push(["Hit ", ...n(effStr(t.hitting_eff), `on ${t.attacks} attacks`)]);
+  }
+  if (t.pass_avg !== null && t.pass_avg !== undefined && t.pass_n) {
+    parts.push(["passed ", ...n(t.pass_avg.toFixed(2), `on ${t.pass_n} serves`)]);
+  }
+  if (t.side_out_chances) {
+    parts.push(["sided out ", ...n(Math.round(100 * t.side_out_won / t.side_out_chances) + "%",
+      `of ${t.side_out_chances}`)]);
+  }
+  if (t.serves) {
+    parts.push([h("strong", {}, String(t.aces || 0)), ` ace${t.aces === 1 ? "" : "s"} and `,
+      h("strong", {}, String(t.service_errors || 0)),
+      ` service error${t.service_errors === 1 ? "" : "s"}`]);
+  }
+  if (parts.length && typeof parts[0][0] === "string") {
+    parts[0][0] = parts[0][0][0].toUpperCase() + parts[0][0].slice(1);
+  }
+  const us = t.points_us, them = t.points_them;
+  const result = nSets === 1 ? `${us > them ? "Won" : us < them ? "Lost" : "Tied"} ${us} to ${them}. `
+    : `Points ${us} to ${them} over ${nSets} sets. `;
+  return h("p", { class: "lead" }, result,
+    ...parts.flatMap((p, i) => [i ? ", " : "", ...p]), parts.length ? "." : "");
+}
+
+function effStr(v) { return (v < 0 ? "-" : "") + Math.abs(v).toFixed(3); }
+
+// One strip per set: every rally in order, our points in court blue, theirs in grey. A block
+// opens that rally in review. Only the first few sets, to keep the page quick.
+function rallyStrips(vids) {
+  const sets = vids.filter(v => v.set_id).slice(0, 6);
+  const box = h("section", {});
+  if (!sets.length) return box;
+  Promise.all(sets.map(v => api(`/sets/${v.set_id}/rallies`).then(l => [v, l]).catch(() => null)))
+    .then(res => {
+      const ok = res.filter(Boolean);
+      if (!ok.length) return;
+      box.replaceChildren(h("h2", {}, "How the set went"), ...ok.flatMap(([v, l]) => {
+        const won = l.rallies.filter(r => r.point_winner === "us").length;
+        const lost = l.rallies.filter(r => r.point_winner === "them").length;
+        let run = 0, best = 0;
+        for (const r of l.rallies) {
+          run = r.point_winner === "us" ? run + 1 : r.point_winner === "them" ? 0 : run;
+          best = Math.max(best, run);
+        }
+        return [
+          sets.length > 1 ? h("div", { class: "small", style: "margin-top:12px" }, v.key) : null,
+          h("div", { class: "strip", role: "list", "aria-label": `${v.key}: ${won} points to ${lost}` },
+            ...l.rallies.map(r => h("a", { role: "listitem",
+              class: r.point_winner === "us" ? "us" : r.point_winner === "them" ? "" : "none",
+              href: `#/review/${v.set_id}/${r.id}?all=1`,
+              title: `Rally ${r.rally_number}, ${r.score[0]} to ${r.score[1]}: ` +
+                (r.point_winner === "us" ? "our point" : r.point_winner === "them" ? "their point"
+                  : label(r.outcome || "no winner")) }))),
+          h("p", { class: "small muted" }, `Our points in blue. Longest run of ours: ${best}. ` +
+            "A block opens that rally."),
+        ].filter(Boolean);
+      }));
+    });
+  return box;
 }
 
 // Processed sets as a tournament -> game -> set tree of checkboxes (data/folders.yaml).
@@ -429,21 +531,16 @@ function folderPicker(fd, vids, chosen, onPick) {
 function statsBody(st, src) {
   const t = st.team;
   const pct = (a, b) => b ? Math.round(100 * a / b) + "%" : "-";
-  const tiles = h("div", { class: "tiles" },
-    tile(`${t.points_us}-${t.points_them}`, "points us - them"),
-    tile(pct(t.side_out_won, t.side_out_chances),
-      `side-out (${t.side_out_won}/${t.side_out_chances})`),
-    tile(pct(t.serve_points_won, t.serve_points_played),
-      `points on our serve (${t.serve_points_won}/${t.serve_points_played})`),
-    tile(fmt(t.hitting_eff), "hitting efficiency"),
-    tile(fmt(t.pass_avg), `pass average, ${st.pass_scale}-point scale (${t.pass_n || 0} ` +
-      "scored passes)"));
+  const serveLine = h("p", { class: "small muted" },
+    `Points on our serve ${pct(t.serve_points_won, t.serve_points_played)} ` +
+    `(${t.serve_points_won} of ${t.serve_points_played}). Pass average on the ` +
+    `${st.pass_scale}-point scale.`);
   const cols = st.columns;
   const head = h("tr", {}, h("th", {}, "Player"), ...cols.map(c => h("th", { title: label(c) },
     st.short[c])));
-  const rows = [{ player: "TEAM", ...t, team: true }, ...st.players].map(r =>
+  const rows = [...st.players, { player: "TEAM", ...t, team: true }].map(r =>
     h("tr", { class: r.team ? "team" : "" },
-      h("td", {}, r.team ? "TEAM" : (r.player === "?" ? "#?" : "#" + r.player) +
+      h("td", {}, r.team ? "Team" : (r.player === "?" ? "#?" : "#" + r.player) +
         (r.name && r.player !== "?" ? " " + r.name : "") +
         (r.height_cm ? ` (${Math.round(r.height_cm)} cm)` : "")),
       ...cols.map(c => h("td", {}, fmt(r[c])))));
@@ -454,16 +551,14 @@ function statsBody(st, src) {
   const bad = (st.checks || []).filter(c => c.status !== "ok" &&
     c.status !== "last_point_unknown");
   const checks = bad.length ? h("div", { class: "flags" },
-    h("strong", {}, "Score checks: these stats may be off"),
+    h("strong", {}, "The score checks say these stats may be off:"),
     h("ul", {}, ...bad.map(c => h("li", {}, `${c.video}: ${c.message}` +
       (c.flagged ? ` ${c.flagged} rallies flagged for review.` : ""))))) : null;
-  return [tiles, checks, h("p", { class: "small muted" }, note),
+  return [checks, h("h2", {}, "Box score"), h("p", { class: "small muted" }, note),
     h("div", { class: "scroll" }, h("table", {}, h("thead", {}, head), h("tbody", {}, rows))),
-    h("p", { class: "small muted" }, cols.map(c => `${st.short[c]} = ${label(c)}`).join(" · "))];
+    h("p", { class: "small muted" }, cols.map(c => `${st.short[c]} ${label(c)}`).join(", ") + "."),
+    serveLine];
 }
-
-function tile(v, k) { return h("div", { class: "tile" }, h("div", { class: "v" }, v),
-  h("div", { class: "k" }, k)); }
 
 function fmt(v) {
   if (v === null || v === undefined) return "-";
@@ -529,26 +624,43 @@ async function reviewPage(setId, rallyId, params) {
   ...(order.includes(rallyId) ? order : [rallyId, ...order]).map(id => {
     const x = byId[id];
     return h("option", { value: id, selected: id === rallyId },
-      `${x.reviewed ? "✓ " : ""}${x.flags.length ? "⚠ " : ""}#${x.rally_number}  ` +
-      `${clock(x.start_t)}  ${x.score[0]}-${x.score[1]}  conf ${(x.priority || 0).toFixed(2)}`);
+      `Rally ${x.rally_number}, ${clock(x.start_t)}, ${x.score[0]} to ${x.score[1]}, ` +
+      `sure ${(x.priority || 0).toFixed(2)}` + (x.reviewed ? ", reviewed" : "") +
+      (x.flags.length ? ", flagged" : ""));
   }));
   const reviewed = list.rallies.filter(x => x.reviewed).length;
-  const top = h("div", { class: "card" },
-    h("div", { class: "row spread" },
-      h("strong", {}, `${r.video_key}: rally ${r.rally_number}`),
+  const score = (byId[rallyId] && byId[rallyId].score) || d.score || [0, 0];
+  // Every rally of the set in order, as wide as it is long: this one in yellow, flagged
+  // ones in red, reviewed ones lighter. A block opens that rally.
+  const timeline = h("div", { class: "timeline", "aria-label": "Rallies in this set" },
+    ...list.rallies.map(x => h("a", {
+      class: x.id === rallyId ? "current" : x.flags.length ? "flagged" : x.reviewed ? "reviewed" : "",
+      style: `flex:${Math.max(1, x.end_t - x.start_t).toFixed(1)}`,
+      href: `#/review/${setId}/${x.id}${suffix}`,
+      title: `Rally ${x.rally_number}, ${x.score[0]} to ${x.score[1]}` +
+        (x.reviewed ? ", reviewed" : "") + (x.flags.length ? ", flagged" : "") })));
+  const top = h("div", {},
+    h("div", { class: "review-top" },
+      h("div", { class: "title" },
+        h("h1", {}, `${r.video_key}, rally ${r.rally_number}`),
+        h("div", { class: "small muted" }, `${reviewed} of ${list.rallies.length} reviewed, ` +
+          `${clock(r.start_t)} to ${clock(r.end_t)} (${(r.end_t - r.start_t).toFixed(1)} s). ` +
+          `Score from reviewed rallies ${list.score_reviewed[0]} to ${list.score_reviewed[1]}.`)),
+      h("div", { class: "score", "aria-label": `Score ${score[0]} to ${score[1]}` },
+        h("span", {}, String(score[0])), h("span", { class: "to" }, "to"),
+        h("span", { class: "them" }, String(score[1]))),
       seg([["queue", "Review queue"], ["flagged", `Flagged (${list.flagged.length})`],
         ["all", "All in order"]], mode, v => {
         location.hash = `#/review/${setId}` + (v === "all" ? "?all=1" :
           v === "flagged" ? "?mode=flagged" : ""); })),
-    h("div", { class: "small muted" }, `${reviewed}/${list.rallies.length} reviewed · ` +
-      `score from reviewed rallies ${list.score_reviewed[0]}-${list.score_reviewed[1]} · ` +
-      `${clock(r.start_t)}-${clock(r.end_t)} (${(r.end_t - r.start_t).toFixed(1)} s)`),
+    timeline,
     h("div", { class: "small " + (list.checks.status === "ok" ||
       list.checks.status === "last_point_unknown" ? "muted" : "warntext") },
       `Set ${list.checks.set_number} (${list.checks.format.label}): ${list.checks.message}`),
-    d.flags.length ? h("div", { class: "flags" }, h("strong", {}, "Checks flag this rally"),
-      h("ul", {}, ...d.flags.map(f => h("li", {}, f)))) : null,
-    h("div", { style: "margin-top:8px" }, picker));
+    h("div", { style: "margin:8px 0 16px; max-width:640px" }, picker));
+  const flagsBox = d.flags.length ? h("div", { class: "flags" },
+    h("strong", {}, d.flags.length === 1 ? d.flags[0] : "The score checks flag this rally:"),
+    d.flags.length > 1 ? h("ul", {}, ...d.flags.map(f => h("li", {}, f))) : null) : null;
 
   // player
   const video = h("video", { playsinline: true, preload: "auto", controls: false });
@@ -556,8 +668,8 @@ async function reviewPage(setId, rallyId, params) {
   const bar = h("input", { type: "range", min: 0, max: 1000, value: 0 });
   const now = () => t0() + video.currentTime;
   const show = () => {
-    readout.textContent = `clip ${video.currentTime.toFixed(3)} s | video ${clock(now())}` +
-      ` | frame ${Math.round(now() * fps)}`;
+    readout.textContent = `Clip ${video.currentTime.toFixed(3)} s, video ${clock(now())}, ` +
+      `frame ${Math.round(now() * fps)}`;
     if (video.duration) bar.value = 1000 * video.currentTime / video.duration;
   };
   const seek = t => { video.pause(); video.currentTime = Math.max(0, t - t0()); };
@@ -574,30 +686,31 @@ async function reviewPage(setId, rallyId, params) {
   video.onclick = () => (video.paused ? video.play() : video.pause());
   const slowBtn = h("button", { onclick: () => {
     video.playbackRate = video.playbackRate === 1 ? 0.25 : 1;
-    slowBtn.classList.toggle("on", video.playbackRate !== 1); } }, "×0.25");
+    slowBtn.classList.toggle("on", video.playbackRate !== 1); } }, "Quarter speed");
   const widen = (key, label) => h("label", { class: "row small" }, label,
     h("input", { type: "number", min: 0, max: 60, step: 1, value: S[key], onchange: e => {
       S[key] = Math.max(0, +e.target.value || 0); loadClip(); drawTouches(); drawSpan(); } }));
   const player = h("div", {},
-    d.has_video ? video : h("div", { class: "card muted" },
+    d.has_video ? video : h("p", { class: "card muted" },
       "The video isn't on this machine: review the touches without the clip, or open " +
       "the app on the desktop."),
     readout, bar,
     h("div", { class: "row" },
-      h("button", { onclick: () => seek(now() - 0.1) }, "−0.1 s"),
-      h("button", { onclick: () => frame(-1) }, "◀ frame"),
-      h("button", { class: "primary", onclick: () => (video.paused ? video.play() : video.pause()) },
-        "Play / pause"),
-      h("button", { onclick: () => frame(1) }, "frame ▶"),
-      h("button", { onclick: () => seek(now() + 0.1) }, "+0.1 s"), slowBtn),
+      h("button", { onclick: () => (video.paused ? video.play() : video.pause()) },
+        "Play or pause"),
+      h("button", { onclick: () => seek(now() - 0.1) }, "Back 0.1 s"),
+      h("button", { onclick: () => frame(-1) }, "Back a frame"),
+      h("button", { onclick: () => frame(1) }, "Forward a frame"),
+      h("button", { onclick: () => seek(now() + 0.1) }, "Forward 0.1 s"), slowBtn),
     h("div", { class: "row", style: "margin-top:8px" },
-      widen("before", "s before"), widen("after", "s after")),
-    h("p", { class: "small muted" }, "Keys: , . step a frame · space plays · ↑ ↓ (or k j) " +
-      "pick a touch and jump to it · on that touch: s serve, r receive, e set, a attack, " +
-      "b block, d dig, p dump, f free ball, o overpass, c coverage, x switches team, " +
-      "0-4 pass score, t moves it to now, Delete removes it · n adds a touch now · " +
-      "w we won, l they won, R replay, N not a rally · Enter saves and goes to the next, " +
-      "Shift+Enter saves. Times below are seconds into the clip (the \"clip\" time above)."),
+      widen("before", "Seconds before"), widen("after", "Seconds after")),
+    h("p", { class: "small muted", style: "margin-top:8px" }, "Keys: comma and full stop " +
+      "step a frame, space plays. Up and down (or k and j) pick a touch and jump to it. On " +
+      "that touch: s serve, r receive, e set, a attack, b block, d dig, p dump, f free ball, " +
+      "o overpass, c coverage, x switches team, 0 to 4 pass score, t moves it to now, " +
+      "Delete removes it. n adds a touch now. w we won, l they won, R replay, N not a rally. " +
+      "Enter saves and goes to the next, Shift+Enter saves. Touch times are seconds into " +
+      "the clip."),
     mergeButtons());
 
   function mergeButtons() {
@@ -631,13 +744,13 @@ async function reviewPage(setId, rallyId, params) {
   // A point the pipeline missed entirely (taken for downtime): mark it in the clip, add it.
   function missedBox() {
     const M = { start: null, end: null, serving: null };
-    const box = h("div", { class: "card", style: "margin-top:8px" });
+    const box = h("div", { class: "card", style: "margin-top:12px" });
     const gapNote = d.prev && d.prev.gap_s > META.missed_point_gap_s
-      ? h("div", { class: "small", style: "color:var(--warn)" }, `${d.prev.gap_s} s since the ` +
+      ? h("div", { class: "small bad" }, `${d.prev.gap_s} s since the ` +
         "previous rally: points rarely take that long to start, so one may be missing here.")
       : null;
     const draw = () => box.replaceChildren(
-      h("strong", {}, "Missed point in this clip?"),
+      h("strong", { class: "panel-title" }, "Missed point in this clip?"),
       gapNote || "",                      // replaceChildren would print a null as "null"
       h("div", { class: "small muted" }, "Widen the clip (s before / after) to see it, then " +
         "mark where it starts (the serve) and ends."),
@@ -647,7 +760,7 @@ async function reviewPage(setId, rallyId, params) {
         h("button", { onclick: () => { M.end = now(); draw(); } },
           "Ends here" + (M.end !== null ? ` (${clock(M.end)})` : "")),
         seg([["us", "We serve"], ["them", "They serve"]], M.serving, v => { M.serving = v; draw(); }),
-        h("button", { class: "primary", disabled: M.start === null || M.end === null,
+        h("button", { disabled: M.start === null || M.end === null,
           onclick: async () => {
             if (M.end <= M.start) { toast("It has to end after it starts."); return; }
             try {
@@ -667,14 +780,14 @@ async function reviewPage(setId, rallyId, params) {
   function drawTouches() {
     const rows = visible().map(x => {
       const row = h("div", { class: "touch " + (x.team || "") + (x === S.sel ? " sel" : "") },
-        h("button", { class: "iconbtn", title: "go to this touch", onclick: () => {
-          S.sel = x; seek(x.t); drawTouches(); } }, "▶"),
+        h("button", { class: "iconbtn", title: "Go to this touch", onclick: () => {
+          S.sel = x; seek(x.t); drawTouches(); } }, "Go"),
         h("input", { type: "number", step: 0.001, value: (x.t - t0()).toFixed(3),
           onchange: e => { x.t = t0() + (+e.target.value); suggest(); } }),
         select(["us", "them"], x.team, v => { x.team = v; drawTouches(); suggest(); }),
         select(META.actions, x.action, v => { x.action = v; drawTouches(); suggest(); }, "action?"),
-        h("button", { class: "iconbtn", title: "delete", onclick: () => {
-          x.delete = true; drawTouches(); suggest(); } }, "✕"));
+        h("button", { class: "iconbtn", title: "Remove this touch", onclick: () => {
+          x.delete = true; drawTouches(); suggest(); } }, "Remove"));
       if (x.action_confidence !== undefined && x.action_confidence !== null && x.id) {
         row.append(h("div", { class: "sure" }, `pipeline sure ${x.action_confidence.toFixed(2)}`));
       }
@@ -683,7 +796,7 @@ async function reviewPage(setId, rallyId, params) {
     });
     touchBox.replaceChildren(...rows,
       h("div", { class: "row", style: "margin-top:8px" },
-        h("button", { onclick: addTouch }, "+ Touch at the current frame")));
+        h("button", { onclick: addTouch }, "Add a touch at this frame")));
   }
 
   function addTouch() {
@@ -692,13 +805,13 @@ async function reviewPage(setId, rallyId, params) {
   }
 
   // Who touched it (our touches) and, on our receive, the pass score 0-4.
-  // A pipeline guess shows how sure it was and a ✓ to confirm it as it is; setting a value
+  // A pipeline guess shows how sure it was and a Right button to confirm it; setting a value
   // confirms it too. Only confirmed ones count as labels (export_reviewed.py).
   function extraRow(x) {
     const guess = (v, c, checked, confirm, from = "pipeline guess") =>
       v !== null && v !== undefined && !checked && c !== null && c !== undefined && c < 1
         ? h("span", { class: "row small muted" }, `${from}, sure ${c.toFixed(2)}`,
-          h("button", { class: "iconbtn", title: "it's right", onclick: confirm }, "✓"))
+          h("button", { class: "iconbtn", title: "The guess is right", onclick: confirm }, "Right"))
         : null;
     const who = h("select", { onchange: e => {
       x.jersey = e.target.value === "" ? null : +e.target.value; x.jersey_checked = true; drawTouches(); } },
@@ -727,10 +840,10 @@ async function reviewPage(setId, rallyId, params) {
   function drawSpan() {
     spanBox.replaceChildren(h("div", { class: "row" },
       h("span", { class: "small" }, "Started (serve)"), spanInput("start"),
-      h("button", { onclick: () => { S.start = now(); drawSpan(); } }, "= now")),
+      h("button", { onclick: () => { S.start = now(); drawSpan(); } }, "Set to now")),
     h("div", { class: "row", style: "margin-top:6px" },
       h("span", { class: "small" }, "Ended (touches after it go)"), spanInput("end"),
-      h("button", { onclick: () => { S.end = now(); drawSpan(); suggest(); } }, "= now")));
+      h("button", { onclick: () => { S.end = now(); drawSpan(); suggest(); } }, "Set to now")));
   }
 
   // point
@@ -743,7 +856,7 @@ async function reviewPage(setId, rallyId, params) {
     const guess = !r.reviewed && r.point_winner ? h("div", { class: "small muted" },
       `Pipeline's guess: ${r.point_winner} (from who serves next)`) : null;
     pointBox.replaceChildren(
-      h("div", { class: "small" }, "Who won the point?"), seg(winners, S.winner, v => {
+      h("div", { class: "small", style: "margin-bottom:4px" }, "Who won the point?"), seg(winners, S.winner, v => {
         S.winner = v; drawPoint(); suggest(); }), guess,
       scored ? h("div", { style: "margin-top:8px" },
         h("div", { class: "small" }, `How (suggested from the last touch: ${label(S.suggested)})`),
@@ -792,12 +905,13 @@ async function reviewPage(setId, rallyId, params) {
   view.replaceChildren(top, h("div", { class: "review" },
     h("div", {}, player),
     h("div", {},
-      h("div", { class: "card" }, h("strong", {}, "Touches"), touchBox),
-      h("div", { class: "card" }, h("strong", {}, "Rally"), spanBox),
-      h("div", { class: "card" }, h("strong", {}, "Point"), pointBox),
+      flagsBox,
+      h("div", { class: "card" }, h("span", { class: "panel-title" }, "Touches"), touchBox),
+      h("div", { class: "card" }, h("span", { class: "panel-title" }, "Rally"), spanBox),
+      h("div", { class: "card" }, h("span", { class: "panel-title" }, "Point"), pointBox),
       h("div", { class: "row" },
         h("button", { onclick: () => save(false) }, "Save"),
-        h("button", { class: "primary", onclick: () => save(true) }, "Save & next")))));
+        h("button", { class: "primary", onclick: () => save(true) }, "Save and next")))));
   drawTouches(); drawSpan(); drawPoint(); loadClip(); suggest();
 
   // Keys (roadmap E4): review a rally without the mouse. Letters act on the selected touch

@@ -318,8 +318,10 @@ Queue). The landing page, marketing and login come later.
   `impeccable` plugin (marketplace `pbakaus/impeccable`; runs hooks after every edit and at
   every stop, so turn it off in `/plugin` if they get in the way), and the
   `designer-skills` plugins (marketplace `Owl-Listener/designer-skills`).
-- Plan: audit Review and Stats against DESIGN.md, then restyle them, then the rest. Keep
-  everything that works (routes, keys, data); restyle, don't rebuild behaviour.
+- Done 2026-11-17: every page restyled to direction D of the design canvas (DESIGN.md
+  "How the coach moves through it"), routes, keys and data unchanged. Fonts self-hosted in
+  `static/fonts/` (OFL). Keep everything that works; restyle, don't rebuild behaviour.
+  Check changes with the scanner above (0 findings on 2026-11-17).
 
 ## Working across machines and conversations
 Work happens on a desktop (footage, GPU, `data/`) and a laptop, in separate Claude Code

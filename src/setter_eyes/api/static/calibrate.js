@@ -47,10 +47,10 @@ async function calibratePage(key, params) {
 
   const img = new Image();
   const canvas = h("canvas", { style: "width:100%;display:block;touch-action:none;" +
-    "border-radius:8px;background:#000;cursor:crosshair" });
+    "border-radius:6px;background:#000;cursor:crosshair" });
   const loupe = h("canvas", { width: 180, height: 180, style: "position:absolute;top:8px;" +
-    "right:8px;width:180px;height:180px;border:2px solid #fff;border-radius:8px;" +
-    "display:none;pointer-events:none;box-shadow:0 2px 8px #0008" });
+    "right:8px;width:180px;height:180px;outline:1px solid #E8EAED;" +
+    "display:none;pointer-events:none" });
   const stage = h("div", { style: "position:relative" }, canvas, loupe);
   const panel = h("div");
   const status = h("div", { class: "small muted" });
@@ -159,19 +159,19 @@ async function calibratePage(key, params) {
 
   function drawPanel() {
     const nudges = h("div", { class: "row", style: "margin-top:8px" },
-      h("span", { class: "small" }, "Nudge the last point:"),
-      ...[["←", -1, 0], ["↑", 0, -1], ["↓", 0, 1], ["→", 1, 0]].map(([t, dx, dy]) =>
-        h("button", { class: "iconbtn", onclick: () => nudge(dx, dy) }, t)));
+      h("span", { class: "small" }, "Nudge the last point (or the arrow keys):"),
+      ...[["←", "left", -1, 0], ["↑", "up", 0, -1], ["↓", "down", 0, 1], ["→", "right", 1, 0]]
+        .map(([t, name, dx, dy]) => h("button", { class: "iconbtn", "aria-label": "Nudge " + name,
+          title: "Nudge " + name, onclick: () => nudge(dx, dy) }, t)));
     const counts = h("div", { class: "small muted", style: "margin-top:6px" },
       `${nPoints()} court points, ${nLine()} line points. Needs 4 court points and 6 in ` +
       "total; more points spread over the court give a better fit.");
     if (S.phase === "points") {
       const n = K[S.i];
       const chips = h("div", { class: "row", style: "margin-top:8px" }, ...K.map((k, idx) =>
-        h("button", { class: "chip " + (k in S.clicks ? "good" : ""),
-          style: "min-height:32px;" + (idx === S.i ? "outline:2px solid var(--accent)" : ""),
+        h("button", { class: idx === S.i ? "on" : "", style: "min-height:32px;padding:4px 10px",
           onclick: () => { S.i = idx; redraw(); } },
-        (k in S.clicks ? "✓ " : S.skipped.has(k) ? "– " : "") + pretty(k))));
+        pretty(k) + (k in S.clicks ? ", done" : S.skipped.has(k) ? ", skipped" : ""))));
       panel.replaceChildren(
         n ? h("div", {}, h("strong", {}, `Point ${S.i + 1}/${K.length}: ${pretty(n)}`),
           h("div", { class: "small" }, POINT_HINTS[n] || ""),
@@ -184,7 +184,7 @@ async function calibratePage(key, params) {
             redraw(); } }, "Skip (can't see it)") : null,
           h("button", { onclick: undo }, "Undo"),
           h("button", { class: "primary", onclick: () => { S.phase = "lines"; S.j = 0;
-            redraw(); } }, "Next: line points →")),
+            redraw(); } }, "Next: line points")),
         nudges, counts, chips);
     } else if (S.phase === "lines") {
       const n = L[S.j];
@@ -201,7 +201,7 @@ async function calibratePage(key, params) {
           n ? h("button", { onclick: () => { S.j += 1; redraw(); } }, "Next line") : null,
           h("button", { onclick: undo }, "Undo"),
           h("button", { onclick: () => { S.phase = "points"; S.i = nextOpen(0); redraw(); } },
-            "← Court points"),
+            "Back to court points"),
           h("button", { class: "primary", onclick: check }, "Check the fit")),
         nudges, counts);
     } else {
@@ -211,7 +211,8 @@ async function calibratePage(key, params) {
           : "The fit is loose: look closely, or adjust the points"),
         h("div", { class: "small" }, `court points off by ${r.rms} px, line points by ` +
           `${r.line_rms} px (good: under ${r.limit_px} px at full size)`),
-        h("img", { src: r.overlay, style: "width:100%;border-radius:8px;margin-top:8px" }),
+        h("img", { src: r.overlay, alt: "The court drawn back over the frame",
+          style: "width:100%;border-radius:6px;margin-top:8px" }),
         h("div", { class: "row", style: "margin-top:8px" },
           h("button", { onclick: () => { S.phase = "points"; S.i = nextOpen(0); redraw(); } },
             "Adjust points"),
@@ -223,7 +224,7 @@ async function calibratePage(key, params) {
   const body = () => ({ frame: S.frame, clicks: S.clicks, line_clicks: S.lines });
 
   async function check() {
-    status.textContent = "solving…";
+    status.textContent = "Solving";
     try {
       S.solved = await api(`/videos/${enc}/calibration/solve`, { body: body() });
       S.phase = "check"; status.textContent = ""; redraw();
@@ -272,17 +273,17 @@ async function calibratePage(key, params) {
     location.hash = `#/calibrate/${enc}?f=${f}`;
   };
   const chooser = h("div", { class: "card" },
-    h("div", { class: "row spread" }, h("strong", {}, `Calibrate ${key}`),
-      h("span", { class: "small muted" }, `net ${info.net_height_m} m · ${info.width}×` +
-        `${info.height} · frame ${S.frame} (${clock(S.frame / info.fps)})`)),
+    h("div", { class: "row spread" }, h("h1", {}, `Calibrate ${key}`),
+      h("span", { class: "small muted" }, `Net ${info.net_height_m} m, ${info.width} by ` +
+        `${info.height}, frame ${S.frame} (${clock(S.frame / info.fps)})`)),
     h("p", { class: "small muted" }, "Pick a frame where the court lines are clear (few " +
       "players standing on them), then tap the court points in order. Each video needs " +
       "this once; the camera is followed from this frame."),
     h("div", { class: "row" },
-      h("button", { onclick: () => loadAt(S.frame / info.fps - 10) }, "−10 s"),
-      h("label", { class: "row small" }, "seconds", tInput),
+      h("button", { onclick: () => loadAt(S.frame / info.fps - 10) }, "Back 10 s"),
+      h("label", { class: "row small" }, "Seconds", tInput),
       h("button", { onclick: () => loadAt(+tInput.value) }, "Load frame"),
-      h("button", { onclick: () => loadAt(S.frame / info.fps + 10) }, "+10 s")),
+      h("button", { onclick: () => loadAt(S.frame / info.fps + 10) }, "Forward 10 s")),
     cur ? h("div", { class: "small muted", style: "margin-top:6px" },
       `Current calibration: ${cur.method}` +
       (cur.usable ? "" : " (an automatic fit, not trusted: tap the court)") +
@@ -292,8 +293,8 @@ async function calibratePage(key, params) {
     status);
 
   // The frame as wide as the page (taps need the size); the steps under it.
-  view.replaceChildren(chooser, stage, h("div", { class: "card", style: "margin-top:10px" }, panel));
-  status.textContent = "loading the frame…";
+  view.replaceChildren(chooser, stage, h("div", { class: "card", style: "margin-top:12px" }, panel));
+  status.textContent = "Loading the frame";
   img.onload = () => {
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     status.textContent = ""; S.i = nextOpen(0); redraw();

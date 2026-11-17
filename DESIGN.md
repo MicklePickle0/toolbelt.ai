@@ -34,6 +34,11 @@ typography:
     fontSize: 24px
     fontWeight: 600
     letterSpacing: 0
+  lead:
+    fontFamily: Barlow
+    fontSize: 26px
+    fontWeight: 400
+    lineHeight: 1.3
   body:
     fontFamily: Barlow
     fontSize: 15px
@@ -148,20 +153,28 @@ Solid colours only. No opacity, no tints of a colour to make a new one, no gradi
 
 ### How the coach moves through it
 
-1. **Videos.** One row per set, grouped by game: a frame from the video, the name, the
-   score, and one line on what it needs ("12 rallies to review", "Not calibrated"). The one
-   primary button on each row is the next step. A set's status is a short phrase in muted
-   text, not a coloured badge.
+The app follows direction D of the design canvas (2026-11-17): A's two rooms, B's opening
+sentence and rally strip, C's setter grids and tables.
+
+1. **Videos.** Opens with one sentence ("25 videos. 11 to review."). Then one row per set,
+   grouped by tournament (the folders): the name with opponent, venue and date under it,
+   the score (miss red when the score checks fail, the reason on hover), one status phrase
+   ("39 of 53 rallies to review", "Not calibrated") with a link to the flagged rallies, and
+   the buttons. The one primary button on each row is the next step. No badges; no frame
+   per row yet (it would cost a frame decode per set over the tunnel).
 2. **Calibrate.** Film room. The frame fills the space, the court drawn over it in court
-   lines; controls in one strip below.
-3. **Review.** Film room. Video, then the touches beside it as a plain list (time, team,
-   action, player, pass). The current touch has the ball-yellow bar on its left and plays
-   in sync with the video. Keys are listed once in a small muted line under the list.
-   Score checks appear as one sentence above the list when a rally is flagged.
-4. **Stats.** Stat sheet. The box score first (players by rows, numbers right-aligned,
-   team total in 600), then the court maps (passing, set from / set to), then the
-   situational tables. Every rate shows its count next to it in muted ("0.059 on 34").
-5. **Search, Rosters, Queue.** Same sheet, same tables.
+   lines; controls below it.
+3. **Review.** Film room. Title and the score in large display figures ("28 to 19"), then
+   the rally timeline (every rally as wide as it is long: this one ball yellow, flagged ones
+   film-miss, reviewed ones film-muted; a block opens that rally). Video on the left, the
+   flags as plain sentences and the touches on the right. The current touch is outlined in
+   ball yellow all the way round (not a stripe on its left: a coloured side stripe is a
+   stock generated-design move). Keys are listed once in a small muted paragraph.
+4. **Stats.** Stat sheet. The set's name, then the opening sentence, then the set picker in
+   a well, then the rally strip, the box score (players by rows, team total last in 600),
+   the passing and set maps, the setter grids, and the situational tables. Every rate shows
+   its count next to it in muted ("0.059 on 34").
+5. **Search, Rosters, Queue.** Same sheet, same tables; filters in a well.
 
 ## Elevation & depth
 
@@ -192,6 +205,24 @@ squircles, no fully rounded chips.
   `:focus-visible`, on paper and on film.
 - **Empty and loading states:** one plain sentence saying what will be here and how to get it
   ("No reviewed rallies yet. Review a set to see its stats.").
+- **Opening sentence (lead):** a page of numbers opens with one sentence in the lead size
+  that carries them: "Won 32 to 23. Hit 0.297 on 37 attacks, passed 2.38 on 26 serves,
+  sided out 58% of 19, 6 aces and 5 service errors." The figures are 600 ink, their counts
+  muted. No number is picked out in a colour; weight does the work. It replaces stat tiles
+  (a big number over a small label), which are not used.
+- **Rally strip:** every rally of a set in order, a 14 by 22px block each, court blue for our
+  point, them grey for theirs, well for no winner; each block links to that rally in
+  Review. One line under it: the longest run.
+- **Setter grid:** the six attack zones as a 3 by 2 grid, net (a 3px ink rule) above the
+  front row, drawn three times side by side: all sets, in system, out of system. Each
+  cell says the zone and its attack count, and from 3 attacks its efficiency and kill
+  rate. The fill is a band of efficiency in solid tokens: court 0.250 and up, them 0.100 to
+  0.249, miss under 0.100, well under 3 attacks. The legend sentence under the grids states
+  the bands.
+- **Wells hold controls:** filters and pickers sit in a well; buttons inside a well are
+  paper so they read.
+- **No dark mode on the stat sheet.** Paper is the stat sheet in any system theme; the film
+  room is the only dark surface.
 
 ## References
 

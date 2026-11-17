@@ -28,14 +28,14 @@ async function rostersPage(slug) {
       "videos it played so stats show names, and so players can be queried across games."),
     ...list.map(r => h("div", { class: "card" },
       h("div", { class: "row spread" },
-        h("div", {}, h("strong", {}, r.name),
+        h("div", {}, h("h2", { style: "margin:0" }, r.name),
           h("div", { class: "small muted" }, [r.season, `${r.players.length} players`,
-            `${r.videos.length} videos`].filter(Boolean).join(" · "))),
-        h("button", { class: "primary", onclick: () => { location.hash = `#/rosters/${r.slug}`; } },
+            `${r.videos.length} videos`].filter(Boolean).join(", "))),
+        h("button", { onclick: () => { location.hash = `#/rosters/${r.slug}`; } },
           "Edit")),
       h("div", { class: "small", style: "margin-top:6px" },
         r.players.map(p => `#${p.number} ${p.name}`).join(", ") || "No players yet."))),
-    h("div", { class: "card" }, h("strong", {}, "New roster"),
+    h("div", { class: "well" }, h("strong", {}, "New roster"),
       h("div", { class: "row", style: "margin-top:8px" }, name, season,
         h("button", { class: "primary", onclick: create }, "Create"))));
 }
@@ -75,13 +75,13 @@ async function rosterEdit(slug) {
             oninput: e => { p.position = e.target.value; } }),
           h("input", { type: "checkbox", checked: p.libero,
             onchange: e => { p.libero = e.target.checked; } }),
-          h("button", { class: "iconbtn", title: "remove", onclick: () => {
-            rows.splice(i, 1); drawRows(); } }, "✕"));
+          h("button", { class: "iconbtn", title: "Remove this player", onclick: () => {
+            rows.splice(i, 1); drawRows(); } }, "Remove"));
       }),
       h("button", { style: "margin-top:8px", onclick: () => {
         rows.push({ number: null, name: "", height: "", position: "", libero: false });
         drawRows(); table.querySelectorAll(".roster-row:last-of-type input")[0]?.focus(); } },
-      "+ Add player"));
+      "Add player"));
   }
 
   async function save() {
@@ -117,12 +117,12 @@ async function rosterEdit(slug) {
   drawRows();
   view.replaceChildren(
     h("div", { class: "row spread" }, h("h1", {}, r.name),
-      h("button", { onclick: () => { location.hash = "#/rosters"; } }, "← All rosters")),
-    h("div", { class: "card" }, h("div", { class: "row" }, name, season, notes)),
-    h("div", { class: "card" }, h("strong", {}, "Players"), positions, table,
+      h("a", { href: "#/rosters" }, "All rosters")),
+    h("div", { class: "well" }, h("div", { class: "row" }, name, season, notes)),
+    h("div", { class: "card" }, h("h2", { style: "margin-top:0" }, "Players"), positions, table,
       h("div", { class: "row", style: "margin-top:10px" },
         h("button", { class: "primary", onclick: save }, "Save roster"))),
-    h("div", { class: "card" }, h("strong", {}, "Videos this roster played"),
+    h("div", { class: "card" }, h("h2", {}, "Videos this roster played"),
       h("p", { class: "small muted" }, "Tick each set this team played. Stats for those " +
         "videos use these names, and touches credited to a jersey follow the roster."),
       videoBoxes),

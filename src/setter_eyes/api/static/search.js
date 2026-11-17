@@ -34,7 +34,7 @@ async function searchPage(params) {
         `#${n} ${people.get(n)}`)));
     return el;
   };
-  const filters = h("div", { class: "card" },
+  const filters = h("div", { class: "well" },
     h("strong", {}, "Sets"),
     folderPicker(fd, vids, q.v, keys => { q.v = keys; go(); }),
     h("div", { class: "row filters", style: "margin-top:10px" },
@@ -54,8 +54,8 @@ async function searchPage(params) {
             : [...q.pass, String(n)];
           go(); } }, String(n))),
       h("span", { class: "small muted" }, "(only serve receives have one)")),
-    h("p", { class: "small muted" }, "Example: Player #12, Play attack, Set by #17 = every " +
-      "attack #12 hit off #17's set."));
+    h("p", { class: "small muted", style: "margin:8px 0 0" }, "Example: player #12, play " +
+      "attack, set by #17 finds every attack #12 hit off #17's set."));
 
   const p = new URLSearchParams({ videos: q.v.join(",") });
   for (const k of ["player", "action", "result", "set_by"]) if (q[k]) p.set(k, q[k]);
@@ -86,16 +86,17 @@ async function searchPage(params) {
   const rows = items.map((it, i) => h("tr", {},
     h("td", {}, h("input", { type: "checkbox", checked: true, onchange: e => {
       if (e.target.checked) picked.add(i); else picked.delete(i); showCount(); } })),
-    h("td", {}, h("button", { class: "iconbtn", title: "watch", onclick: () => play(it) }, "▶")),
-    h("td", { class: "small" }, it.video),
+    h("td", {}, h("button", { class: "iconbtn", title: "Watch this point", onclick: () => play(it) },
+      "Watch")),
+    h("td", { class: "small t" }, it.video),
     h("td", {}, it.rally_id ? h("a", { href: `#/review/${setOf(it.video)}/${it.rally_id}?all=1` },
-      `#${it.rally_number}`) : `#${it.rally_number}`),
-    h("td", { class: "mono small" }, clock(it.t)),
-    h("td", {}, it.jersey ? `#${it.jersey}` : "?"),
-    h("td", {}, label(it.action)),
+      `${it.rally_number}`) : `${it.rally_number}`),
+    h("td", {}, clock(it.t)),
+    h("td", { class: "t" }, it.jersey ? `#${it.jersey}` : "?"),
+    h("td", { class: "t" }, label(it.action)),
     h("td", {}, it.pass_score === null ? "" : String(it.pass_score)),
-    h("td", {}, it.result ? label(it.result) : ""),
-    h("td", {}, it.set_by ? `#${it.set_by}` : "")));
+    h("td", { class: "t" }, it.result ? label(it.result) : ""),
+    h("td", { class: "t" }, it.set_by ? `#${it.set_by}` : "")));
   function setOf(key) { const v = vids.find(x => x.key === key); return v ? v.set_id : ""; }
   showCount();
 
@@ -118,16 +119,16 @@ async function searchPage(params) {
         download: "" }, `Download reel (${n} clips, ${st.ringed} with the ring)`));
       return;
     }
-    if (st.state === "failed") { reelBox.replaceChildren(h("span", { class: "small",
-      style: "color:var(--bad)" }, "Reel failed: " + st.error)); return; }
+    if (st.state === "failed") { reelBox.replaceChildren(h("span", { class: "small bad" },
+      "Reel failed: " + st.error)); return; }
     reelBox.replaceChildren(bar(st.total ? st.done / st.total : 0, `making the reel, ` +
       `${st.done}/${st.total} clips`));
     setTimeout(() => pollReel(id, n).catch(e => toast(e.message)), 1500);
   };
 
-  const results = h("div", { class: "card" },
+  const results = h("section", {},
     h("div", { class: "row spread" },
-      h("strong", {}, error ? "Error" : `${items.length} point${items.length === 1 ? "" : "s"}`),
+      h("h2", { style: "margin:0" }, error ? "Error" : `${items.length} point${items.length === 1 ? "" : "s"}`),
       h("div", { class: "row" }, count,
         h("button", { onclick: () => { items.forEach((_, i) => picked.add(i));
           rows.forEach(r => { r.querySelector("input").checked = true; }); showCount(); } },
@@ -140,10 +141,12 @@ async function searchPage(params) {
     reelBox,
     error ? h("p", { class: "muted" }, error) : items.length ? h("div", { class: "scroll" },
       h("table", {}, h("thead", {}, h("tr", {}, ...["", "", "Set", "Rally", "Time", "Player",
-        "Play", "Pass", "Point", "Set by"].map(x => h("th", {}, x)))), h("tbody", {}, rows)))
+        "Play", "Pass", "Point", "Set by"].map(x => h("th", {
+          class: ["Set", "Player", "Play", "Point", "Set by"].includes(x) ? "t" : "" }, x)))),
+      h("tbody", {}, rows)))
       : h("p", { class: "muted" }, "Nothing matches. Players are only known where the " +
         "pipeline read a number or you set them in review."));
 
-  view.replaceChildren(h("h1", {}, "Search points"), filters,
-    h("div", { class: "card" }, video, caption), results);
+  view.replaceChildren(h("h1", {}, "Search"), filters,
+    h("div", { class: "card", style: "max-width:880px" }, video, caption), results);
 }

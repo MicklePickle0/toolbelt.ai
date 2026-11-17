@@ -388,6 +388,18 @@ Phases E-I and order: CLAUDE.md "Roadmap" (revised 2026-11-16). Details below.
 - E9 decided: non-setter second touches count as sets (and assists), as before
   (docs/labelling.md).
 
+**Web app redesign, 2026-11-17 (laptop):** every page restyled to DESIGN.md (direction D:
+paper stat sheet, dark film room for Review and Calibrate). New on Stats:
+- an opening sentence with the key numbers;
+- a rally strip per set (blocks open the rally);
+- setter grids by zone (all, in system, out of system).
+
+New on Review: the score and a rally timeline. Videos are grouped by tournament with one
+status phrase and one next-step button each. The avoid-ai-design scanner is at 0 findings
+(it found 7 before). API tests pass. Checked by screenshots on the laptop (no footage, so the
+video players were not exercised). **On the desktop:** play a clip in Review and Search once
+to check the player and the keys.
+
 Goal: hands-free. Most rallies and stats right without review; review only what the
 pipeline flags as unsure. Order: accuracy first, then the cloud (owner's choice).
 - [x] **Score and stat sanity checks** (E2, done 2026-11-16; see above).

@@ -1,6 +1,7 @@
 // Game summary on the Stats page: where our sets went (by hitter, by zone) and how the
 // serve receive went (0-4 counts, and where each pass was played on the court). Uses
-// app.js helpers (h, api, label, clock). Colours are CSS tokens in style.css (--viz-*).
+// app.js helpers (h, api, label, clock) and situational.js (courtLines). Colours are the
+// DESIGN.md tokens in style.css (--pass-N, maple court).
 
 const SVGNS = "http://www.w3.org/2000/svg";
 function svg(tag, attrs = {}, ...kids) {
@@ -20,12 +21,11 @@ function summaryFetch(keys) {
 
 // The summary card, filled in when `pending` (from summaryFetch) arrives.
 function summarySection(pending, names) {
-  const box = h("div", { class: "card" }, h("strong", {}, "Game summary"),
-    h("p", { class: "small muted" }, "loading…"));
+  const title = () => h("h2", {}, "Passing and where the sets went");
+  const box = h("section", {}, title(), h("p", { class: "small muted" }, "Loading"));
   pending
-    .then(s => box.replaceChildren(h("strong", {}, "Game summary"), ...summaryBody(s, names)))
-    .catch(e => box.replaceChildren(h("strong", {}, "Game summary"),
-      h("p", { class: "muted" }, e.message)));
+    .then(s => box.replaceChildren(title(), ...summaryBody(s, names)))
+    .catch(e => box.replaceChildren(title(), h("p", { class: "muted" }, e.message)));
   return box;
 }
 
@@ -45,8 +45,8 @@ function barList(rows, max, valueText) {
 function summaryBody(s, names) {
   const sets = s.sets, passes = s.passes;
   const kv = r => `${r.n} set${r.n === 1 ? "" : "s"}` +
-    (r.kills ? ` · ${r.kills} kill${r.kills === 1 ? "" : "s"}` : "") +
-    (r.errors ? ` · ${r.errors} error${r.errors === 1 ? "" : "s"}` : "");
+    (r.kills ? `, ${r.kills} kill${r.kills === 1 ? "" : "s"}` : "") +
+    (r.errors ? `, ${r.errors} error${r.errors === 1 ? "" : "s"}` : "");
   const maxH = Math.max(0, ...sets.by_hitter.map(r => r.n));
   const maxZ = Math.max(0, ...sets.by_zone.map(r => r.n));
   const setsCol = h("div", { class: "viz-col" },
@@ -64,7 +64,7 @@ function summaryBody(s, names) {
     h("div", { class: "scorebar", title: `${r.n} pass${r.n === 1 ? "" : "es"} scored ${r.score}` },
       h("span", { class: "small" }, String(r.n)),
       h("span", { class: "scorefill", style: `height:${(100 * r.n / maxP).toFixed(1)}%;` +
-        `background:var(--viz-pass-${r.score})` }),
+        `background:var(--pass-${r.score})` }),
       h("span", { class: "small muted" }, String(r.score)))));
   let mode = "dots";
   const mapBox = h("div", { class: "passmap" });
@@ -72,7 +72,7 @@ function summaryBody(s, names) {
   drawMap();
   const legend = h("div", { class: "row small" }, h("span", { class: "muted" }, "Pass score"),
     ...[0, 1, 2, 3, 4].map(n => h("span", { class: "legend-item" },
-      h("span", { class: "swatch", style: `background:var(--viz-pass-${n})` }), String(n))));
+      h("span", { class: "swatch", style: `background:var(--pass-${n})` }), String(n))));
   const passCol = h("div", { class: "viz-col" },
     h("div", { class: "viz-title" }, `Serve receive (${passes.n} scored` +
       (passes.avg !== null ? `, average ${passes.avg.toFixed(2)}` : "") + ")"),
@@ -82,7 +82,7 @@ function summaryBody(s, names) {
       seg([["dots", "Dots"], ["heat", "Heatmap"]], mode, v => { mode = v; drawMap(); })),
     mapBox, legend, missingLine(passes),
     h("p", { class: "small muted" }, "Our half of the court from behind our end line, the " +
-      "net at the top; × is the setter's target. A pass is placed where the setter played " +
+      "net at the top, the cross the setter's target. A pass is placed where the setter played " +
       "it (their feet). Heatmap: each square is the average score of the passes played " +
       "there, n = how many."));
   return [h("div", { class: "viz-grid" }, setsCol, passCol)];
@@ -98,7 +98,7 @@ function missingLine(passes) {
   if (!missing.length) return null;
   const total = missing.reduce((a, [, n]) => a + n, 0);
   return h("p", { class: "small" }, h("strong", {}, `Not on the map: ${total} of ${passes.n}`),
-    " (no spot found for them): ", missing.map(([s, n]) => `${n}× a ${s}`).join(", "), ".");
+    " (no spot found for them): ", missing.map(([s, n]) => `${n} scored ${s}`).join(", "), ".");
 }
 
 function passMap(points, target, mode, names) {
@@ -121,31 +121,24 @@ function passMap(points, target, mode, names) {
       const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
       const step = Math.round(avg), cx = i * cell + cell / 2, cy = j * cell + cell / 2;
       root.append(svg("rect", { x: i * cell + 0.02, y: j * cell + 0.02, width: cell - 0.04,
-        height: cell - 0.04, rx: 0.08, style: `fill:var(--viz-pass-${step})` },
+        height: cell - 0.04, style: `fill:var(--pass-${step})` },
         svg("title", {}, `${scores.length} pass${scores.length === 1 ? "" : "es"} here, ` +
           `average ${avg.toFixed(2)}`)));
       root.append(svg("text", { x: cx, y: cy - 0.12, class: "heat-num",
-        style: `fill:var(--viz-pass-ink-${step})` }, avg.toFixed(1)));
+        style: `fill:var(--pass-ink-${step})` }, avg.toFixed(1)));
       root.append(svg("text", { x: cx, y: cy + 0.42, class: "heat-n",
-        style: `fill:var(--viz-pass-ink-${step})` }, `n=${scores.length}`));
+        style: `fill:var(--pass-ink-${step})` }, `n=${scores.length}`));
     }));
   }
-  root.append(svg("line", { x1: 0, y1: 3, x2: 9, y2: 3, class: "court-line" }));   // attack line
-  root.append(svg("rect", { x: 0, y: 0, width: 9, height: 9, class: "court-outline" }));
-  root.append(svg("line", { x1: -0.6, y1: 0, x2: 9.6, y2: 0, class: "court-net" }));
-  root.append(svg("text", { x: 4.5, y: -0.35, class: "court-label" }, "net"));
-  if (target) {
-    root.append(svg("path", { d: `M${target.x - 0.25} ${target.y - 0.25}l0.5 0.5m0 -0.5l-0.5 0.5`,
-      class: "court-target" }, svg("title", {}, "setter's target")));
-  }
+  courtLines(root, target);                              // situational.js
   if (mode === "dots") {
     for (const p of points) {
       const cx = Math.max(-0.8, Math.min(9.8, p.x)), cy = Math.max(-0.8, Math.min(9.8, p.y));
       root.append(svg("circle", { cx, cy, r: 0.28, class: "pass-dot",
-        style: `fill:var(--viz-pass-${p.score})` },
+        style: `fill:var(--pass-${p.score})` },
         svg("title", {}, `${who(p.jersey, names)}: pass ${p.score}, ${p.video} ${clock(p.t)}`)));
       root.append(svg("text", { x: cx, y: cy, class: "pass-num",
-        style: `fill:var(--viz-pass-ink-${p.score})` }, String(p.score)));
+        style: `fill:var(--pass-ink-${p.score})` }, String(p.score)));
     }
   }
   return root;

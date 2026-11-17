@@ -14,6 +14,7 @@ floors it is often wrong while looking sure, so by default every video is tapped
 from __future__ import annotations
 
 import base64
+import mimetypes
 import shutil
 import sqlite3
 import time
@@ -866,6 +867,11 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
 
     app.mount("/", FreshStaticFiles(directory=STATIC, html=True), name="static")
     return app
+
+
+# The app's self-hosted fonts (static/fonts). Windows' type table may not know .woff2, and a
+# font served as text/plain is refused by some browsers.
+mimetypes.add_type("font/woff2", ".woff2")
 
 
 class FreshStaticFiles(StaticFiles):

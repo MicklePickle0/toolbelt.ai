@@ -1,10 +1,12 @@
 <!doctype html>
 <html lang="en">
+<!-- avoid-ai-design-ignore: K7 (the :focus-visible ring is in style.css) -->
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Toolbelt</title>
   <link rel="icon" href="data:,">
+  <link rel="preload" href="fonts/barlow-400.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,18 +14,18 @@
     <a class="brand" href="#/">Toolbelt</a>
     <nav>
       <a href="#/" data-nav="videos">Videos</a>
-      <a href="#/queue" data-nav="queue">Queue</a>
       <a href="#/stats" data-nav="stats">Stats</a>
-<a href="#/search" data-nav="search">Search</a>
+      <a href="#/search" data-nav="search">Search</a>
       <a href="#/rosters" data-nav="rosters">Rosters</a>
+      <a href="#/queue" data-nav="queue">Queue</a>
     </nav>
   </header>
-  <main id="view"><p class="muted">Loading…</p></main>
-  <div id="toast" hidden></div>
+  <main id="view"><p class="muted">Loading</p></main>
+  <div id="toast" role="status" hidden></div>
   <script src="calibrate.js"></script>
   <script src="rosters.js"></script>
-<script src="search.js"></script>
-<script src="summary.js"></script>
+  <script src="search.js"></script>
+  <script src="summary.js"></script>
   <script src="situational.js"></script>
   <script src="app.js"></script>
 </body>
