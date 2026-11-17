@@ -8,6 +8,7 @@ from setter_eyes.ingest.video import (
     VideoInfo,
     burst_indices,
     frame_filename,
+    grab_frame,
     iter_frames,
     iter_frames_scaled,
     normalise,
@@ -16,5 +17,5 @@ from setter_eyes.ingest.video import (
     write_image,
 )
 
-__all__ = ["Frame", "VideoInfo", "burst_indices", "frame_filename", "iter_frames",
+__all__ = ["Frame", "VideoInfo", "burst_indices", "frame_filename", "grab_frame", "iter_frames",
            "iter_frames_scaled", "normalise", "probe", "read_frames", "write_image"]

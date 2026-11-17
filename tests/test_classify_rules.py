@@ -30,6 +30,14 @@ def test_counted_from_the_end_when_a_touch_was_missed():
     assert _names(touches, serve, "them")[4:6] == ["set", "attack"]
 
 
+def test_a_lofted_third_touch_is_a_free_ball():
+    serve = _t(0.0, "them")
+    touches = [serve, _t(1.0, "us"), _t(2.0, "us"), _t(3.0, "us"), _t(5.0, "them")]
+    driven = classify_rally(touches, serve, "them", CFG, [None, None, None, -2.0, None])
+    lofted = classify_rally(touches, serve, "them", CFG, [None, None, None, 6.0, None])
+    assert driven[3][0] == "attack" and lofted[3][0] == "free_ball"
+
+
 def test_coverage_after_their_block_and_overpass_on_receive():
     serve = _t(0.0, "them")
     touches = [serve, _t(1.0, "us"), _t(2.0, "us"), _t(3.0, "us"),

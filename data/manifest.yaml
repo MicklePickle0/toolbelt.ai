@@ -1,0 +1,211 @@
+# Your local manifest (gitignored). Format: config/manifest.example.yaml and docs/labelling.md.
+# Paths are relative to this file's directory (data/).
+
+team: Our Team
+
+# Jersey numbers in event labels and lineups are checked against this.
+roster: []
+#  - {number: 1, name: Setter One}
+#  - {number: 12, name: Libero Twelve, libero: true}
+
+videos:
+  # All at Humber on 2026-10-17 (different courts, same gym). One venue, so
+  # datasets.split_by is 'video'; both sets of a match are pinned to one split.
+  # Add labels: {events: ..., boxes: ...} to an entry once its label files exist.
+  - id: leaside-panther_set1
+    path: raw/humber/Leaside Panther Set 1.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Leaside Panther
+    played_on: 2026-10-17
+    split: train
+  - id: leaside-panther_set2
+    path: raw/humber/Leaside Panther Set 2.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Leaside Panther
+    played_on: 2026-10-17
+    split: train
+  - id: mac-chrome_set1
+    path: raw/humber/MAC Chrome Set 1.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: MAC Chrome
+    played_on: 2026-10-17
+    split: train
+  - id: mac-chrome_set2
+    path: raw/humber/MAC Chrome Set 2.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: MAC Chrome
+    played_on: 2026-10-17
+    split: train
+  - id: niagara-rtw_set1
+    path: raw/humber/Niagara RTW Set 1.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Niagara RTW
+    played_on: 2026-10-17
+    split: train
+  - id: niagara-rtw_set2
+    path: videos/niagara-rtw_set2.mp4   # normalised: raw/humber/Niagara RTW Set 2.webm has corrupt packets
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Niagara RTW
+    played_on: 2026-10-17
+    split: train
+  - id: reach-apex_set1
+    path: raw/humber/Reach Apex Set 1.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Reach Apex
+    played_on: 2026-10-17
+    split: train
+  - id: reach-apex_set2
+    path: raw/humber/Reach Apex Set 2.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Reach Apex
+    played_on: 2026-10-17
+    split: train
+  - id: mac-iron_set1
+    path: raw/humber/MAC Iron Set 1.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: MAC Iron
+    played_on: 2026-10-17
+    split: valid
+  - id: mac-iron_set2
+    path: raw/humber/MAC Iron Set 2.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: MAC Iron
+    played_on: 2026-10-17
+    split: valid
+  - id: titan-rise_set1
+    path: raw/humber/Titan Rise Set 1.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Titan Rise
+    played_on: 2026-10-17
+    split: test
+  # 1080p copy of titan-rise_set1 (ffmpeg scale, same 59.94 fps and 66126 frames, so its
+  # labels apply): checks the pipeline at 1080p against labels (2026-10-29). A test copy,
+  # not another game: process it with find_rallies --no-db so it stays out of the stats.
+  - id: titan-rise_set1_1080p
+    path: raw/humber/Titan Rise Set 1 (1080p test).mp4
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Titan Rise
+    played_on: 2026-10-17
+    split: test
+    labels: {events: labels/titan-rise_set1/events.csv}
+  - id: titan-rise_set2
+    path: raw/humber/Titan Rise Set 2.webm
+    venue: Humber
+    net_height: boys_17_18u
+    ball: mikasa_v200w_yellow
+    opponent: Titan Rise
+    played_on: 2026-10-17
+    split: test
+
+  # Durham Attack Pre-Season 16U Invitational (YouTube, 1080p60 H.264, from a corner: left
+  # or right per game; 3rd sets: the camera moves with us at the switch). At least 3 gyms
+  # (from stills; real names unknown). Held out as test until some of it is labelled.
+  # played_on: not known yet.
+  - id: pakmen-black_set1
+    path: raw/durham-attack/Pakmen Black Set 1.mp4
+    venue: DA gym 1 (USS, yellow-black)
+    net_height: boys_15_16u
+    ball: mikasa_v200w_yellow
+    opponent: Pakmen Black
+    split: test
+  - id: pakmen-black_set2
+    path: raw/durham-attack/Pakmen Black Set 2.mp4
+    venue: DA gym 1 (USS, yellow-black)
+    net_height: boys_15_16u
+    ball: mikasa_v200w_yellow
+    opponent: Pakmen Black
+    split: test
+  - id: pakmen-black_set3
+    path: raw/durham-attack/Pakmen Black Set 3.mp4
+    venue: DA gym 1 (USS, yellow-black)
+    net_height: boys_15_16u
+    ball: mikasa_v200w_yellow
+    opponent: Pakmen Black
+    split: test
+  - id: mac-platinum_set1
+    path: raw/durham-attack/MAC Platnium Set 1.mp4
+    venue: DA gym 1 (USS, yellow-black)
+    net_height: boys_15_16u
+    ball: mikasa_v200w_yellow
+    opponent: MAC Platinum
+    split: test
+  - id: mac-platinum_set2
+    path: raw/durham-attack/MAC Platnium Set 2.mp4
+    venue: DA gym 1 (USS, yellow-black)
+    net_height: boys_15_16u
+    ball: mikasa_v200w_yellow
+    opponent: MAC Platinum
+    split: test
+  - id: 416-knight_set1
+    path: raw/durham-attack/416 Knight Set 1.mp4
+    venue: DA gym 1 (USS, yellow-black)
+    net_height: boys_15_16u
+    ball: mikasa_v200w_yellow
+    opponent: 416 Knight
+    split: test
+  - id: 416-knight_set2
+    path: raw/durham-attack/416 Knight Set 2.mp4
+    venue: DA gym 1 (USS, yellow-black)
+    net_height: boys_15_16u
+    ball: mikasa_v200w_yellow
+    opponent: 416 Knight
+    split: test
+  - id: 416-knight_set3
+    path: raw/durham-attack/416 Knight Set 3.mp4
+    venue: DA gym 1 (USS, yellow-black)
+    net_height: boys_15_16u
+    ball: mikasa_v200w_yellow
+    opponent: 416 Knight
+    split: test
+  - id: pakmen-gold_set1
+    path: raw/durham-attack/Pakmen Gold Set 1.mp4
+    venue: DA gym 2 (Teamwork/Trust walls)
+    net_height: boys_15_16u
+    ball: mikasa_v200w_yellow
+    opponent: Pakmen Gold
+    split: test
+  - id: pakmen-gold_set2
+    path: raw/durham-attack/Pakmen Gold Set 2.mp4
+    venue: DA gym 3 (stage)
+    net_height: boys_15_16u
+    ball: mikasa_v200w_yellow
+    opponent: Pakmen Gold
+    split: test
+  - id: unity-force_set1
+    path: raw/durham-attack/Unity Force Set 1.mp4
+    venue: DA gym ? (Unity Force, check)
+    net_height: boys_15_16u
+    ball: mikasa_v200w_yellow
+    opponent: Unity Force
+    split: test
+  - id: unity-force_set2
+    path: raw/durham-attack/Unity Force Set 2.mp4
+    venue: DA gym ? (Unity Force, check)
+    net_height: boys_15_16u
+    ball: mikasa_v200w_yellow
+    opponent: Unity Force
+    split: test

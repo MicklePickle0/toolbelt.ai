@@ -1,0 +1,54 @@
+{
+  "video": "pakmen-gold_set1",
+  "method": "auto",
+  "confidence": 0.7718,
+  "needs_review": false,
+  "net_height_m": 2.35,
+  "frame": 1798,
+  "camera": {
+    "width": 1920,
+    "height": 1080,
+    "f": 2223.3500396782997,
+    "k1": -0.4925593853958745,
+    "rvec": [
+      0.545427587620634,
+      -2.0145128593780415,
+      1.8593430263697222
+    ],
+    "tvec": [
+      -0.7046970940729592,
+      -1.6033254411089304,
+      36.39863498745227
+    ],
+    "centre_m": [
+      18.762,
+      31.209,
+      1.388
+    ],
+    "hfov_deg": 46.71
+  },
+  "support": {
+    "inliers": 832,
+    "visible": 1037,
+    "support": 0.8023,
+    "chance": 0.1337,
+    "lines_found": [
+      "end_near",
+      "attack_near",
+      "centre",
+      "attack_far",
+      "end_far",
+      "side_left",
+      "side_right",
+      "net_top",
+      "net_bottom",
+      "antenna_right"
+    ],
+    "confidence": 0.7718
+  },
+  "clicks": {},
+  "line_clicks": {},
+  "reprojection_rms_px": null,
+  "applies_from": null,
+  "saved_at": "2026-10-28T14:24:56+00:00"
+}

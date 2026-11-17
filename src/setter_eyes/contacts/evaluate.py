@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from setter_eyes.classify.outcome import point_outcome
+from setter_eyes.classify.outcome import rally_outcome
 from setter_eyes.labels.events import RallyLabel
 
 TRACED = -2                     # rallies.json serve_contact when traced back from flight
@@ -54,6 +54,9 @@ class RallyMatch:
     end_reason: str = ""
     label_outcome: str | None = None
     pred_outcome: str | None = None   # from the pipeline's last touch + the true winner
+    label_winner: str | None = None
+    pred_winner: str | None = None    # inferred: who serves next (rally/winner.py)
+    pred_outcome_inferred: str | None = None   # last touch + the inferred winner
 
 
 @dataclass
@@ -99,8 +102,16 @@ class Evaluation:
             "median_start_error_s": _median_abs(r.pred_start - r.label_start for r in served),
             "median_end_error_s": _median_abs(r.pred_end - r.label_end for r in found),
             "outcomes_right": sum(r.pred_outcome == r.label_outcome for r in found
-                                  if r.label_outcome),
-            "outcomes_labelled": sum(bool(r.label_outcome) for r in found),
+                                  if r.label_outcome and r.label_outcome != "replay"),
+            "outcomes_labelled": sum(bool(r.label_outcome) and r.label_outcome != "replay"
+                                     for r in found),
+            "winners_labelled": sum(bool(r.label_winner) for r in found),
+            "winners_inferred": sum(bool(r.label_winner and r.pred_winner) for r in found),
+            "winners_right": sum(bool(r.label_winner) and r.pred_winner == r.label_winner
+                                 for r in found),
+            "outcomes_inferred_right": sum(r.pred_outcome_inferred == r.label_outcome
+                                           for r in found if r.label_outcome
+                                           and r.label_outcome != "replay"),
         }
 
 
@@ -165,13 +176,15 @@ def evaluate(labels: list[RallyLabel], contacts: list[dict], rallies: list[dict]
             m.pred_serving = best["serving_team"]
             m.serve_how = {TRACED: "traced", -3: "inferred", None: "not found"}.get(sc, "seen")
             m.end_reason = best["end_reason"]
+            m.label_winner = r.point_winner
+            m.pred_winner = best.get("point_winner")
+            m.pred_outcome_inferred = best.get("outcome")
             touches = [contacts[i] for i in best.get("contacts", [])
                        if i < len(contacts) and contacts[i]["kind"] == "touch"]
-            last = touches[-1] if touches else {}
             if r.point_winner:
-                m.pred_outcome = point_outcome(last.get("action"), last.get("team"),
-                                               r.point_winner,
-                                               last.get("action_confidence"))[0]
+                m.pred_outcome = rally_outcome(
+                    [(c.get("team"), c.get("action"), c.get("action_confidence"))
+                     for c in touches], r.point_winner)[0]
         out.rallies.append(m)
     if labels:
         lo, hi = labels[0].start_frame / fps, labels[-1].end_frame / fps

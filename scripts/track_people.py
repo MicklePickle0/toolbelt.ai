@@ -26,7 +26,12 @@ import numpy as np
 from setter_eyes import config
 from setter_eyes.calibration.track import PoseTrack
 from setter_eyes.labels import load_manifest
-from setter_eyes.track.people import link_tracks, save_summary, track_people
+from setter_eyes.track.people import (
+    link_tracks,
+    save_summary,
+    sparse_detection_cfg,
+    track_people,
+)
 from setter_eyes.track.roles import classify_tracks, near_players_per_frame, save_roles
 
 
@@ -36,6 +41,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--video", required=True, help="manifest key")
+    ap.add_argument("--detections", type=Path,
+                    help="default: data/cache/<id>/person_detections.npz")
     ap.add_argument("--manifest", type=Path, default=config.repo_path(paths["manifest_path"]))
     args = ap.parse_args()
 
@@ -45,13 +52,24 @@ def main() -> int:
     if not track_path.exists():
         raise SystemExit(f"no camera track at {track_path}; run scripts/track_camera.py")
     cams = PoseTrack.load(track_path)
-    d = np.load(cache / "person_detections.npz")
+    d = np.load(args.detections or cache / "person_detections.npz")
+    cfg = config.scale_px(cfg, cams.base.width)          # pixel settings for this video
 
     t0 = time.time()
-    tracks = track_people(d["frames"], d["det_frame"], d["det_box"], d["det_score"],
-                          float(d["fps"]), cams.camera, cams.camera(cams.ref_frame),
-                          cams.base.height, cfg)
-    tracks, joins = link_tracks(tracks, d["frames"], float(d["fps"]), cfg)
+    # People may be detected less often than the ball (detect.person_sample_hz): track on
+    # the detected frames, give the tracks on the full sample grid (video.sample_hz).
+    fps, frames = float(d["fps"]), d["frames"]
+    base = config.sample_stride(fps)
+    det_step = max(1, int(np.median(np.diff(frames))) // base) if len(frames) > 1 else 1
+    grid = np.arange(frames[0], frames[-1] + 1, base) if det_step > 1 else frames
+    if det_step > 1:
+        print(f"people detected every {det_step} samples: tracks filled in on the "
+              f"{len(grid)}-sample grid")
+    cfg = sparse_detection_cfg(cfg, det_step)
+    tracks = track_people(frames, d["det_frame"], d["det_box"], d["det_score"], fps,
+                          cams.camera, cams.camera(cams.ref_frame), cams.base.height, cfg,
+                          grid=grid)
+    tracks, joins = link_tracks(tracks, grid, fps, cfg)
     print(f"joined {joins} broken tracks")
     tracks.save(cache / "people_tracks.npz")
     summary = save_summary(tracks, cfg, cache / "people_tracks.json")

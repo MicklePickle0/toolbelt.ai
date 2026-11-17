@@ -1,0 +1,41 @@
+{
+  "version": "4.2.0",
+  "flags": {},
+  "checked": false,
+  "shapes": [
+    {
+      "label": "other_ball",
+      "score": null,
+      "points": [
+        [
+          3384.6712018140593,
+          1233.5600907029477
+        ],
+        [
+          3425.8503401360545,
+          1233.5600907029477
+        ],
+        [
+          3425.8503401360545,
+          1274.37641723356
+        ],
+        [
+          3384.6712018140593,
+          1274.37641723356
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rectangle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    }
+  ],
+  "imagePath": "mac-iron_set2_f031180.jpg",
+  "imageData": null,
+  "imageHeight": 2160,
+  "imageWidth": 3840,
+  "description": ""
+}

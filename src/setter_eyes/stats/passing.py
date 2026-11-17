@@ -3,11 +3,12 @@
 A reception is OUR first touch after THEIR serve (CLAUDE.md: the first ball only, not
 defence). Its score, by what happened (config/pass_scale.yaml):
   - labelled `receive` with a pass_score: that score
-  - labelled `overpass` (the pass went straight back over the net): `overpass_score` (0).
-    Still a serve receive, so it counts in the passer's average.
+  - labelled `overpass` (the pass went straight back over the net): `overpass_score`,
+    null = no score, left out of averages (owner, 2026-11-01; it used to be a 0).
   - no touch of ours and the rally ended in an ace: `ace_score` (0), passer unknown
     (counts in the team average only)
   - `receive` without a score: a reception, but unscored (left out of averages)
+A replayed rally (outcome `replay`) is wiped: no receptions from it count.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ class Reception:
 def receptions(rallies: Iterable[RallyLabel], scale: dict) -> list[Reception]:
     out = []
     for r in rallies:
-        if r.serving_team != "them":
+        if r.serving_team != "them" or r.replayed:
             continue
         serve_seen = False
         ours = None
@@ -59,12 +60,15 @@ def receptions(rallies: Iterable[RallyLabel], scale: dict) -> list[Reception]:
     return out
 
 
-def passing_average(recs: Iterable[Reception]) -> dict:
-    """{"team": (count, mean), jersey: (count, mean), ...} over scored receptions."""
+def passing_average(recs: Iterable[Reception], top: int = 4) -> dict:
+    """{"team": (count, mean), jersey: (count, mean), ...} over scored receptions.
+
+    Passes are always scored 0-4. `top` = 3 reads them on a 3-point scale for the
+    average only: a 4 counts as a 3 (owner, 2026-10-28)."""
     by: dict = {}
     for rec in recs:
         if rec.score is None:
             continue
         for key in ("team",) + ((rec.jersey,) if rec.jersey is not None else ()):
-            by.setdefault(key, []).append(rec.score)
+            by.setdefault(key, []).append(min(rec.score, top))
     return {k: (len(v), round(sum(v) / len(v), 2)) for k, v in by.items()}

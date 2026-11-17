@@ -1,6 +1,10 @@
 # data/
 
-Everything in here except this README and the `.gitkeep` files is gitignored.
+Tracked in git: `manifest.yaml`, `videos.txt`, `setter_eyes.db` (holds review edits),
+`labels/` (except frame images) and `calibration/`. Everything else (raw videos, normalised
+videos, caches, frames, datasets, outputs, `labels.db`) is gitignored and rebuilt from the
+videos and labels. Commit labels as soon as a labelling session is done (2026-10-26 they
+existed only here and were nearly lost; `docs/issues-log.md`).
 Workflow and label formats: [docs/labelling.md](../docs/labelling.md).
 
 ```
@@ -13,6 +17,9 @@ data/
     events.csv             rallies, contacts, actions, pass scores, point winners
     boxes.coco.json        ball/person boxes exported from the labelling tool
   cache/<video-id>/frames/ sampled frames (scripts/extract_frames.py) for image-based labelling
+  cache/<video-id>/        pipeline caches: activity.npz + play_spans.json (find_play.py),
+                           ball/person detections, ball path and arcs, people tracks,
+                           contacts and rallies
   outputs/                 preview videos and stills
   datasets/detection/      RF-DETR dataset built by scripts/build_detection_dataset.py
   labels.db                imported ground truth (scripts/ingest_labels.py)

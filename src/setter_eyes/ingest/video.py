@@ -12,7 +12,7 @@ import json
 import random
 import shutil
 import subprocess
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import asdict, dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -160,8 +160,9 @@ def _timestamp(cap: cv2.VideoCapture, index: int, fps: float) -> float:
 
 
 def iter_frames(path: str | Path, start: int = 0, end: int | None = None,
-                step: int = 1) -> Iterator[Frame]:
-    """Yield frames start, start+step, ... up to (not including) end, decoding sequentially."""
+                step: int = 1, keep: Callable[[int], bool] | None = None) -> Iterator[Frame]:
+    """Yield frames start, start+step, ... up to (not including) end, decoding sequentially.
+    With `keep`, only the frames it accepts (the others are skipped cheaply with grab())."""
     if step < 1:
         raise ValueError("step must be >= 1")
     cap = _open(path)
@@ -169,7 +170,7 @@ def iter_frames(path: str | Path, start: int = 0, end: int | None = None,
     try:
         index = 0
         while end is None or index < end:
-            if index < start or (index - start) % step:
+            if index < start or (index - start) % step or (keep is not None and not keep(index)):
                 if not cap.grab():
                     return
             else:
@@ -248,6 +249,25 @@ def read_frames(path: str | Path, indices: Iterable[int]) -> Iterator[Frame]:
             index += 1
     finally:
         cap.release()
+
+
+def grab_frame(path: str | Path, index: int, fps: float) -> np.ndarray:
+    """One frame by index, fast: ffmpeg seeks to the nearest keyframe and decodes from
+    there (read_frames decodes from the start). Exact for constant-frame-rate video: it
+    asks for the first frame at or after a quarter frame before `index`'s timestamp."""
+    if index < 0:
+        raise IndexError(f"negative frame index {index}")
+    if not shutil.which("ffmpeg"):
+        raise RuntimeError("ffmpeg not found on PATH")
+    t = max(0.0, (index - 0.25) / fps)
+    out = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t:.6f}", "-i", str(path),
+                          "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "-"],
+                         capture_output=True, check=False)
+    image = (cv2.imdecode(np.frombuffer(out.stdout, np.uint8), cv2.IMREAD_COLOR)
+             if out.stdout else None)
+    if image is None:
+        raise IndexError(f"no frame {index} in {path}: {out.stderr.decode(errors='replace')}")
+    return image
 
 
 def burst_indices(start: int, end: int, bursts: int, length: int, seed: str) -> list[int]:

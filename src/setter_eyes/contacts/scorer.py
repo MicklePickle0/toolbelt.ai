@@ -111,7 +111,8 @@ def scored_contacts(path, arcs, g, fps, people, roles, cfg: dict, scorer: TouchS
     touches = [x for x in cands if x.kind == "touch"]
     floors = _merge([x for x in cands if x.kind == "floor"
                      and x.confidence >= c["min_confidence"]], c["merge_window_s"])
-    X = candidate_features(touches, path, people, fps, c["overhead_reach_bodies"])
+    X = candidate_features(touches, path, people, fps, c["overhead_reach_bodies"],
+                           c["feature_unit_px"])
     p_touch, p_ours = scorer.predict(X)
     times = np.array([x.t for x in touches])
     kept = []
@@ -119,5 +120,6 @@ def scored_contacts(path, arcs, g, fps, people, roles, cfg: dict, scorer: TouchS
         x = touches[j]
         x.confidence = round(float(p_touch[j]), 3)
         x.team = "us" if p_ours[j] >= 0.5 else "them"
+        x.p_ours = round(float(p_ours[j]), 3)
         kept.append(x)
     return sorted(kept + floors, key=lambda x: x.t)

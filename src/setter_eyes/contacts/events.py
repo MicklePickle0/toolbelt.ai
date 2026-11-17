@@ -44,7 +44,16 @@ class Contact:
     confidence: float
     serve: bool = False
     action: str | None = None                # classify/rules.py, after the rally is built
+    entry_serve: bool = False                # our serve, from how the ball entered the frame
     action_confidence: float | None = None
+    inferred: bool = False                   # not seen: added because the timing says it was hidden
+    p_ours: float | None = None              # touch scorer's P(our side touched it), if scored
+    pass_score: int | None = None            # 0-4 on our receive (stats/pass_score.py)
+    pass_confidence: float | None = None
+    pass_xy: list[float] | None = None       # where the pass was played (court m)
+    player_xy: list[float] | None = None     # the toucher's feet at the touch (court m)
+    jersey: int | None = None                # who touched it (identity/), our touches
+    player_confidence: float | None = None
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -78,9 +87,13 @@ def find_contacts(path: BallPath, arcs: list[Arc], g: np.ndarray, fps: float,
         if bridged and times[nxt.first] - times[prev.last] > c["max_bridge_s"]:
             continue                                      # ball lost too long: not one event
         k = (prev.last + nxt.first) // 2 if bridged else prev.last
+        # The flight split can land a sample or few off the touch (a frame the ball was
+        # only bridged throws it): the touch is where the ball's course changes most.
+        k = _sharpest_turn(path, k, fps, c["snap_window_s"])
         f = int(path.frames[k])
         t = float(times[k])
-        uv = path.uv[k] if not bridged else (path.uv[prev.last] + path.uv[nxt.first]) / 2
+        uv = path.uv[k] if np.isfinite(path.uv[k]).all() else \
+            (path.uv[prev.last] + path.uv[nxt.first]) / 2
         strong = prev.confidence >= c["min_arc_confidence"] and \
             nxt.confidence >= c["min_arc_confidence"]
         xyz = None
@@ -177,6 +190,27 @@ def _nearest_person(people: PeopleTracks, rows: np.ndarray, xyz, uv,
     return best, best_d, best_xy
 
 
+def _sharpest_turn(path: BallPath, k: int, fps: float, window_s: float, lag: int = 2) -> int:
+    """The sample within `window_s` of k where the ball's image velocity changes most
+    (|velocity out - velocity in| over `lag` samples each side, pan-free view); k if
+    none can be measured."""
+    if window_s <= 0:
+        return k
+    t = path.frames / fps
+    uv = path.uv_ref
+    ok = np.isfinite(uv).all(axis=1)
+    best, best_d = k, -1.0
+    for j in range(max(lag, k - 40), min(len(t) - lag, k + 41)):
+        if abs(t[j] - t[k]) > window_s or not (ok[j] and ok[j - lag] and ok[j + lag]):
+            continue
+        v_in = (uv[j] - uv[j - lag]) / max(1e-6, t[j] - t[j - lag])
+        v_out = (uv[j + lag] - uv[j]) / max(1e-6, t[j + lag] - t[j])
+        d = float(np.linalg.norm(v_out - v_in))
+        if d > best_d:
+            best, best_d = j, d
+    return best
+
+
 def _image_velocity_change(path: BallPath, k_end: int, k_start: int, fps: float,
                            c: dict) -> float:
     """Rough m/s from the change of pixel velocity: into sample k_end, out of k_start
@@ -189,3 +223,29 @@ def _image_velocity_change(path: BallPath, k_end: int, k_start: int, fps: float,
     v2 = (path.uv[hi] - path.uv[k_start]) / max(1e-6, t[hi] - t[k_start])
     dv_px = float(np.linalg.norm(v2 - v1))
     return 0.0 if not np.isfinite(dv_px) else dv_px * c["metres_per_px_at_typical_depth"]
+
+
+def insert_before(rallies: list, contacts: list[Contact], at: int, contact: Contact) -> None:
+    """Put `contact` into the contacts list at position `at` (before contacts[at]) and into
+    the rally that holds contacts[at], keeping every rally's indices right."""
+    owner = next((r for r in rallies if at in r.contacts), None)
+    contacts.insert(at, contact)
+    for r in rallies:
+        r.contacts = [i + (i >= at) for i in r.contacts]
+        if r.serve_contact is not None and r.serve_contact >= at:
+            r.serve_contact += 1
+    if owner is not None:
+        owner.contacts.insert(owner.contacts.index(at + 1), at)
+
+
+def add_hidden_touches(rallies: list, contacts: list[Contact], hidden: list[tuple],
+                       fps: float, confidence: float) -> int:
+    """hidden: (index of the contact it comes before, action, team, t) from
+    classify.rules.classify_rally(missing_out=...). Adds them as inferred touches. -> n"""
+    for at, action, team, t in sorted(hidden, key=lambda h: (h[0], h[3]), reverse=True):
+        ref = contacts[at]
+        insert_before(rallies, contacts, at, Contact(
+            ref.path_index, int(round(t * fps)), t, "touch", team, -1, None,
+            list(ref.ball_uv), 0.0, float("inf"), confidence, action=action,
+            action_confidence=confidence, inferred=True))
+    return len(hidden)

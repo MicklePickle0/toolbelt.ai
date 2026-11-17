@@ -10,6 +10,7 @@ import json
 import sqlite3
 from dataclasses import dataclass
 
+from setter_eyes.db.rotation import apply_rotation
 from setter_eyes.ingest.video import VideoInfo
 from setter_eyes.labels.boxes import BoxLabels
 from setter_eyes.labels.events import RallyLabel
@@ -59,6 +60,12 @@ def import_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry
     """Replace this video's labels in the DB in one transaction."""
     with conn:
         team_id = upsert_roster(conn, manifest)
+        # Jerseys labelled but not on the roster become players named by number, so
+        # per-player stats work before the roster is entered (it fills in the names).
+        for n in sorted({c.jersey for r in rallies for c in r.contacts
+                         if c.team == "us" and c.jersey is not None}):
+            conn.execute("INSERT OR IGNORE INTO players (team_id, jersey_number, name) "
+                         "VALUES (?, ?, ?)", (team_id, n, f"#{n}"))
         players = {
             r["jersey_number"]: r["id"]
             for r in conn.execute("SELECT id, jersey_number FROM players WHERE team_id = ?",
@@ -103,10 +110,11 @@ def import_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry
             for c in r.contacts:
                 conn.execute(
                     "INSERT INTO contacts (rally_id, t, frame, contact_confidence, team, "
-                    "player_id, action, action_confidence, pass_score, pass_confidence, "
-                    "reviewed) VALUES (?, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, 1)",
+                    "player_id, player_confidence, action, action_confidence, pass_score, "
+                    "pass_confidence, reviewed) VALUES (?, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, 1)",
                     (rally_id, c.frame / info.fps, c.frame, c.team,
                      players.get(c.jersey) if c.jersey is not None else None,
+                     1.0 if c.jersey is not None else None,
                      c.action, 1.0 if c.action else None,
                      c.pass_score, 1.0 if c.pass_score is not None else None),
                 )
@@ -127,4 +135,6 @@ def import_video(conn: sqlite3.Connection, manifest: Manifest, entry: VideoEntry
                     )
                     n_ball += 1
 
+    for set_id in set_ids.values():
+        apply_rotation(conn, set_id)
     return ImportSummary(game_id, len(set_ids), len(rallies), n_contacts, n_ball)

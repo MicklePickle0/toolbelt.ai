@@ -1,0 +1,113 @@
+{
+ "video": "leaside-panther_set1",
+ "fps": 59.94006309148265,
+ "samples": [
+  {
+   "frame": 0,
+   "offset_px": 6.6,
+   "matches": 1075
+  },
+  {
+   "frame": 3596,
+   "offset_px": 3.6,
+   "matches": 1055
+  },
+  {
+   "frame": 7192,
+   "offset_px": 4.8,
+   "matches": 1125
+  },
+  {
+   "frame": 10788,
+   "offset_px": 30.1,
+   "matches": 1022
+  },
+  {
+   "frame": 14384,
+   "offset_px": 13.7,
+   "matches": 819
+  },
+  {
+   "frame": 17980,
+   "offset_px": 30.9,
+   "matches": 691
+  },
+  {
+   "frame": 21576,
+   "offset_px": 12.4,
+   "matches": 853
+  },
+  {
+   "frame": 25172,
+   "offset_px": 11.6,
+   "matches": 827
+  },
+  {
+   "frame": 28768,
+   "offset_px": 10.0,
+   "matches": 811
+  },
+  {
+   "frame": 32364,
+   "offset_px": 22.8,
+   "matches": 871
+  },
+  {
+   "frame": 35960,
+   "offset_px": 10.9,
+   "matches": 808
+  },
+  {
+   "frame": 39556,
+   "offset_px": 11.4,
+   "matches": 855
+  },
+  {
+   "frame": 43152,
+   "offset_px": 15.2,
+   "matches": 806
+  },
+  {
+   "frame": 46748,
+   "offset_px": 9.8,
+   "matches": 843
+  },
+  {
+   "frame": 50344,
+   "offset_px": 6.0,
+   "matches": 831
+  },
+  {
+   "frame": 53940,
+   "offset_px": 15.4,
+   "matches": 987
+  },
+  {
+   "frame": 57536,
+   "offset_px": 7.1,
+   "matches": 886
+  },
+  {
+   "frame": 61132,
+   "offset_px": 6.5,
+   "matches": 893
+  },
+  {
+   "frame": 64728,
+   "offset_px": 5.7,
+   "matches": 908
+  },
+  {
+   "frame": 68324,
+   "offset_px": 9.1,
+   "matches": 833
+  },
+  {
+   "frame": 71920,
+   "offset_px": 9.0,
+   "matches": 978
+  }
+ ],
+ "moves": [],
+ "verdict": "drifting"
+}

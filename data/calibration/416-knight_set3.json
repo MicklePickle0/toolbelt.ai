@@ -1,0 +1,51 @@
+{
+  "video": "416-knight_set3",
+  "method": "auto",
+  "confidence": 0.7448,
+  "needs_review": false,
+  "net_height_m": 2.35,
+  "frame": 1798,
+  "camera": {
+    "width": 1920,
+    "height": 1080,
+    "f": 1542.1524961635719,
+    "k1": 0.0,
+    "rvec": [
+      1.2496447238293642,
+      -1.4334446033342445,
+      1.1479519321671527
+    ],
+    "tvec": [
+      5.721427743902764,
+      -3.90091620867594,
+      42.615301102996476
+    ],
+    "centre_m": [
+      41.889,
+      9.674,
+      3.966
+    ],
+    "hfov_deg": 63.81
+  },
+  "support": {
+    "inliers": 811,
+    "visible": 1037,
+    "support": 0.7821,
+    "chance": 0.1461,
+    "lines_found": [
+      "centre",
+      "attack_far",
+      "end_far",
+      "side_left",
+      "side_right",
+      "net_top",
+      "net_bottom"
+    ],
+    "confidence": 0.7448
+  },
+  "clicks": {},
+  "line_clicks": {},
+  "reprojection_rms_px": null,
+  "applies_from": null,
+  "saved_at": "2026-10-28T14:24:34+00:00"
+}

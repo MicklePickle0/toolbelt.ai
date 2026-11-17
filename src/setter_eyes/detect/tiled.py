@@ -58,14 +58,32 @@ def canonical_names(ids: dict[int, str]) -> dict[int, str]:
     return {i: aliases[n.lower()] for i, n in ids.items() if n.lower() in aliases}
 
 
+def ball_tiling(detect_cfg: dict, width: int) -> tuple[tuple[int, int], int]:
+    """(tile grid, model input size) for a video this wide (`detect.ball_tiling`): the
+    first entry whose min_width it reaches."""
+    for t in detect_cfg["ball_tiling"]:
+        if width >= t["min_width"]:
+            cols, rows = (int(v) for v in str(t["grid"]).lower().split("x"))
+            return (cols, rows), int(t["resolution"])
+    raise ValueError(f"no detect.ball_tiling entry for width {width}")
+
+
 def predict_tiled(model, bgr: np.ndarray, grid: tuple[int, int], overlap: float,
                   threshold: float, keep: dict[int, str]) -> list[tuple[str, list[float], float]]:
     """-> [(class, [x1, y1, x2, y2], score)] in full-image pixels."""
     h, w = bgr.shape[:2]
-    tiles = tile_boxes(w, h, grid, overlap)
-    origins = [(x, y) for x, y, _, _ in tiles]
+    return predict_windows(model, bgr, tile_boxes(w, h, grid, overlap), threshold, keep)
+
+
+def predict_windows(model, bgr: np.ndarray, windows: list[tuple[int, int, int, int]],
+                    threshold: float,
+                    keep: dict[int, str]) -> list[tuple[str, list[float], float]]:
+    """Detect in each window (x, y, w, h) of the frame in one GPU batch; overlapping
+    windows' detections merged with NMS -> [(class, [x1, y1, x2, y2], score)] in
+    full-image pixels."""
+    origins = [(x, y) for x, y, _, _ in windows]
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-    crops = [np.ascontiguousarray(rgb[y:y + th, x:x + tw]) for x, y, tw, th in tiles]
+    crops = [np.ascontiguousarray(rgb[y:y + th, x:x + tw]) for x, y, tw, th in windows]
     dets = model.predict(crops, threshold=threshold, include_source_image=False)
     dets = dets if isinstance(dets, list) else [dets]
     found: dict[str, list[tuple[list[float], float]]] = {}
@@ -81,6 +99,18 @@ def predict_tiled(model, bgr: np.ndarray, grid: tuple[int, int], overlap: float,
         for i in np.array(cv2.dnn.NMSBoxes(boxes, scores, threshold, 0.5)).ravel():
             out.append((cls, items[int(i)][0], items[int(i)][1]))
     return out
+
+
+def predict_crop(model, bgr: np.ndarray, crop: tuple[int, int, int, int], threshold: float,
+                 keep: dict[int, str]) -> list[tuple[str, list[float], float]]:
+    """One tile-sized crop (x, y, w, h), e.g. around the ball
+    -> [(class, [x1, y1, x2, y2], score)] in full-image pixels."""
+    x0, y0, w, h = crop
+    rgb = cv2.cvtColor(np.ascontiguousarray(bgr[y0:y0 + h, x0:x0 + w]), cv2.COLOR_BGR2RGB)
+    d = model.predict(rgb, threshold=threshold, include_source_image=False)
+    return [(keep[int(c)], [float(x1 + x0), float(y1 + y0), float(x2 + x0), float(y2 + y0)],
+             float(s)) for (x1, y1, x2, y2), c, s in zip(d.xyxy, d.class_id, d.confidence,
+                                                         strict=True) if int(c) in keep]
 
 
 def predict_full(model, bgr: np.ndarray, threshold: float,

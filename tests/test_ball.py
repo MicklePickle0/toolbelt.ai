@@ -85,6 +85,30 @@ def test_tracker_follows_the_ball_not_the_spare():
     assert not spare.any()
 
 
+def test_tracker_ignores_a_printed_ball_that_drifts():
+    """A ball on a wall poster, seen on every frame for a long time, its pan-free position
+    drifting slowly with camera-track noise (pakmen-black_set2): over its life it spreads
+    past static_spread_px, but within any second it stands still, so it's never the ball."""
+    cam = VIEWS["centred"]
+    dets, frames, pts, uv, _ = synthetic_detections(cam)
+    lead = frames[0] - 2 * np.arange(1800, 0, -1)                   # a minute before play
+    all_frames = np.concatenate([lead, frames])
+    drift = np.linspace(0, 2 * CFG["static_spread_px"], len(all_frames))
+    poster = np.stack([300 + drift, 120 + 0.3 * drift], axis=1)
+    keep = ~np.isclose(dets.det_box[:, 0], 195)                     # drop the fixed spare
+    det_f = np.concatenate([dets.det_frame[keep], all_frames])
+    det_b = np.vstack([dets.det_box[keep], np.hstack([poster - 6, poster + 6])])
+    det_s = np.concatenate([dets.det_score[keep], np.full(len(all_frames), 0.75)])
+    path = track_ball(Detections(all_frames, det_f, det_b, det_s, FPS),
+                      lambda f: cam, cam, CFG)
+    on_poster = np.linalg.norm(path.uv_ref - poster, axis=1) < 20
+    assert not on_poster.any()
+    play = np.isin(path.frames, frames)
+    ok = np.isfinite(path.uv[play]).all(axis=1)
+    assert ok.mean() > 0.9
+    assert np.median(np.linalg.norm(path.uv[play][ok] - uv[ok], axis=1)) < 3
+
+
 def test_flights_are_split_at_the_touch_and_fit_in_3d():
     cam = VIEWS["centred"]
     dets, frames, pts, uv, n_a = synthetic_detections(cam, seed=1)
@@ -108,3 +132,18 @@ def test_flights_are_split_at_the_touch_and_fit_in_3d():
 def test_segment_rejects_noise_shorter_than_a_flight():
     t = np.arange(0, 0.15, 1 / 30)
     assert segment(t, np.zeros((len(t), 2)), CFG["arcs"]) == []
+
+
+def test_tracks_do_not_live_across_skipped_downtime():
+    """Detection skipped 10 s between two rallies: the ball after it is a new track."""
+    cam = VIEWS["centred"]
+    a = 1000 + 2 * np.arange(40)
+    b = a[-1] + 600 + 2 * np.arange(40)
+    frames = np.concatenate([a, b])
+    # One straight path: the ball after the gap continues where the last one stopped.
+    uv = np.stack([600 + 8.0 * np.arange(len(frames)), np.full(len(frames), 500.0)], axis=1)
+    boxes = np.hstack([uv - 6, uv + 6])
+    dets = Detections(frames, frames.copy(), boxes, np.full(len(frames), 0.9), FPS)
+    path = track_ball(dets, lambda f: cam, cam, CFG)
+    ids_a, ids_b = set(path.track_id[:len(a)]), set(path.track_id[len(a):])
+    assert -1 not in ids_a | ids_b and not ids_a & ids_b

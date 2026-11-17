@@ -45,3 +45,16 @@ def test_undo_cancel_and_delete(tmp_path):
     _keys(ed, 100, "x")                           # delete the start
     assert ed.events == []
     assert ed.neighbour(0, True) is None
+
+
+def test_a_replayed_point_has_no_winner_and_passes_the_check(tmp_path):
+    path = tmp_path / "events.csv"
+    ed = EventEditor(path, FPS)
+    _keys(ed, 600, "s")
+    _keys(ed, 640, "t1")
+    _keys(ed, 700, ["u", "2", "7", ENTER, "3"])
+    _keys(ed, 760, ["e", "r"])                    # a ball rolled on: replayed
+    rallies, issues = parse_events(path, FPS)
+    assert not issues.errors, [str(i) for i in issues.errors]
+    (r,) = rallies
+    assert r.replayed and r.point_winner is None

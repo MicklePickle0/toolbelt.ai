@@ -1,0 +1,51 @@
+{
+  "video": "mac-platinum_set2",
+  "method": "auto",
+  "confidence": 0.4462,
+  "needs_review": true,
+  "net_height_m": 2.35,
+  "frame": 1798,
+  "camera": {
+    "width": 1920,
+    "height": 1080,
+    "f": 3132.837240780069,
+    "k1": 0.0,
+    "rvec": [
+      0.4729074011788303,
+      -2.080169025412694,
+      1.773253654187633
+    ],
+    "tvec": [
+      -4.427624123661231,
+      -2.4861597066385768,
+      32.208385518289056
+    ],
+    "centre_m": [
+      19.391,
+      26.145,
+      1.897
+    ],
+    "hfov_deg": 34.07
+  },
+  "support": {
+    "inliers": 522,
+    "visible": 993,
+    "support": 0.5257,
+    "chance": 0.1435,
+    "lines_found": [
+      "attack_near",
+      "centre",
+      "attack_far",
+      "side_left",
+      "side_right",
+      "net_top",
+      "antenna_right"
+    ],
+    "confidence": 0.4462
+  },
+  "clicks": {},
+  "line_clicks": {},
+  "reprojection_rms_px": null,
+  "applies_from": null,
+  "saved_at": "2026-10-28T14:23:27+00:00"
+}

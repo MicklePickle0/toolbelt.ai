@@ -8,11 +8,68 @@ from pathlib import Path
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 # Bump when schema.sql changes in a way CREATE ... IF NOT EXISTS can't apply
 # to an existing file. Stored in PRAGMA user_version.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 8
+
+_OLD_SOURCE = "CHECK (point_winner_source IN ('user', 'ocr'))"
+_NEW_SOURCE = "CHECK (point_winner_source IN ('user', 'ocr', 'next_serve'))"
 
 
 class SchemaVersionError(RuntimeError):
     pass
+
+
+def _migrate_3_to_4(conn: sqlite3.Connection) -> None:
+    """v4 allows point_winner_source 'next_serve' (rally/winner.py). SQLite can't change a
+    CHECK in place, so the rallies table is rebuilt with every row kept (reviews too)."""
+    sql = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'rallies'"
+                       ).fetchone()[0]
+    if _OLD_SOURCE not in sql:
+        raise SchemaVersionError("unexpected v3 rallies table; can't migrate it")
+    conn.execute("PRAGMA foreign_keys = OFF")
+    with conn:
+        conn.execute(sql.replace("rallies", "rallies_v4", 1).replace(_OLD_SOURCE, _NEW_SOURCE))
+        conn.execute("INSERT INTO rallies_v4 SELECT * FROM rallies")
+        conn.execute("DROP TABLE rallies")
+        conn.execute("ALTER TABLE rallies_v4 RENAME TO rallies")
+        conn.execute("PRAGMA user_version = 4")
+
+
+def _migrate_4_to_5(conn: sqlite3.Connection) -> None:
+    """v5 adds contacts.player_confidence (how sure player_id is); existing rows keep NULL."""
+    with conn:
+        conn.execute("ALTER TABLE contacts ADD COLUMN player_confidence REAL")
+        conn.execute("PRAGMA user_version = 5")
+
+
+def _migrate_5_to_6(conn: sqlite3.Connection) -> None:
+    """v6: rosters (rosters.py): teams.roster_slug / season, players.height_cm / position."""
+    with conn:
+        for table, column, kind in (("teams", "roster_slug", "TEXT"), ("teams", "season", "TEXT"),
+                                    ("players", "height_cm", "REAL"),
+                                    ("players", "position", "TEXT")):
+            if column not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+        conn.execute("PRAGMA user_version = 6")
+
+
+def _migrate_6_to_7(conn: sqlite3.Connection) -> None:
+    """v7: rallies.end_detail (why a point ended abruptly: net touch, lift, ...)."""
+    with conn:
+        if "end_detail" not in {r[1] for r in conn.execute("PRAGMA table_info(rallies)")}:
+            conn.execute("ALTER TABLE rallies ADD COLUMN end_detail TEXT")
+        conn.execute("PRAGMA user_version = 7")
+
+
+def _migrate_7_to_8(conn: sqlite3.Connection) -> None:
+    """v8: contacts.pass_x / pass_y, where a serve receive was played (the setter's feet,
+    court metres; stats/pass_score.py), for the pass map; player_x / player_y, the
+    toucher's feet at the touch (attack zones)."""
+    with conn:
+        have = {r[1] for r in conn.execute("PRAGMA table_info(contacts)")}
+        for col in ("pass_x", "pass_y", "player_x", "player_y"):
+            if col not in have:
+                conn.execute(f"ALTER TABLE contacts ADD COLUMN {col} REAL")
+        conn.execute("PRAGMA user_version = 8")
 
 
 def connect(db_path: str | Path) -> sqlite3.Connection:
@@ -24,6 +81,21 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     has_tables = conn.execute(
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'").fetchone()[0]
+    if has_tables and version == 3:
+        _migrate_3_to_4(conn)
+        version = 4
+    if has_tables and version == 4:
+        _migrate_4_to_5(conn)
+        version = 5
+    if has_tables and version == 5:
+        _migrate_5_to_6(conn)
+        version = 6
+    if has_tables and version == 6:
+        _migrate_6_to_7(conn)
+        version = 7
+    if has_tables and version == 7:
+        _migrate_7_to_8(conn)
+        version = 8
     if has_tables and version != SCHEMA_VERSION:
         conn.close()
         raise SchemaVersionError(

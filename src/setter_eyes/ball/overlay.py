@@ -1,8 +1,9 @@
 """Draw the tracked ball on video frames.
 
 The ball draws its own trail: during a rally, a line behind the ball from its last touch
-(it starts fresh at every touch), and an X at the latest touch (replaced by the next)
-(yellow = us, blue = them, red = floor). Between rallies, a short trail. Trail points are
+(it starts fresh at every touch), and an X with its action at the latest touch, replaced by
+the next (yellow = us, blue = them, red = floor). Between rallies, a short trail. Trail
+points are
 kept in the pan-free reference view and redrawn through the current camera, so the line
 stays on the ball's real path while the camera pans. Optional: raw detections, and
 (--ground) a drop line from the ball to the floor with its ground trail, from the fitted
@@ -153,6 +154,14 @@ class BallOverlay:
                                 (((u - r, v - r), (u + r, v + r)), (colour, 2 * th)),
                                 (((u - r, v + r), (u + r, v - r)), (colour, 2 * th))):
             cv2.line(image, a, b, cc, w, cv2.LINE_AA)
+        if c.get("action"):                  # the touch's action (classify/rules.py)
+            text = c["action"].replace("_", " ").upper()
+            org = (u + r + 4 * th, v + 4 * th)
+            scale = 0.45 * th
+            cv2.putText(image, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), 4 * th,
+                        cv2.LINE_AA)
+            cv2.putText(image, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, colour, th + 1,
+                        cv2.LINE_AA)
 
     def _ground(self, image, arc: Arc, p, now: float, cam: Camera, th: int) -> None:
         floor = np.array([p[0], p[1], 0.0])

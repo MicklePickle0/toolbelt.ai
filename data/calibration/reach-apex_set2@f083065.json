@@ -1,0 +1,44 @@
+{
+  "video": "reach-apex_set2",
+  "method": "transfer",
+  "confidence": 0.7927,
+  "needs_review": false,
+  "net_height_m": 2.43,
+  "frame": 83065,
+  "camera": {
+    "width": 3840,
+    "height": 2160,
+    "f": 2545.9984244624957,
+    "k1": -0.044311587152172684,
+    "rvec": [
+      0.013794355237701771,
+      2.2471231217593366,
+      -2.1893795032635945
+    ],
+    "tvec": [
+      -4.729540739350257,
+      1.3539457266099775,
+      11.647238085011917
+    ],
+    "centre_m": [
+      4.627,
+      11.651,
+      1.642
+    ],
+    "hfov_deg": 74.04
+  },
+  "support": {
+    "inliers": 255,
+    "rms_px": 1.86,
+    "spread_m": [
+      15.6,
+      11.0
+    ],
+    "confidence": 0.793
+  },
+  "clicks": {},
+  "line_clicks": {},
+  "reprojection_rms_px": null,
+  "applies_from": 79898,
+  "saved_at": "2026-10-24T19:26:03+00:00"
+}

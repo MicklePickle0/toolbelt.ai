@@ -32,10 +32,26 @@ footage: <= 2.2 s apart within a rally, >= 14 s between rallies). The serve, in 
     Right about half the time on labelled footage (mostly when a touch's team is wrong;
     pre-serve bounces within `max_touch_gap_s` of the serve look the same), so these
     rallies get `inferred_factor` confidence and go to the review queue.
-A group with none of these is dropped (pepper in a timeout, a toss, a ball kicked back).
+A group with none of these is dropped (pepper in a timeout, a toss, a ball kicked back), and
+so is an entry serve alone whose ball is lost at once (no serve flight: a ball held up in
+front of the camera).
+Rally-step checks (roadmap E3, from pakmen-black_set2's false rallies; `rally.checks`):
+  - a seen serve (a serve-like touch, or a lone touch before the exchange) needs the ball
+    to cross the net within `serve_cross_s`, a touch confident enough
+    (`serve_sure_conf`), or the next touch by the other side; else it isn't taken as the
+    serve (ball handling before the real serve looked like one);
+  - a quick run of `one_side_touches` touches by one side (receive, set, attack whose
+    serve and crossing weren't seen) keeps its rally without a crossing, at
+    `one_side_factor` confidence. Pepper lasts longer than `one_side_max_span_s`;
+  - a short piece (`pre_serve_max_s`, at most `pre_serve_max_touches` touches, no
+    crossing) ending less than `pre_serve_gap_s` before a sure serve is dropped: ball
+    handling before that serve (drop_pre_serve_pieces).
 Touches with the ball outside our court's airspace belong to another court and are
 ignored. The rally ends at the first floor contact after its last touch, else where the
-ball is lost, at most `end_window_s` after it.
+ball is lost, at most `end_window_s` after it. Touches after the ball touched the floor are
+dead (picked up after the point), as are trailing touches that fail the live-ball check
+(rally/live.py). Often nothing visible ends a point (a net touch, a call): then the rally
+just stops, without a floor contact, at lower confidence, and goes to review.
 
 The score is NOT decided here (CLAUDE.md): rallies carry no point winner; that comes from
 the review UI key press, with scoreboard OCR as a sanity check.
@@ -50,9 +66,11 @@ import numpy as np
 from setter_eyes.ball.arcs import Arc
 from setter_eyes.ball.tracker import BallPath
 from setter_eyes.contacts.events import Contact
+from setter_eyes.rally.live import PlayerMotion, dead_from
 
 SERVE_FROM_FLIGHT = -2          # Rally.serve_contact when the serve was traced back
 SERVE_INFERRED = -3             # ...when it wasn't seen at all but the rally shows it
+TEAMS = ("us", "them")
 
 
 @dataclass
@@ -68,6 +86,13 @@ class Rally:
     contacts: list[int] = field(default_factory=list)
     net_crossings: int = 0
     confidence: float = 0.0
+    # From rally/winner.py (who serves next), once all rallies are known:
+    point_winner: str | None = None
+    winner_confidence: float = 0.0
+    score_us: int = 0
+    score_them: int = 0
+    outcome: str | None = None
+    outcome_confidence: float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -136,7 +161,7 @@ def segment_rallies(path: BallPath, arcs: list[Arc], contacts: list[Contact], g:
         if crossings == 0:
             continue                                     # warm-up, a toss, a ball rolled back
         members = [i for i in in_ep if start_t <= contacts[i].t <= end_t]
-        _apply_touch_prior(contacts, members, cfg)
+        _apply_touch_prior(contacts, members, cfg, serving)
         conf = r["base_confidence"] + r["serve_bonus"] * (start_i is not None) + \
             r["floor_bonus"] * bool(floors)
         rallies.append(Rally(
@@ -157,8 +182,12 @@ def in_airspace(c: Contact, cfg: dict) -> bool:
 
 
 def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact],
-                         g: np.ndarray, fps: float, cfg: dict) -> list[Rally]:
+                         g: np.ndarray, fps: float, cfg: dict,
+                         motion: PlayerMotion | None = None) -> list[Rally]:
+    """motion: near-side player movement, for the live-ball check (rally/live.py) that
+    ends a rally before touches made after the whistle."""
     r = cfg["rally"]["from_touches"]
+    chk = cfg["rally"]["checks"]
     times = path.frames / fps
     seen_t = times[np.isfinite(path.uv).all(axis=1)]
     for c in contacts:
@@ -166,7 +195,10 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
     touches = [i for i, c in enumerate(contacts) if c.kind == "touch" and in_airspace(c, cfg)]
     groups: list[list[int]] = []
     for i in touches:
-        if groups and contacts[i].t - contacts[groups[-1][-1]].t <= r["max_touch_gap_s"]:
+        # Our serve seen entering the frame always starts a rally (pre-serve bounces and
+        # tosses stay with the dead time before it).
+        if groups and not contacts[i].entry_serve and \
+                contacts[i].t - contacts[groups[-1][-1]].t <= r["max_touch_gap_s"]:
             groups[-1].append(i)
         else:
             groups.append([i])
@@ -184,14 +216,21 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
                                 cfg["rally"]["min_arc_confidence"]) > 0
         serve_like = [i for i in first_run if is_serve(contacts[i], arcs, g, cfg)]
         other = {"us": "them", "them": "us"}.get(teams[0])
+        entry = [i for i in first_run if contacts[i].entry_serve]
+        one_side = chk["enabled"] and _quick_one_side_run(contacts, first_run, chk)
+        serve_like = [i for i in serve_like
+                      if _seen_serve_ok(contacts, grp, teams, i, arcs, g, cfg)]
         serve_i: int | None = None
-        if traced is not None and traced[0] < t_first and traced[1] != teams[0]:
+        if entry:
+            serve_i = entry[-1]                    # our serve, seen entering the frame
+        elif traced is not None and traced[0] < t_first and traced[1] != teams[0]:
             serve_i = SERVE_FROM_FLIGHT            # the hit wasn't seen; the reply was
         elif serve_like:
             serve_i = serve_like[-1]
-        elif len(first_run) == 1 and (change is not None or crosses):
+        elif len(first_run) == 1 and (change is not None or crosses) and \
+                _seen_serve_ok(contacts, grp, teams, first_run[0], arcs, g, cfg):
             serve_i = first_run[0]
-        elif other is not None and (change is not None or crosses):
+        elif other is not None and (change is not None or crosses or one_side):
             serve_i = SERVE_INFERRED               # receive/set/attack first: theirs served
         elif traced is not None:
             serve_i = SERVE_FROM_FLIGHT
@@ -204,27 +243,111 @@ def segment_from_touches(path: BallPath, arcs: list[Arc], contacts: list[Contact
         else:
             start_t, serving = contacts[serve_i].t, contacts[serve_i].team
             contacts[serve_i].serve = True
-        last = contacts[grp[-1]].t
+        play = [i for i in grp if contacts[i].t >= start_t]
+        cut = dead_from([contacts[i].t for i in play], start_t, motion,
+                        cfg["rally"]["live_ball"])
+        dead_t = contacts[play[cut]].t if cut < len(play) else None
+        landed = _landed_before(contacts, play)            # the ball can't bounce in play
+        if landed < cut:
+            cut, dead_t = landed, None
+        last = contacts[play[cut - 1]].t if play[:cut] else contacts[grp[-1]].t
+        stop = min(last + r["end_window_s"], dead_t if dead_t is not None else np.inf)
         floors = [i for i, c in enumerate(contacts)
-                  if c.kind == "floor" and last < c.t <= last + r["end_window_s"]]
+                  if c.kind == "floor" and last < c.t <= stop]
         if floors:
             end_t, reason = contacts[floors[0]].t, "floor"
         else:
             end_t, reason = _ball_lost_after(seen_t, last, cfg["rally"]["max_ball_gap_s"],
                                              r["end_window_s"]), "ball_lost"
+            if dead_t is not None and end_t >= dead_t:
+                end_t, reason = last + 0.5 * (dead_t - last), "dead_ball"
+        crossed = net_crossings(arcs, g, start_t, end_t, cfg["rally"]["min_arc_confidence"])
+        if entry and len(play[:cut]) == 1 and not floors and not crossed and \
+                end_t - start_t < cfg["rally"]["our_serve"]["min_flight_s"]:
+            continue                               # big ball at the top, then no flight
         members = [i for i, c in enumerate(contacts) if start_t <= c.t <= end_t]
-        _apply_touch_prior(contacts, members, cfg)
+        _apply_touch_prior(contacts, members, cfg, serving)
         inferred = serve_i == SERVE_INFERRED
         conf = r["base_confidence"] + r["serve_bonus"] * (not inferred) + \
             r["exchange_bonus"] * (change is not None) + r["floor_bonus"] * bool(floors)
         if inferred:
             conf *= r["inferred_factor"]
+        if one_side and change is None and not crossed:
+            conf *= chk["one_side_factor"]         # kept only by the one-side run (E3)
+        if dead_t is not None:
+            conf *= cfg["rally"]["live_ball"]["trimmed_factor"]
         rallies.append(Rally(
             len(rallies) + 1, int(round(start_t * fps)), int(round(end_t * fps)),
-            round(start_t, 3), round(end_t, 3), serving, serve_i, reason, members,
-            net_crossings(arcs, g, start_t, end_t, cfg["rally"]["min_arc_confidence"]),
+            round(start_t, 3), round(end_t, 3), serving, serve_i, reason, members, crossed,
             round(min(1.0, conf), 3)))
+    if chk["enabled"]:
+        rallies = drop_pre_serve_pieces(rallies, contacts, cfg)
     return rallies
+
+
+def _seen_serve_ok(contacts: list[Contact], grp: list[int], teams: list, i: int,
+                   arcs: list[Arc], g: np.ndarray, cfg: dict) -> bool:
+    """E3: a seen serve needs the ball over the net soon after it, a sure touch, or a reply
+    by the other side. Ball handling before the real serve fails all three."""
+    chk = cfg["rally"]["checks"]
+    if not chk["enabled"]:
+        return True
+    c = contacts[i]
+    if c.confidence >= chk["serve_sure_conf"]:
+        return True
+    k = grp.index(i)
+    if k + 1 < len(grp) and teams[k + 1] and teams[k + 1] != c.team:
+        return True
+    return net_crossings(arcs, g, c.t, c.t + chk["serve_cross_s"],
+                         cfg["rally"]["min_arc_confidence"]) > 0
+
+
+def _quick_one_side_run(contacts: list[Contact], run: list[int], chk: dict) -> bool:
+    """E3: a run of `one_side_touches` touches by one side, quick like a receive, set and
+    attack (pepper in a timeout goes on longer), is a rally even when neither the serve nor
+    a net crossing was seen."""
+    if len(run) != chk["one_side_touches"]:
+        return False
+    return contacts[run[-1]].t - contacts[run[0]].t <= chk["one_side_max_span_s"]
+
+
+def drop_pre_serve_pieces(rallies: list[Rally], contacts: list[Contact],
+                          cfg: dict) -> list[Rally]:
+    """E3: a short piece with no net crossing that ends just before a rally with a sure
+    serve is ball handling before that serve (pakmen-black_set2 8:56, 14:12), not a point.
+    Its "serve" goes back to being a plain touch. Rallies are renumbered."""
+    chk = cfg["rally"]["checks"]
+    sure = chk["serve_sure_conf"]
+    out: list[Rally] = []
+    for k, r in enumerate(rallies):
+        nxt = rallies[k + 1] if k + 1 < len(rallies) else None
+        touches = [i for i in r.contacts if contacts[i].kind == "touch"]
+        if nxt is not None and r.net_crossings == 0 and \
+                r.end_t - r.start_t <= chk["pre_serve_max_s"] and \
+                len(touches) <= chk["pre_serve_max_touches"] and \
+                nxt.start_t - r.end_t <= chk["pre_serve_gap_s"] and \
+                nxt.serve_contact is not None and nxt.serve_contact >= 0:
+            s = contacts[nxt.serve_contact]
+            if s.entry_serve or s.confidence >= sure:
+                if r.serve_contact is not None and r.serve_contact >= 0:
+                    contacts[r.serve_contact].serve = False
+                continue
+        out.append(r)
+    for i, r in enumerate(out, start=1):
+        r.index = i
+    return out
+
+
+def _landed_before(contacts: list[Contact], play: list[int]) -> int:
+    """Index into `play` of the first touch made after the ball touched the floor (len(play)
+    if none): it was picked up after the point. Labelled: 3 dead touches and 1 false one
+    came after a floor contact, no real touch did."""
+    floor_t = [c.t for c in contacts if c.kind == "floor"]
+    for n in range(1, len(play)):
+        t0, t1 = contacts[play[n - 1]].t, contacts[play[n]].t
+        if any(t0 < f < t1 for f in floor_t):
+            return n
+    return len(play)
 
 
 def _ball_lost_after(seen_t: np.ndarray, t: float, max_gap: float, cap: float) -> float:
@@ -264,17 +387,97 @@ def traced_serve(arcs: list[Arc], g: np.ndarray, t0: float, t1: float,
     return None
 
 
-def _apply_touch_prior(contacts: list[Contact], members: list[int], cfg: dict) -> None:
-    """More than `max_contacts_per_side` touches by one side in a row is implausible (a
-    block doesn't count, but blocks aren't classified yet): lower those touches."""
-    limit = cfg["contacts"]["max_contacts_per_side"]
-    run_team, run = None, 0
-    for i in members:
+def _apply_touch_prior(contacts: list[Contact], members: list[int], cfg: dict,
+                       serving: str | None = None) -> None:
+    """At most `max_contacts_per_side` touches by one side in a row, plus a block (owner,
+    2026-10-29). Each touch's team is a guess on its own (the scorer's p_ours); here the
+    rally's team sequence is decoded as a whole (Viterbi): the most likely teams under that
+    rule. A 4th touch in a row costs `fourth_touch_cost` (it needs a block first, and blocks
+    aren't classified yet); a 5th is impossible, and so is the serving side touching right
+    after its serve. A touch whose team changes keeps `over_limit_penalty` of its confidence
+    (review queue)."""
+    c_cfg = cfg["contacts"]
+    td = c_cfg["team_decoder"]
+    limit = c_cfg["max_contacts_per_side"] + 1               # +1: allow one block
+    seq = [i for i in members if contacts[i].kind == "touch" and not contacts[i].serve
+           and contacts[i].team in TEAMS]
+    if not seq:
+        return
+    lo = td["p_clip"]
+    cost = []                                                # per touch: {team: -log p}
+    for i in seq:
         c = contacts[i]
-        if c.kind != "touch" or c.serve:
-            run_team, run = c.team, 1 if c.serve else 0
+        p = c.p_ours if c.p_ours is not None else \
+            (td["unscored_p"] if c.team == "us" else 1 - td["unscored_p"])
+        p = min(max(p, lo), 1 - lo)
+        cost.append({"us": -np.log(p), "them": -np.log(1 - p)})
+    # State (team, touches in a row). The serve counts as a full run for the serving side.
+    best: dict[tuple[str, int], tuple[float, list[str]]] = {}
+    start = {(serving, limit): (0.0, [])} if serving in TEAMS else {None: (0.0, [])}
+    for k in range(len(seq)):
+        best = {}
+        for state, (total, path) in start.items():
+            for team in TEAMS:
+                run = state[1] + 1 if state is not None and state[0] == team else 1
+                if run > limit:
+                    continue
+                step = cost[k][team] + (td["fourth_touch_cost"] if run == limit else 0.0)
+                key = (team, run)
+                if key not in best or total + step < best[key][0]:
+                    best[key] = (total + step, [*path, team])
+        start = best
+    teams = min(best.values(), key=lambda v: v[0])[1]
+    for i, team in zip(seq, teams, strict=True):
+        c = contacts[i]
+        if c.team != team:
+            c.team = team
+            c.confidence = round(c.confidence * c_cfg["over_limit_penalty"], 3)
+
+
+def merge_close(rallies: list[Rally], contacts: list[Contact], cfg: dict) -> list[Rally]:
+    """One point cut in two: rallies closer than `rally.merge_gap_s` (owner: there are
+    usually 10+ s between points) become one. The first keeps its serve; the second's
+    "serve" was a touch in play (actions are classified afterwards, from the merged rally).
+    The merged rally's confidence is the lower of the two (it goes to review sooner).
+    A rally that starts with a clearly seen serve is never merged in: that is a new point,
+    and a false rally in the downtime would otherwise chain two real points together
+    (labelled: points are always 10.6+ s apart)."""
+    gap = cfg["rally"]["merge_gap_s"]
+    sure = cfg["rally"]["merge_keeps_serve_conf"]
+    out: list[Rally] = []
+    for r in rallies:
+        prev = out[-1] if out else None
+        serve = (contacts[r.serve_contact] if r.serve_contact is not None
+                 and r.serve_contact >= 0 else None)
+        new_point = serve is not None and (serve.entry_serve or serve.confidence >= sure)
+        if prev is not None and r.start_t - prev.end_t < gap and not new_point:
+            prev_seen = prev.serve_contact is not None and prev.serve_contact >= 0
+            if not prev_seen and serve is not None:
+                out[-1] = r                     # no serve, then a serve: downtime, then a point
+                continue
+            if r.serve_contact is not None and r.serve_contact >= 0:
+                contacts[r.serve_contact].serve = False
+                contacts[r.serve_contact].entry_serve = False
+            prev.contacts = sorted(set(prev.contacts) | set(r.contacts))
+            prev.end_t, prev.end_frame = max(prev.end_t, r.end_t), max(prev.end_frame, r.end_frame)
+            prev.end_reason = r.end_reason
+            prev.net_crossings += r.net_crossings
+            prev.confidence = round(min(prev.confidence, r.confidence), 3)
             continue
-        run = run + 1 if c.team == run_team else 1
-        run_team = c.team
-        if run > limit + 1:                               # +1: allow one block
-            c.confidence = round(c.confidence * cfg["contacts"]["over_limit_penalty"], 3)
+        out.append(r)
+    for i, r in enumerate(out, start=1):
+        r.index = i
+    return out
+
+
+def flag_gaps(rallies: list[Rally], cfg: dict) -> int:
+    """A long gap before a rally may hide a point the pipeline missed: that rally's
+    confidence drops (`rally.missed_point_factor`) so it comes up early in review, where
+    the missed point can be added. Returns how many were flagged."""
+    gap, factor = cfg["rally"]["missed_point_gap_s"], cfg["rally"]["missed_point_factor"]
+    n = 0
+    for prev, r in zip(rallies, rallies[1:], strict=False):
+        if r.start_t - prev.end_t > gap:
+            r.confidence = round(r.confidence * factor, 3)
+            n += 1
+    return n

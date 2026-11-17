@@ -1,0 +1,307 @@
+import sys
+import textwrap
+import time
+
+import pytest
+
+pytest.importorskip("fastapi")
+from fastapi.testclient import TestClient  # noqa: E402
+
+from setter_eyes import db  # noqa: E402
+from setter_eyes.api import jobs as jb  # noqa: E402
+from setter_eyes.api.app import Settings, create_app  # noqa: E402
+from setter_eyes.db.pipeline import write_video  # noqa: E402
+from setter_eyes.labels import load_manifest  # noqa: E402
+
+
+def _touch(t, team, action):
+    return {"kind": "touch", "t": t, "frame": int(t * 60), "confidence": 0.6, "team": team,
+            "ball_xyz": None, "action": action, "action_confidence": 0.5}
+
+
+@pytest.fixture
+def client(tmp_path):
+    (tmp_path / "v1.mp4").write_bytes(b"")
+    mpath = tmp_path / "manifest.yaml"
+    mpath.write_text(textwrap.dedent("""\
+        team: Venom
+        roster:
+          - {number: 7, name: Seven}
+        videos:
+          - id: v1
+            path: v1.mp4
+            venue: Humber
+            net_height: boys_17_18u
+            ball: mikasa_v200w_yellow
+        """), encoding="utf-8")
+    m = load_manifest(mpath)
+    conn = db.connect(tmp_path / "events.db")
+    contacts = [_touch(10.0, "them", "serve"), _touch(11.0, "us", "receive"),
+                _touch(12.0, "us", "set"), _touch(13.0, "us", "attack")]
+    rallies = [{"index": 1, "start_frame": 600, "end_frame": 840, "start_t": 10.0,
+                "end_t": 14.0, "confidence": 0.4, "serving_team": "them",
+                "contacts": [0, 1, 2, 3], "point_winner": "us", "winner_confidence": 0.9,
+                "outcome": "kill", "outcome_confidence": 0.5, "score_us": 1, "score_them": 0}]
+    write_video(conn, m, m.video("v1"), 60.0, rallies, contacts)
+    conn.close()
+    s = Settings(tmp_path / "events.db", tmp_path / "labels.db", mpath, tmp_path / "cal",
+                 tmp_path / "cache", tmp_path / "logs", ["find_play"], [], 640, 2.0,
+                 ["serve", "receive", "set", "attack", "dig", "block"],
+                 ["kill", "attack_error", "ace", "service_error", "other", "replay"],
+                 rosters_dir=tmp_path / "rosters", folders_path=tmp_path / "folders.yaml",
+                 match_formats_path=tmp_path / "match_formats.yaml")
+    return TestClient(create_app(s, start_worker=False))
+
+
+def test_videos_meta_and_stats(client):
+    meta = client.get("/api/meta").json()
+    assert meta["team"] == "Venom" and meta["roster"] == [{"number": 7, "name": "Seven"}]
+    v = client.get("/api/videos").json()
+    assert [x["key"] for x in v] == ["v1"]
+    assert v[0]["rallies"] == 1 and v[0]["calibration"] is None and v[0]["has_video"]
+    st = client.get("/api/stats", params={"videos": "v1"}).json()
+    assert st["team"]["kills"] == 1 and st["team"]["points_us"] == 1
+    assert st["rallies"] == 1 and st["reviewed"] == 0
+    assert client.get("/api/stats", params={"videos": "v1", "source": "labels"}).status_code \
+        == 404                                            # no labels DB here
+    assert client.get("/").status_code == 200             # the page itself
+
+
+def test_review_round_trip(client):
+    set_id = client.get("/api/videos").json()[0]["set_id"]
+    lst = client.get(f"/api/sets/{set_id}/rallies").json()
+    rid = lst["queue"][0]
+    d = client.get(f"/api/rallies/{rid}").json()
+    assert d["rally"]["point_winner_source"] == "next_serve" and len(d["touches"]) == 4
+    touches = d["touches"]
+    touches[3]["action"] = "dig"                          # not an attack after all
+    body = {"winner": "us", "touches": touches, "end_t": 14.0}
+    assert client.post(f"/api/rallies/{rid}/suggest", json=body).json()["outcome"] != "kill"
+    body = {**body, "outcome": "other", "serving_team": "them", "start_t": 10.0}
+    assert client.post(f"/api/rallies/{rid}/review", json=body).status_code == 200
+    lst = client.get(f"/api/sets/{set_id}/rallies").json()
+    assert lst["queue"] == [] and lst["score_reviewed"] == [1, 0]
+    d = client.get(f"/api/rallies/{rid}").json()
+    assert d["rally"]["reviewed"] == 1 and d["touches"][3]["action"] == "dig"
+    bad = {**body, "winner": "maybe"}
+    assert client.post(f"/api/rallies/{rid}/review", json=bad).status_code == 400
+
+
+def test_set_checks_and_match_format(client):
+    v = client.get("/api/videos").json()[0]
+    # One point won by us: far short of a set to 25 (roadmap E2).
+    assert v["checks"]["status"] == "short" and v["checks"]["score"] == [1, 0]
+    lst = client.get(f"/api/sets/{v['set_id']}/rallies").json()
+    assert lst["checks"]["set_number"] == 1 and "flags" in lst["rallies"][0]
+    assert "flagged" in lst and lst["rallies"][0]["score"] == [1, 0]
+    d = client.get(f"/api/rallies/{lst['rallies'][0]['id']}").json()
+    assert d["checks"]["format"]["preset"] == "best_of_3" and d["score"] == [1, 0]
+    fd = client.get("/api/folders").json()
+    assert fd["formats"]["v1"]["points"] == [25, 25, 15] and "best_of_5" in fd["presets"]
+    r = client.put("/api/games/v1/format", json={"preset": "best_of_5"})
+    assert r.status_code == 200 and r.json()["best_of"] == 5
+    assert client.get("/api/folders").json()["formats"]["v1"]["best_of"] == 5
+    r = client.put("/api/games/v1/format", json={"points": [15, 15, 15], "win_by": 2})
+    assert r.status_code == 200 and r.json()["preset"] is None
+    assert client.put("/api/games/v1/format", json={"preset": "nope"}).status_code == 400
+    r = client.put("/api/videos/v1/set_number", json={"set_number": 3})
+    assert r.json()["set_number"] == 3
+    st = client.get("/api/stats", params={"videos": "v1"}).json()
+    assert st["checks"][0]["set_number"] == 3 and st["checks"][0]["target"] == 15
+
+
+def test_situational_stats(client):
+    out = client.get("/api/situational", params={"videos": "v1"}).json()
+    assert out["sets"]["n"] == 1 and out["hitters"][0]["att"] == 1
+    assert out["in_system_rule"]["pass_scores"] == [3, 4] and out["trends"][0]["game"] == "v1"
+
+
+def test_job_queue_runs_steps_and_stops_without_calibration(tmp_path):
+    (tmp_path / "scripts").mkdir()
+    for step in ("a", "b"):
+        (tmp_path / "scripts" / f"{step}.py").write_text("print('ok')", encoding="utf-8")
+    calibrated = set()
+    q = jb.JobQueue(tmp_path / "logs", ["a", "b"], ["b"], lambda v: v in calibrated, tmp_path,
+                    command=lambda step, video: [sys.executable, "-c",
+                                                 f"print('{step} {video} 3/10')"])
+    job = q.submit("v1")
+    with pytest.raises(ValueError):
+        q.submit("v1")                                    # already queued
+    q.run_job(job)
+    assert job.status == jb.NEEDS_CALIBRATION and job.steps[job.step] == "b"
+    calibrated.add("v1")
+    again = q.resume(job.id)
+    assert again.steps == ["b"]
+    q.run_job(again)
+    assert again.status == jb.DONE and again.progress == "b v1 3/10"
+    log = q.log_path(again).read_text(encoding="utf-8")
+    assert "=== " in log and "b v1" in log
+    # the list survives a restart; a job running at the time shows as interrupted
+    again.status = jb.RUNNING
+    q._save()
+    q2 = jb.JobQueue(tmp_path / "logs", ["a", "b"], [], lambda v: True, tmp_path)
+    assert [j.status for j in q2.jobs] == [jb.NEEDS_CALIBRATION, jb.INTERRUPTED]
+
+
+def test_job_cancel_stops_the_running_step(tmp_path):
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "slow.py").write_text("", encoding="utf-8")
+    q = jb.JobQueue(tmp_path / "logs", ["slow"], [], lambda v: True, tmp_path,
+                    command=lambda step, video: [sys.executable, "-c",
+                                                 "import time; time.sleep(30)"])
+    job = q.submit("v1")
+    q.start()
+    deadline = time.time() + 10
+    while q._proc is None and time.time() < deadline:
+        time.sleep(0.05)
+    q.cancel(job.id)
+    while job.status == jb.RUNNING and time.time() < deadline:
+        time.sleep(0.05)
+    assert job.status == jb.CANCELLED
+
+
+def test_stats_pass_scale_must_be_3_or_4(client):
+    assert client.get("/api/stats", params={"videos": "v1", "pass_scale": 3}).json()[
+        "pass_scale"] == 3
+    assert client.get("/api/stats", params={"videos": "v1", "pass_scale": 5}).status_code == 400
+
+
+def test_calibrate_in_the_browser(client, tmp_path):
+    import cv2
+    import numpy as np
+
+    from test_calibration import MODEL, VIEWS, render
+
+    truth = VIEWS["diagonal"]
+    frames = tmp_path / "cache" / "v1" / "frames"
+    frames.mkdir(parents=True)
+    cv2.imwrite(str(frames / "v1_f000010.jpg"), render(truth))
+    names = ["near_left_corner", "near_right_corner", "near_left_attack", "near_right_attack",
+             "centre_left", "centre_right", "net_tape_left", "net_tape_right"]
+    uv = truth.project(np.array([MODEL.keypoints[n] for n in names]))[0]
+    clicks = {n: [float(u), float(v)] for n, (u, v) in zip(names, uv, strict=True)}
+    body = {"frame": 10, "clicks": clicks,
+            "line_clicks": {}}
+    too_few = {**body, "clicks": dict(list(body["clicks"].items())[:3])}
+    assert client.post("/api/videos/v1/calibration/solve", json=too_few).status_code == 400
+    r = client.post("/api/videos/v1/calibration/solve", json=body).json()
+    assert r["ok"] and r["rms"] < 1.0 and r["overlay"].startswith("data:image/jpeg")
+    assert client.get("/api/videos").json()[0]["calibration"] is None
+    saved = client.post("/api/videos/v1/calibration", json=body).json()
+    assert saved["saved"] and not saved["needs_review"] and saved["rerun_from"] is None
+    cal = client.get("/api/videos").json()[0]["calibration"]
+    assert cal["method"] == "manual" and cal["usable"] and cal["frame"] == 10
+    assert client.app.state.jobs.is_calibrated("v1")
+    # saving again keeps the first one in history (clicks are human work)
+    client.post("/api/videos/v1/calibration", json=body)
+    assert len(list((tmp_path / "cal" / "history").glob("v1_*.json"))) == 1
+    assert client.get("/api/videos/v1/frame/10").headers["content-type"] == "image/jpeg"
+
+
+def test_an_automatic_fit_does_not_count_as_calibrated(client, tmp_path):
+    import json
+
+    from setter_eyes.calibration import Calibration, save
+    from test_calibration import VIEWS
+    save(Calibration("v1", VIEWS["diagonal"], "auto", 0.9, 2.43, frame=1), tmp_path / "cal")
+    cal = client.get("/api/videos").json()[0]["calibration"]
+    assert cal["method"] == "auto" and not cal["usable"]
+    assert not client.app.state.jobs.is_calibrated("v1")
+    assert json.loads((tmp_path / "cal" / "v1.json").read_text())["method"] == "auto"
+
+
+def test_progress_from_a_step_line(tmp_path):
+    assert jb.parse_progress("  frame 7998: 4000/34436 at 8.8/s, ~58 min left") == \
+        pytest.approx((4000 / 34436, 58.0))
+    assert jb.parse_progress("  frame 3000/75351")[0] == pytest.approx(3000 / 75351)
+    assert jb.parse_progress("saved 12 rallies") == (None, None)
+    assert jb.progress_bar(0.5, width=10) == "[#####-----]  50%"
+    q = jb.JobQueue(tmp_path, ["a", "b"], [], lambda v: True, tmp_path,
+                    step_weights={"a": 3, "b": 1})
+    job = jb.Job(1, "v1", ["a", "b"], status=jb.RUNNING, step=1)
+    assert q._share(job, 0.5) == pytest.approx(3.5 / 4)
+
+
+def test_rosters_in_the_app(client, tmp_path):
+    body = {"name": "Venom 16U", "season": "2026-27", "players": [
+        {"number": 7, "name": "Seven", "height": "6'2\"", "position": "OH"},
+        {"number": 6, "name": "Libby", "height": 170, "libero": True}]}
+    slug = client.post("/api/rosters", json=body).json()["slug"]
+    assert slug == "venom-16u"
+    assert client.post("/api/rosters", json=body).status_code == 400     # same name twice
+    bad = {**body, "players": [{"number": 7, "name": "A"}, {"number": 7, "name": "B"}]}
+    assert client.put(f"/api/rosters/{slug}", json=bad).status_code == 400
+    assert client.put("/api/videos/v1/roster", json={"roster": slug}).status_code == 200
+    r = client.get("/api/rosters").json()[0]
+    assert r["videos"] == ["v1"] and r["players"][1]["height_cm"] == pytest.approx(188, abs=1)
+    assert client.get("/api/videos").json()[0]["roster"]["name"] == "Venom 16U"
+    assert (tmp_path / "rosters" / "venom-16u.yaml").exists()
+    assert client.delete(f"/api/rosters/{slug}").status_code == 400      # still applied
+    client.put("/api/videos/v1/roster", json={"roster": None})
+    assert client.delete(f"/api/rosters/{slug}").status_code == 200
+
+
+def test_split_from_the_review_page(client):
+    set_id = client.get("/api/videos").json()[0]["set_id"]
+    rid = client.get(f"/api/sets/{set_id}/rallies").json()["rallies"][0]["id"]
+    assert client.post(f"/api/rallies/{rid}/split", json={"t": 99.0}).status_code == 400
+    new = client.post(f"/api/rallies/{rid}/split", json={"t": 12.5}).json()["new_id"]
+    rows = client.get(f"/api/sets/{set_id}/rallies").json()["rallies"]
+    assert [r["id"] for r in rows] == [rid, new]
+    assert len(client.get(f"/api/rallies/{new}").json()["touches"]) == 1
+
+
+def test_camera_tracking_runs_alongside_detection(tmp_path):
+    (tmp_path / "scripts").mkdir()
+    for step in ("detect", "camera", "after"):
+        (tmp_path / "scripts" / f"{step}.py").write_text("", encoding="utf-8")
+    ran = []
+
+    def command(step, video):
+        ran.append(step)
+        sleep = {"detect": 0.6, "camera": 0.3, "after": 0.0}[step]
+        return [sys.executable, "-c", f"import time; time.sleep({sleep}); print('{step} ok')"]
+
+    q = jb.JobQueue(tmp_path / "logs", ["detect", "camera", "after"], ["camera"],
+                    lambda v: True, tmp_path, command=command,
+                    background_steps=["camera"], background_during=["detect"])
+    job = q.submit("v1")
+    t0 = time.time()
+    q.run_job(job)
+    assert job.status == jb.DONE and ran == ["camera", "detect", "after"]
+    assert time.time() - t0 < 1.5                      # camera ran during detect, not after
+    log = q.log_path(job).read_text(encoding="utf-8")
+    assert "camera (ran alongside detection, exit 0)" in log and "camera ok" in log
+    assert not q.log_path(job).with_suffix(".bg.log").exists()
+    # not calibrated: no background start; the job stops at the camera step as before
+    q2 = jb.JobQueue(tmp_path / "logs2", ["detect", "camera"], ["camera"], lambda v: False,
+                     tmp_path, command=command, background_steps=["camera"],
+                     background_during=["detect"])
+    j2 = q2.submit("v2")
+    q2.run_job(j2)
+    assert j2.status == jb.NEEDS_CALIBRATION
+
+
+def test_sets_in_folders_of_games_and_tournaments(client, tmp_path):
+    f = client.get("/api/folders").json()
+    assert f["tree"] == [{"tournament": f["unfiled"], "games": [{"game": "v1", "videos": ["v1"]}]}]
+    r = client.put("/api/videos/v1/folder", json={"tournament": "OVA Fall Classic",
+                                                  "game": "vs Pakmen"})
+    assert r.status_code == 200
+    f = client.get("/api/folders").json()
+    assert f["tree"][0]["tournament"] == "OVA Fall Classic"
+    assert f["tree"][0]["games"] == [{"game": "vs Pakmen", "videos": ["v1"]}]
+    assert "OVA Fall Classic" in (tmp_path / "folders.yaml").read_text(encoding="utf-8")
+    client.put("/api/videos/v1/folder", json={"tournament": "", "game": ""})   # back to default
+    assert client.get("/api/folders").json()["folders"]["v1"]["game"] == "v1"
+    assert client.put("/api/videos/nope/folder", json={}).status_code == 404
+
+
+def test_search_and_game_summary(client):
+    r = client.get("/api/search", params={"videos": "v1", "action": "attack"}).json()
+    assert [(i["action"], i["result"]) for i in r["items"]] == [("attack", "kills")]
+    assert client.get("/api/search", params={"videos": "v1", "result": "nope"}).status_code == 400
+    s = client.get("/api/summary", params={"videos": "v1"}).json()
+    assert s["sets"]["n"] == 1 and s["sets"]["by_zone"][0]["zone"] == "Not located"
+    assert s["sets"]["by_hitter"][0]["kills"] == 1
+    assert s["passes"]["n"] == 0 and s["pass_target"]["x"] > 0

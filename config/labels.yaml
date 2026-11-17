@@ -26,6 +26,24 @@ outcomes:
   - block_point
   - ball_handling_error   # double, lift, net touch, block error ...
   - other
+  - replay                # point replayed (a ball rolled onto the court, a referee
+                          # decision): no point_winner, no rotation, left out of stats
+
+# Why a point ended abruptly, when it wasn't the ball (set in the review UI; the whistle
+# can't be heard, so the pipeline never guesses these). Stored in rallies.end_detail.
+end_details:
+  - net_touch
+  - centre_line           # crossing under the net
+  - back_row_attack       # attacking from in front of the attack line as a back-row player
+  - libero_set            # libero hand-setting from in front of the attack line
+  - lift                  # carry / lift
+  - double_contact
+  - four_touches
+  - antenna
+  - foot_fault            # serve
+  - rotation_fault
+  - injury
+  - referee_other
 
 # Bounding-box classes. Keys are our canonical names, values are the names a
 # labelling tool might export (matched case-insensitively).

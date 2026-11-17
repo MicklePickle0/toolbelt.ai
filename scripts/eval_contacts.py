@@ -106,6 +106,10 @@ def main() -> int:
     if s["outcomes_labelled"]:
         print(f"point outcome (true winner, pipeline's touches): {s['outcomes_right']}/"
               f"{s['outcomes_labelled']} right")
+    if s["winners_labelled"]:
+        print(f"point winner from who serves next: {s['winners_right']}/"
+              f"{s['winners_labelled']} right ({s['winners_inferred']} inferred); point outcome "
+              f"with it: {s['outcomes_inferred_right']}/{s['outcomes_labelled']} right")
     for ra in ev.false_rallies:
         print(f"  false rally {ra['index']}: {_clock(ra['start_t'])}-{_clock(ra['end_t'])}")
     print(f"-> {out / (entry.key + '_touches.csv')}, {out / (entry.key + '_rallies.csv')}")

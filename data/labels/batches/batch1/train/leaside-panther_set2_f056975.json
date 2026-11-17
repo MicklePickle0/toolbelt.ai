@@ -1,0 +1,41 @@
+{
+  "version": "4.2.0",
+  "flags": {},
+  "checked": false,
+  "shapes": [
+    {
+      "label": "ball",
+      "score": null,
+      "points": [
+        [
+          1579.5870530202976,
+          1192.7649529702949
+        ],
+        [
+          1615.3090836811766,
+          1192.7649529702949
+        ],
+        [
+          1615.3090836811766,
+          1229.059829059829
+        ],
+        [
+          1579.5870530202976,
+          1229.059829059829
+        ]
+      ],
+      "group_id": null,
+      "description": "prelabel 0.31",
+      "difficult": false,
+      "shape_type": "rectangle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    }
+  ],
+  "imagePath": "leaside-panther_set2_f056975.jpg",
+  "imageData": null,
+  "imageHeight": 2160,
+  "imageWidth": 3840,
+  "description": ""
+}

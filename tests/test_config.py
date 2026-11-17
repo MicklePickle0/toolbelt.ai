@@ -37,3 +37,22 @@ def test_label_vocab():
     assert {"serve", "receive", "set", "attack", "block", "dig"} <= set(labels["actions"])
     assert {"kill", "attack_error", "reception_error", "ace", "service_error"} <= \
         set(labels["outcomes"])
+
+
+def test_pixel_settings_scale_with_width():
+    section = {"gate_px": 100, "jerk_px_s3": 2000, "metres_per_px_x": 0.004, "count": 10,
+               "on": True, "init_sigma_px": {"pos": 4.0, "vel": 30.0},
+               "arcs": {"break_px": 6.0, "min_samples": 6}, "range_px": [10, 20]}
+    s = config.scale_px(section, 1920)
+    assert s["gate_px"] == 50 and s["jerk_px_s3"] == 1000
+    assert s["metres_per_px_x"] == 0.008                         # inverse
+    assert s["count"] == 10 and s["on"] is True
+    assert s["init_sigma_px"] == {"pos": 2.0, "vel": 15.0}
+    assert s["arcs"] == {"break_px": 3.0, "min_samples": 6}
+    assert s["range_px"] == [5, 10]
+    assert config.scale_px(section, 3840) == section
+
+
+def test_sample_stride_keeps_30_samples_per_second():
+    assert [config.sample_stride(f) for f in (59.94, 60, 30, 29.97, 25, 120)] == \
+        [2, 2, 1, 1, 1, 4]

@@ -35,12 +35,10 @@ from setter_eyes.calibration import (
     court_model,
     draw_court,
     line_mask,
-    refine_on_lines,
     save,
-    solve_from_points,
 )
 from setter_eyes.calibration.court_model import CourtModel
-from setter_eyes.calibration.fit import fit_points_and_lines
+from setter_eyes.calibration.solve import check_clicks, manual_calibration, solve_manual
 from setter_eyes.labels import load_manifest
 from setter_eyes.labels.boxes import frame_from_name
 
@@ -49,7 +47,7 @@ def manual(image: np.ndarray, model: CourtModel, cfg: dict, key: str, frame: int
            scorer: LineScorer) -> Calibration | None:
     from setter_eyes.calibration.manual import click_keypoints, click_lines, confirm
 
-    hfov = tuple(cfg["hfov_range_deg"])
+    h, w = image.shape[:2]
     while True:
         clicks = click_keypoints(image, model)
         if clicks is None:
@@ -58,34 +56,18 @@ def manual(image: np.ndarray, model: CourtModel, cfg: dict, key: str, frame: int
         line_clicks = click_lines(image, clicks)
         if line_clicks is None:
             return None
-        n_line = sum(len(v) for v in line_clicks.values())
-        if len(clicks) < 4 or len(clicks) + n_line < cfg["manual_min_points"]:
-            print(f"  need at least 4 corner points and {cfg['manual_min_points']} clicks in "
-                  f"total, got {len(clicks)} + {n_line}")
+        problem = check_clicks(clicks, line_clicks, cfg)
+        if problem:
+            print(f"  {problem}")
             continue
-        world = np.array([model.keypoints[n] for n in clicks])
-        pixels = np.array(list(clicks.values()))
-        h, w = image.shape[:2]
-        cam, _ = solve_from_points(world, pixels, w, h, hfov)
-        segments = [model.lines[n] for n in line_clicks]
-        pts = [np.array(v) for v in line_clicks.values()]
-        k1 = cfg["estimate_distortion"] and len(clicks) + n_line >= 12
-        cam, rms, line_rms = fit_points_and_lines(cam, world, pixels, segments, pts, hfov, k1)
-        if cfg.get("manual_refine_on_mask"):
-            cam = refine_on_lines(cam, scorer, cfg, estimate_k1=k1, points=(world, pixels))
-            rms = float(np.sqrt(((cam.project(world)[0] - pixels) ** 2).sum(axis=1).mean()))
-        sup = scorer.evaluate(cam)
-        label = f"{key}  manual  points rms {rms:.1f}px  lines rms {line_rms:.1f}px"
-        print(f"  {len(clicks)} points (rms {rms:.1f} px), {n_line} line clicks on "
-              f"{len(line_clicks)} lines (rms {line_rms:.1f} px)")
-        if confirm(draw_court(image, cam, model, label)):
-            ok = max(rms, line_rms) <= cfg["max_reprojection_error_px"]
-            return Calibration(video=key, camera=cam, method="manual",
-                               confidence=1.0 if ok else 0.5, net_height_m=model.net_height,
-                               frame=frame, support=sup.to_dict(), clicks=clicks,
-                               line_clicks=line_clicks,
-                               reprojection_rms_px=round(max(rms, line_rms), 2),
-                               needs_review=not ok)
+        solved = solve_manual(w, h, model, cfg, clicks, line_clicks, scorer)
+        label = (f"{key}  manual  points rms {solved.rms:.1f}px  lines rms "
+                 f"{solved.line_rms:.1f}px")
+        print(f"  {solved.n_points} points (rms {solved.rms:.1f} px), {solved.n_line} line "
+              f"clicks on {len(line_clicks)} lines (rms {solved.line_rms:.1f} px)")
+        if confirm(draw_court(image, solved.camera, model, label)):
+            return manual_calibration(key, frame, w, model, cfg, solved, clicks, line_clicks,
+                                      scorer.evaluate(solved.camera).to_dict())
 
 
 def reference_frame(cache_dir: Path, key: str, frame: int | None) -> tuple[int, Path]:

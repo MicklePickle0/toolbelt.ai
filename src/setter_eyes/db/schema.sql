@@ -6,8 +6,12 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS teams (
     id          INTEGER PRIMARY KEY,
-    name        TEXT NOT NULL UNIQUE
+    name        TEXT NOT NULL UNIQUE,
+    -- A roster from data/rosters/<roster_slug>.yaml (rosters.py); NULL for the manifest's team.
+    roster_slug TEXT,
+    season      TEXT
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_teams_roster ON teams(roster_slug);
 
 CREATE TABLE IF NOT EXISTS players (
     id            INTEGER PRIMARY KEY,
@@ -15,6 +19,8 @@ CREATE TABLE IF NOT EXISTS players (
     jersey_number INTEGER NOT NULL,
     name          TEXT NOT NULL,
     is_libero     INTEGER NOT NULL DEFAULT 0,
+    height_cm     REAL,
+    position      TEXT,                       -- free text from the roster: S, OH, MB, ...
     UNIQUE (team_id, jersey_number)
 );
 
@@ -59,14 +65,16 @@ CREATE TABLE IF NOT EXISTS rallies (
     segment_confidence  REAL,
     serving_team        TEXT CHECK (serving_team IN ('us', 'them')),
     rotation            INTEGER CHECK (rotation BETWEEN 1 AND 6),
-    -- Point winner comes from the review UI key press (ground truth) or
-    -- scoreboard OCR as a sanity check; never from the ML pipeline alone.
+    -- Point winner: the review UI key press ('user', ground truth), scoreboard OCR
+    -- ('ocr'), or inferred from who serves next ('next_serve', rally/winner.py).
     point_winner        TEXT CHECK (point_winner IN ('us', 'them')),
-    point_winner_source TEXT CHECK (point_winner_source IN ('user', 'ocr')),
+    point_winner_source TEXT CHECK (point_winner_source IN ('user', 'ocr', 'next_serve')),
     score_us            INTEGER,
     score_them          INTEGER,
     outcome             TEXT,                 -- kill, attack_error, reception_error, ace, service_error, ...
     outcome_confidence  REAL,
+    -- Why the point ended when it wasn't the ball (net touch, lift, ...): set in review only.
+    end_detail          TEXT,
     reviewed            INTEGER NOT NULL DEFAULT 0,
     UNIQUE (set_id, rally_number)
 );
@@ -91,6 +99,9 @@ CREATE TABLE IF NOT EXISTS contacts (
     contact_confidence  REAL,
     team                TEXT CHECK (team IN ('us', 'them')),
     player_id           INTEGER REFERENCES players(id),
+    -- How sure player_id is: 1.0 from labels or the review UI; for our serves, the
+    -- rotation's confidence (identity/rotation.py); later number reading and tracks.
+    player_confidence   REAL,
     track_id            INTEGER REFERENCES tracks(id),
     action              TEXT,                 -- serve, receive, set, attack, block, dig, dump, free_ball, coverage, ...
     action_confidence   REAL,
@@ -100,6 +111,10 @@ CREATE TABLE IF NOT EXISTS contacts (
     outcome             TEXT,
     pass_score          INTEGER CHECK (pass_score BETWEEN 0 AND 4),
     pass_confidence     REAL,
+    pass_x              REAL,                 -- where the pass was played (court m)
+    pass_y              REAL,
+    player_x            REAL,                 -- the toucher's feet then (court m)
+    player_y            REAL,
     reviewed            INTEGER NOT NULL DEFAULT 0
 );
 

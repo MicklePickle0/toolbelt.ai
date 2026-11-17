@@ -1,0 +1,44 @@
+{
+  "video": "niagara-rtw_set2",
+  "method": "transfer",
+  "confidence": 0.8318,
+  "needs_review": false,
+  "net_height_m": 2.43,
+  "frame": 56829,
+  "camera": {
+    "width": 3840,
+    "height": 2160,
+    "f": 3051.3114572842487,
+    "k1": 0.0011974076573008248,
+    "rvec": [
+      0.002846228841662429,
+      2.2243317022581786,
+      -2.202377214775208
+    ],
+    "tvec": [
+      -4.4868022812565185,
+      1.5035770791133973,
+      13.962408665367649
+    ],
+    "centre_m": [
+      4.345,
+      13.988,
+      1.672
+    ],
+    "hfov_deg": 64.36
+  },
+  "support": {
+    "inliers": 196,
+    "rms_px": 1.47,
+    "spread_m": [
+      17.0,
+      21.4
+    ],
+    "confidence": 0.832
+  },
+  "clicks": {},
+  "line_clicks": {},
+  "reprojection_rms_px": null,
+  "applies_from": 55063,
+  "saved_at": "2026-10-24T19:23:09+00:00"
+}

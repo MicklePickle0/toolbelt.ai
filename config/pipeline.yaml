@@ -7,12 +7,25 @@ paths:
   # One JSON per video (camera pose, clicks, confidence). Not a cache: manual
   # clicks are human work.
   calibration_dir: data/calibration
+  # Rosters (players, numbers, heights) and which videos they played: human work, in git.
+  rosters_dir: data/rosters
+  folders_path: data/folders.yaml   # sets -> games -> tournaments (folders.py)
+  match_formats_path: data/match_formats.yaml   # match format per game (match.py)
   db_path: data/setter_eyes.db
   # Ground truth from hand-labelled footage. Same schema as db_path but a
   # separate file, so pipeline output can be evaluated against it.
   labels_db_path: data/labels.db
   # Registry of videos + their label files (see config/manifest.example.yaml).
   manifest_path: data/manifest.yaml
+
+video:
+  # Footage from 1080p30 up to 4K60. Pixel settings in this file (keys ending in `_px`
+  # or containing `_px_`) are written for this frame width and scale with the video's
+  # width (config.scale_px), so 1080p uses half of each.
+  reference_width: 3840
+  # Whole-video detection samples frames at this rate (59.94 fps: every 2nd frame, 30 fps:
+  # every frame). Settings counted in samples (tracker misses, arc windows) assume it.
+  sample_hz: 30
 
 ingest:
   # Frames are cached as JPEG. The ball is small: keep quality high.
@@ -62,19 +75,45 @@ models:
 detect:
   person_min_confidence: 0.4
   ball_min_confidence: 0.25
-  ball_input_resolution: 1280
-  # Whole-video ball detection (scripts/detect_ball.py). Every Nth frame: the tracker
-  # bridges the gaps, and 2 keeps 30 samples per second at 59.94 fps.
-  ball_stride: 2
+  ball_input_resolution: 1280   # training / labelling tools; detection uses ball_tiling
+  # Tiles per frame and model input size, by video width (first entry the width reaches).
+  # The detector was trained on 3x3 tiles of 4K at 1280. At 1080p, 2x2 tiles at 960 show
+  # the ball at about that size: 3.6x faster than 3x3 at 1280 (22.6 vs 6.3 frames/s), with
+  # 93.5% of its sure balls (pakmen-black_set1 5:00-5:27, 2026-10-29). 2x2 at 768: 5.0x,
+  # 92%; the whole frame at 1280: 5.8x but 72%.
+  ball_tiling:
+    - {min_width: 3000, grid: 3x3, resolution: 1280}
+    - {min_width: 0, grid: 2x2, resolution: 960}
+  # Whole-video ball detection (scripts/detect_ball.py) samples at video.sample_hz.
+  # Tiles: datasets.tiles at the video's own resolution, so a tile covers the same share
+  # of the frame (and the ball the same share of the model input) at 1080p as at 4K.
   # Stored detections go down to this score; the tracker decides what to trust.
   ball_store_threshold: 0.15
   ball_save_every: 2000      # processed frames between checkpoints (resumable)
+  # Only detect during play: skip the time between rallies (data/cache/<id>/play_spans.json
+  # from scripts/find_play.py; without it every frame is detected). --all-frames turns it off.
+  ball_play_only: true
+  # While a moving ball is followed, detect only a tile-sized window around where it
+  # should be, not all 9 tiles. If the window misses it, the whole frame is scanned.
+  ball_follow:
+    enabled: true
+    full_scan_every_s: 0.33  # scan the whole frame this often anyway (a new ball, a far serve)
+    max_windows: 2           # balls followed at once (the match ball + one more)
+    min_score: 0.5           # detections this confident start or continue a followed ball
+    min_move_px: 60          # ...followed once it has moved this far (spare balls never do)
+    gate_px: 300             # a detection this close to a prediction is that ball
+    confirm_hits: 3          # a new ball gets full scans until seen this often
+    forget_s: 1.0            # a ball not seen this long is forgotten (longer than the
+                             # full-scan interval, so spare balls stay known as static)
+    edge_margin_px: 120      # the prediction must sit this far inside the window
   # Whole-video person detection (scripts/detect_people.py): the COCO-pretrained RF-DETR
   # `person` class on whole frames (players are large; tiles would cut them). 1280 finds
   # slightly more small/far people than the native 576 for ~8 ms more per frame.
   person_model: medium
-  person_input_resolution: 1280
-  person_stride: 2
+  person_input_resolution: 1280   # 960/768/640: 98-99% of the people but only ~15% faster
+  # People are detected this often and filled in to video.sample_hz by track_people.py
+  # (3x fewer detector runs than 30 Hz; players move little in 0.1 s).
+  person_sample_hz: 10
   person_store_threshold: 0.3
 
 track:
@@ -122,8 +161,8 @@ track:
       chase_margin_m: 1.5     # further out only during a rally, for near-player tracks
 
 ball:
-  # Ball tracking (setter_eyes.ball, scripts/track_ball.py). Pixels are 4K, in the
-  # pan-free reference view of the calibrated frame.
+  # Ball tracking (setter_eyes.ball, scripts/track_ball.py). Pixels are in the pan-free
+  # reference view of the calibrated frame, written for 4K (scaled with the video's width).
   gravity: 9.81
   typical_depth_m: 15        # sets the starting image-space pull of gravity
   gate_px: 150               # a touch can move the ball ~150 px off the prediction
@@ -133,16 +172,17 @@ ball:
   max_misses: 10             # samples (1/3 s at 30 Hz) before a track ends
   tentative_max_misses: 2
   bridge_samples: 3          # fill gaps up to this long (smoothed between neighbours)
-  static_spread_px: 60       # a track that never moves further is a spare ball / wall mark
+  static_spread_px: 60       # a ball that moves less than this within still_window_s either
+  still_window_s: 1.0        # side is still there (spare ball, wall mark, printed ball): not play
   kalman:
     jerk_px_s3: 20000
-    init_sigma: {pos: 5.0, vel: 3000.0, acc: 3000.0}
+    init_sigma_px: {pos: 5.0, vel: 3000.0, acc: 3000.0}
   arcs:
     min_samples: 6           # shortest flight (0.2 s at 30 Hz)
     max_gap_s: 0.15
     window_samples: 5        # touches: one quadratic over +-5 samples vs two separate ones
     break_px: 5.0            # ...splitting cuts the error by more than this (px RMS) = a touch
-    pixel_sigma: 3.0
+    pixel_sigma_px: 3.0
     depth_range_m: [3.0, 40.0]
     depth_steps: 10
     refine_starts: 3
@@ -158,22 +198,110 @@ ball:
     min_confidence: 0.4      # below this an arc goes to the review queue
 
 identity:
-  number_vote_bind_threshold: 0.8
-  min_crop_height_px: 80
+  number_vote_bind_threshold: 0.8   # a track's number counts from this confidence on
+  min_crop_height_px: 50     # back-number crops at least this tall (4K px) are read (was 80)
+  pose:                      # scripts/pose_people.py: RTMPose on our players (rtmlib, ONNX)
+    model: https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-m_simcc-body7_pt-body7_420e-256x192-e48f03d0_20230504.zip
+    input_size: [192, 256]
+    min_box_height_px: 180   # 4K px; smaller people (far away) aren't posed (was 300: the
+                             # attackers at the net were left out, owner 2026-11-01)
+    batch: 64                # players posed at once (GPU, pose/__init__.py pose_batch)
+  numbers:                   # identity/numbers.py: back views read by PARSeq (torch hub)
+    keypoint_min_score: 0.3
+    back_min_shoulder_ratio: 0.35  # shoulder width / torso height: not side on
+    crop_side: 0.25          # crop: shoulders +- this x shoulder width,
+    crop_top: -0.05          # from this x torso height above the shoulder line
+    crop_bottom: 0.6         # to this x torso height below it (pakmen-black_set2: best of 10)
+    min_log_p: -1.5          # a read counts when its best number is this plausible (log P) ...
+    min_share: 0.6           # ...and has this share of the roster posterior
+    switch_reads: 2          # numbers.json summary: a stretch ends after this many reads agree
+                             # on another number
+    window_s: 4.0            # a touch's number: its track's reads within +- this...
+    tau_s: 5.0               # ...each weighted exp(-|dt| / this)
+    vote_prior: 0.5          # confidence = top weight / (all weight + this)
+    conflict_factor: 0.3     # another track shows this number more strongly then: x this
+    # Holding a label while the number is hidden (owner, 2026-11-01): with no reads near
+    # the touch, the track's and its linked tracks' reads within +- hold_s count, x
+    # hold_factor. Linked: one track starts within link_gap_s and link_dist_m of where
+    # another ended (the tracker lost the player on a jump or behind someone).
+    hold_s: 15.0
+    hold_factor: 0.8
+    hold_own_track: false    # also the track's own reads further away: off, it added wrong
+                             # names; linked tracks only (+2 right, 0 wrong on 4 sets)
+    link_gap_s: 1.0
+    link_dist_m: 1.5
+  toucher:                   # identity/toucher.py: hands / forearms at the ball
+    max_dt_s: 0.15           # pose samples this close to the touch (10 Hz: 0.1 s apart)
+    keypoint_min_score: 0.3
+    hand_extension: 0.35     # hands: the forearm carried on past the wrist by this share
+    reach_bodies: 0.35       # nobody's arms nearer the ball than this (body heights): no pick
+    base_confidence: 0.4     # confidence = this + (second nearest - nearest) / reach
+    fallback_factor: 0.4     # no hands at the ball: the touch's own track, this sure
+  libero:                    # identity/toucher.py LiberoColour: the libero's jersey colour
+    min_reads: 20            # back views read as the libero (and as others) to learn colours
+    min_separation: 15.0     # Lab distance between the two colours, else not used
+    margin: 8.0              # a player this much nearer one colour is in that jersey
+    confidence: 0.8          # number confidence of "in the libero's jersey"
+  server:                    # identity/server.py: our server walks into view after serving
+    walk_in: true            # name a serve from who walks into view after it
+    runs: false              # one server per run of our serves: off, it spread wrong names
+                             # (set 2: 91 -> 86% right, 2026-11-01)
+    enter_before_s: 1.5      # a track of ours first seen from this before the serve (the
+    enter_window_s: 3.0      # toss) to this after...
+    min_depth_m: 3.5         # ...this deep in our court (from the net) when first seen
+    read_after_s: [1.0, 3.0, 5.0]  # its number: the surest read around these times after
+    min_read_confidence: 0.9 # ...if this sure; the deepest newcomer with one is the server
+    confidence: 0.9          # x the number's confidence
+    run_min_share: 0.6       # a run of our serves takes its top number from this vote share
+  min_player_confidence: 0.5 # a touch gets a jersey from this confidence on (else unknown):
+                             # titan 1080p 43% of our touches named, 90% right; mac 4K 34%, 84%
+  rotation:                  # identity/rotation.py
+    unknown_serve_factor: 0.5  # rotation confidence factor for a rally with no serving team
 
 contacts:
   # Touches and floor contacts from soft evidence (setter_eyes.contacts.events).
   max_contacts_per_side: 3   # plus a block
-  over_limit_penalty: 0.5    # confidence factor for a touch beyond that in a row
+  over_limit_penalty: 0.5    # confidence factor for a touch whose team the decoder changed
+  team_decoder:              # rally/segment.py, _apply_touch_prior: teams decoded per rally
+    fourth_touch_cost: 2.0   # -log odds for a 4th touch in a row (needs a block first)
+    p_clip: 0.02             # the scorer's p_ours is clipped to [p_clip, 1 - p_clip]
+    unscored_p: 0.75         # how sure a team is without a scorer probability (heuristic path)
+  # Stuff blocks (setter_eyes.contacts.blocks, scripts/check_blocks.py): a point-ending
+  # attack the attacker lost, re-detected at full frame rate; a second sharp turn right
+  # after it = the ball came back off a block. Labelled: 2/2 stuff blocks >= 2169 px/s,
+  # 0/19 attack errors (max 1565). Only 2 examples: added blocks go to review.
+  stuff_block:
+    window_before_s: 0.15    # decoded around the attack
+    window_after_s: 0.35
+    min_score: 0.3           # a detection this sure, in the crop where the path puts the ball,
+    max_jump_px: 250         # this close to it, is the ball
+    lag_samples: 3           # turn = velocity change over this many frames each side
+    own_turn_s: 0.1          # the attack's own turn is the strongest within this of it
+    min_gap_s: 0.03          # a second turn this long after it...
+    max_gap_s: 0.25          # ...and no longer (labelled attack -> block: 0.03-0.23 s)
+    valley_ratio: 1.5        # a peak of its own: this x the lowest turn in between
+    min_turn_px_s: 2000      # strong enough (4K px/s): a block
+    confidence: 0.6
+  # An attack whose ball next lands on the attacker's own side was blocked (owner): found
+  # from the 3D landing point, no GPU needed (contacts/blocks.py blocks_from_landing).
+  landing_block:
+    max_s: 1.5               # the landing this soon after the attack
+    min_from_net_m: 1.0      # at least this far back from the net (closer: a net ball)
+    after_attack_s: 0.1      # where the block is put (labelled attack -> block 0.03-0.23 s)
+    confidence: 0.5          # untested on labels yet: goes to review
   max_join_gap_samples: 2    # flights this close (samples) join at a shared sample
   max_bridge_s: 0.3          # further apart, up to this long (ball hidden by the toucher):
   bridge_penalty: 0.8        #   still a candidate, mid-gap, at this confidence factor
   merge_window_s: 0.12       # candidates closer than this are one event (a split flight)
+  snap_window_s: 0.15        # move a candidate to the sharpest change of course within
+                             # this (the flight split can be off by a few samples); 0: off
   min_arc_confidence: 0.4    # both flights at least this confident -> use 3D evidence
   velocity_scale_mps: 4.0    # course change -> evidence: 1 - exp(-dv / scale)
   reach_scale_m: 1.0         # person within reach -> evidence: exp(-distance / scale)
   reach_scale_bodies: 0.5    # ...the same in body heights when only the image is known
   overhead_reach_bodies: 0.6 # the reach zone extends this far above the head (sets, attacks)
+  feature_unit_px: 1.0       # scorer's pixel features are in 4K pixels: this scales with the
+                             # width (1080p: 0.5) and features divide by it (contacts/features.py)
   max_reach_m: 3.6           # a touch higher than this isn't by a person (blocks reach ~3.4)
   no_person_prior: 0.2       # nobody near: a course change can still be a touch (occlusion)
   floor_height_m: 0.35       # ball this low after falling = floor contact
@@ -200,14 +328,57 @@ serve:
   min_speed_mps: 8.0         # horizontal speed at the start of that flight
   max_trace_back_s: 1.2
 
+# Match format per game (match.py; roadmap E1). Each game picks a preset or a custom
+# format in data/match_formats.yaml (the Stats page's "Edit folders"); games not in it use
+# `default`. Sets that pass or fall short of a legal end are flagged (rally/sanity.py).
+match:
+  default: best_of_3
+  formats:
+    best_of_3: {points: [25, 25, 15], win_by: 2, cap_over: null}              # OVA usual
+    best_of_5: {points: [25, 25, 25, 25, 15], win_by: 2, cap_over: null}      # 18U / HS playoffs
+    best_of_3_to_15: {points: [15, 15, 15], win_by: 2, cap_over: null}
+    best_of_3_capped: {points: [25, 25, 15], win_by: 2, cap_over: 2}     # 27 / 17 wins
+
+# Score and stat sanity checks (rally/sanity.py; roadmap E2). A failed check multiplies the
+# rally's review priority (its confidence) by its factor: lower comes first in review.
+# Nothing is changed automatically.
+sanity:
+  factors:
+    past_end: 0.2              # rallies with a winner after the set was over
+    maybe_false: 0.4           # least sure rallies when the score passes a legal end
+    gap_before: 0.7            # set short: a long gap before this rally may hide a point
+    serve_order: 0.5           # the winner should serve next
+    missed_point: 0.4          # ...broken after a long gap: a point is probably missing
+    serving_team_wrong: 0.5    # the rally's serving team disagrees with its serve touch
+    no_serve: 0.8              # a serve can be off-screen, so only a mild doubt
+    two_serves: 0.4            # two points joined?
+    serve_not_first: 0.7
+    four_touches: 0.5
+    receive_on_own_serve: 0.5
+    receive_not_first: 0.7
+    outcome_side: 0.5
+
 rally:
   max_ball_gap_s: 1.0        # the ball lost longer than this ends an episode
   min_rally_s: 1.5
   serve_window_s: 4.0        # a serve must be this close to the start of an episode
   min_arc_confidence: 0.4    # flights trusted to show the ball crossing the net
   base_confidence: 0.4
+  # Owner (2026-10-28): there are usually 10+ s between points. Rallies closer than this are
+  # one point the pipeline cut in two: merged. A gap longer than missed_point_gap_s before a
+  # rally may hide a missed point (flagged in review; labelled gaps: median 16 s, p90 23 s).
+  merge_gap_s: 4.0
+  merge_keeps_serve_conf: 0.8 # ...unless the later one starts with a serve this sure
+  missed_point_gap_s: 20.0
+  missed_point_factor: 0.8
   serve_bonus: 0.3
   floor_bonus: 0.3
+  # Point winner = the next rally's serving team (setter_eyes.rally.winner; labelled: 79/79).
+  # The review key press and scoreboard OCR override it.
+  winner:
+    suspect_gap_s: 32        # a longer gap to the next rally may hide a missed rally
+                             # (labelled gaps: median 16 s, p90 23 s; timeouts ~90 s)
+    suspect_factor: 0.6      # winner confidence factor then
   # Rallies built from touches (used with the learned touch scorer):
   from_touches:
     max_touch_gap_s: 3.0     # touches closer than this are one rally (labelled: <= 2.2 s
@@ -224,6 +395,45 @@ rally:
     floor_bonus: 0.2         # ended on a floor contact
     inferred_factor: 0.7     # serve inferred, not seen: right about half the time on
                              # labelled footage, so these go to the review queue
+  # Rally-step checks (rally/segment.py; roadmap E3, from pakmen-black_set2's false
+  # rallies 2026-10-31). Not yet measured on footage: compare on the desktop (eval_contacts.py
+  # on the labelled sets) with enabled true / false before trusting them.
+  checks:
+    enabled: true
+    serve_cross_s: 2.0         # a seen serve needs a net crossing this soon after it...
+    serve_sure_conf: 0.7       # ...or this touch confidence, or a reply by the other side
+    one_side_touches: 3        # receive, set, attack by one side keep a rally (serve and
+    one_side_max_span_s: 2.8   # crossing unseen) when this quick; pepper goes on longer
+    one_side_factor: 0.6       # rally confidence factor then (to review)
+    pre_serve_max_s: 4.0       # a piece this short, with this few touches and no crossing,
+    pre_serve_max_touches: 2   # ending this soon before a sure serve, is ball handling
+    pre_serve_gap_s: 10.0      # before that serve: dropped
+  # Live-ball check (setter_eyes.rally.live): a trailing touch after the whistle (ball
+  # caught or tossed back, e.g. after a net touch) ends the rally before it when BOTH:
+  live_ball:
+    max_gap_s: 2.0           # it comes this long after the previous touch, and
+    window_s: 1.0            # near-side players' speed over this window before it is
+    motion_ratio: 0.9        # below this share of their speed over the rally so far.
+                             # Labelled: 5/13 dead touches caught, 0/76 real last cut.
+    trimmed_factor: 0.9      # rally confidence factor when trimmed (worth a look)
+  # Our serve from how the ball enters the frame (setter_eyes.rally.serve_entry): big,
+  # at the top, after dead time, then far away. Labelled: 28/33 of our serves, 4 false.
+  our_serve:
+    min_size: 0.037          # ball box >= this share of the image height (80 px in 4K)
+    top_share: 0.35          # first seen in the top 35% of the frame
+    quiet_s: 3.0             # no touch for this long before it (play was dead)
+    touch_slack_s: 0.3       # touches this close before it are the serve itself
+    away_size: 0.021         # smaller than this share of the height (45 px in 4K)...
+    away_within_s: 2.0       # ...within this long: it was hit away, not caught
+    merge_s: 1.0             # big sightings this close together are one appearance
+    match_touch_s: 0.5       # a pipeline touch this close is the serve touch
+    toss_max_s: 1.2          # follow a rising toss this long to find the hit
+    rise_slack: 0.001        # still rising: up the frame by more than this share (2 px)
+    confidence: 0.8
+    min_flight_s: 0.6        # a serve-only rally from it (no other touch, no floor, no net
+                             # crossing) needs the ball followed this long after the serve.
+                             # Labelled: real aces/service errors 1.3-3.4 s; the 2 false
+                             # ones 0.30-0.33 s (the ball lost at once: no serve flight)
   # Our court's airspace (court metres): touches with the ball outside it are another
   # court's (balls on the courts beside ours). Court: x 0-9, y -9..9, net at y = 0.
   airspace:
@@ -235,6 +445,22 @@ classify:
   # Stage-1 action rules (setter_eyes.classify.rules): touch order within each side's run.
   block_zone_m: 1.0          # a block: ball this close to the net plane...
   block_min_z_m: 2.0         # ...and at least this high (tape at 2.24-2.43 m)
+  # Stage 2: an "attack" whose ball is launched upward faster than this is a free ball
+  # (lofted, not driven). Labelled: 5/6 free balls above 4 m/s, 0/30 attacks.
+  free_ball_min_up_mps: 4.0
+  # The receive comes fast (labelled serve -> receive 0.75-1.50 s, receive -> set 0.83 s+):
+  # a receiving side's first touch later than this after the serve is its set (the
+  # receive was missed, usually on the far side), later than receive_set_max_s its attack.
+  receive_max_s: 1.6
+  receive_set_max_s: 3.5
+  receive_typical_s: 1.05    # where an inferred receive goes (labelled median after the serve)
+  receive_set_typical_s: 1.58
+  # Labelled: two touches in a row by one side are at most 2.17 s apart; further apart, a
+  # touch between them was hidden (usually the set) and is added as an inferred touch.
+  same_side_gap_max_s: 2.3
+  inferred_touch_confidence: 0.3
+  launch_window_s: 0.4       # the flight leaving a touch starts within this
+  launch_min_arc_confidence: 0.4
   rule_confidence:           # per rule; times the touch's own confidence
     serve: 0.95
     receive: 0.9
@@ -245,11 +471,18 @@ classify:
     coverage: 0.6
     dump: 0.6
     overpass: 0.6
+    free_ball: 0.6
     uncertain: 0.4           # a 4th touch in a row, or a reply on the serving side
+    missed_receive: 0.5      # places shifted because the receive wasn't seen
 
 overlay:                     # drawing sizes in render_overlay.py demos
   ring_radius_m: 0.55        # green ring under each of our players, court metres
   trail_px: 3                # ball trail width at 1920 px wide (scaled with the video)
+  spotlight:                 # one player's ring in their highlight clips (clips.py --player)
+    ring_radius_m: 0.55      # outer edge, court metres
+    ring_width_m: 0.12       # band width: a ring around the feet, not a filled disc
+    ring_opacity: 0.85
+    ring_colour: [60, 220, 60]   # BGR
 
 # Global review policy: any automated output whose confidence is below its
 # stage threshold is queued for review.
@@ -286,10 +519,10 @@ train:
   prelabel_threshold: 0.3
 
 # Rough play activity (setter_eyes.rally.activity), used to sample labelling frames
-# from live play. Not rally segmentation.
+# from live play and to skip the time between rallies in detection. Not rally segmentation.
 activity:
   width: 480                 # frames are scored at this width
-  step: 6                    # one sample every 6 frames (0.1 s at 59.94 fps)
+  step_s: 0.1                # one sample this often
   court_band: [0.35, 1.0]    # image rows scored (fractions): floor and players, not ceiling
   diff_threshold: 25
   smooth_samples: 10         # 1 s moving average
@@ -298,3 +531,47 @@ activity:
   burst_len: 10
   active_share: 0.8          # the rest come from downtime (still useful negatives)
   active_quantile: 0.6       # samples above this per-video quantile count as active
+  # Play spans (scripts/find_play.py): ball detection runs only inside them. Generous on
+  # purpose: a missed serve costs far more than detecting some downtime. Check with
+  # find_play.py's report against labelled rallies before tightening.
+  play:
+    # Active where the smoothed activity is above low + level x (high - low), with low
+    # and high this video's own quantiles (gyms, cameras and crowds differ).
+    low_quantile: 0.2
+    high_quantile: 0.95      # inside play as long as play is > 5% of the video
+    level: 0.25
+    pad_before_s: 5.0        # the serve comes before the court moves (receivers react ~1 s
+                             # later; the server standing still behind the line scores low)
+    pad_after_s: 3.0         # the last touch and the ball landing
+    min_gap_s: 8.0           # quieter stretches shorter than this stay in (one long rally)
+    min_span_s: 1.0          # less motion than this in a joined span is noise
+    check_lead_s: 1.0        # find_play.py's check: labelled rallies covered from this long
+                             # before their start (the toss) to their end
+
+# Web app (scripts/serve_app.py): processing queue, review, stat sheet in the browser.
+app:
+  # Pipeline steps a processing job runs, in order (scripts/<step>.py --video KEY), as in
+  # scripts/process_videos.ps1. find_rallies twice: check_blocks needs its point winners.
+  # track_camera follows the camera from the calibration frame (calibrate in the app first);
+  # the detectors don't need a calibration, so they run while the owner taps the court.
+  steps: [find_play, detect_ball, detect_people, track_camera, track_ball, track_people,
+          pose_people, find_rallies, check_blocks, find_rallies]
+  # Steps from the first of these on need the court calibration: a job without one stops
+  # there ("needs calibration") and is resumed once the video is calibrated.
+  needs_calibration: [track_camera, track_ball, track_people, pose_people, find_rallies,
+                      check_blocks]
+  # Count automatic court fits as calibrated? Off: on high-school gym floors they are often
+  # wrong while scoring high (Durham Attack, 2026-10-28), so every video is tapped in the app.
+  accept_auto_calibration: false
+  calibration_frame_width: 1920   # px, frames shown on the calibration page
+  # Rough share of a job's time per step, for the queue's overall progress bar (unlisted: 1).
+  # From pakmen-black_set1 (1080p, 2026-10-28): ball ~60 min, people ~20, camera ~10.
+  step_weights: {detect_ball: 60, detect_people: 20, track_camera: 10, find_play: 2,
+                 check_blocks: 2, pose_people: 14}
+  # Processor-only steps started alongside the GPU detectors (calibrated videos): the
+  # camera tracking (~6 min a set) then costs no extra time.
+  background_steps: [track_camera]
+  background_during: [detect_ball, detect_people]
+  clip_width: 1280         # px, rally clips for review
+  clip_pad_s: 2.0          # clip margin around a rally
+  log_dir: data/outputs/logs/jobs

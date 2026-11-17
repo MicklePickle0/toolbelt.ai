@@ -6,7 +6,8 @@ Labels record what a touch looked like; stats need what it was. Our touches:
   - a dig that ends the rally as a ball-handling error (their point; the digger lifted
     or double-contacted it) -> ball_handling_error: it wasn't controlled, so no dig.
     A clean dig followed by a called set is still a dig; the error is the setter's.
-Everything else counts as labelled. Opponent touches are left as labelled.
+Everything else counts as labelled. Opponent touches are left as labelled. A replayed
+rally (outcome `replay`) is wiped: its touches count for nothing.
 """
 
 from __future__ import annotations
@@ -39,6 +40,8 @@ def counts(rallies: Iterable[RallyLabel]) -> dict[int | None, Counter]:
     """Our touches per jersey (None = jersey unknown) -> Counter of stat actions."""
     by: dict[int | None, Counter] = {}
     for r in rallies:
+        if r.replayed:
+            continue
         for c, action in stat_actions(r):
             if c.team == "us":
                 by.setdefault(c.jersey, Counter())[action] += 1

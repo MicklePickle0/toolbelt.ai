@@ -1,20 +1,21 @@
-# Full pipeline over several videos, one after another (detection is the slow part:
-# ~1.5-2 h of GPU per 20-minute set). Detection resumes where it stopped, so the run can
+# Full pipeline over several videos, one after another (detection is the slow part).
+# find_play first, so ball detection skips the time between rallies. Detection resumes where it stopped, so the run can
 # be interrupted (Ctrl+C) and started again later. Log: data/outputs/logs/process_videos.log
 #
 # Usage (from the repo root, in PowerShell):
 #   .\scripts\process_videos.ps1                       # the default list below
 #   .\scripts\process_videos.ps1 leaside-panther_set1 niagara-rtw_set1
 
-param([string[]]$Videos = @(
-    "mac-chrome_set2", "niagara-rtw_set1", "reach-apex_set1", "leaside-panther_set1",
-    "mac-iron_set1", "niagara-rtw_set2", "reach-apex_set2", "leaside-panther_set2",
-    "mac-iron_set2", "titan-rise_set2"))
+param([string[]]$Videos = @("leaside-panther_set2", "mac-iron_set2", "titan-rise_set2"))
 
 $py = ".venv\Scripts\python.exe"
 $log = "data\outputs\logs\process_videos.log"
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
-$steps = "detect_ball", "detect_people", "track_ball", "track_people", "find_rallies"
+# find_rallies twice: check_blocks needs its point winners, and the second run adds the
+# stuff blocks it found.
+# track_camera needs the video calibrated first (web app, or scripts/calibrate.py).
+$steps = "find_play", "detect_ball", "detect_people", "track_camera", "track_ball",
+         "track_people", "pose_people", "find_rallies", "check_blocks", "find_rallies"
 
 foreach ($v in $Videos) {
     foreach ($step in $steps) {
