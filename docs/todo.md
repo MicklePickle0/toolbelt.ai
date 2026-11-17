@@ -206,6 +206,16 @@ Cost if cloud: ~$5-10/day on AWS (g5/g6 ~$0.8-1/h). Home PC first, cloud as a ba
       Schema v8: `contacts.pass_x/pass_y` (pass spot), `player_x/player_y` (toucher's feet); re-runs fill them on reviewed touches too.
 - [ ] Owner: put the sets in tournaments/games (Edit folders); check reels and the summary on a phone.
 - [ ] Next: zones for the 18 attacks with no position (touches added in review have no pipeline touch); a reel's ring during jumps.
+- [ ] **Speed up clips and reels (owner, 2026-11-17).** Pulling one piece of footage (the
+      clip a touch or rally plays in Review and Search, `/api/rallies/<id>/clip`) and making
+      a highlight reel with the ring under the player (`reels.py`) both take too long.
+      Measure first, on the desktop: time per clip and per reel clip, split into seek and
+      decode, ring drawing and encode. Then try, in order:
+      - clips: stream-copy (`-c copy`) from the nearest keyframe instead of re-encoding;
+        cut from the 1080p proxy, not the 4K source; cache cut clips by (rally, t0, t1);
+      - reels: GPU encode (NVENC) and decode; draw the ring only on the frames that need
+        it; make the clips in parallel; reuse cached clips.
+      Report the times before and after here.
 
 ## pakmen-black_set2 reviewed (owner, 2026-10-29..31): what the corrections show
 
