@@ -90,10 +90,9 @@ two environments:
   carry their context (every rate has its count, every split says what it was split on),
   plain prose to explain a filter, almost no chrome.
 
-From the Loire tennis shot (seen by its title and tags only, "editorial, minimalist, bold
-branding"; check it against the real image when one is shared): restraint, a large step
-between the display size and the body size, and real images instead of decoration. Here the
-real images are frames from the team's own footage, never stock photos or illustrations.
+From the Loire tennis shot (now seen, see References): restraint, a large step between the
+display size and the body size, and real images instead of decoration. Here the real images
+are frames from the team's own footage, never stock photos or illustrations.
 
 The volleyball itself supplies the rest: the maple floor and painted lines of the court
 maps, the ball's yellow as the one action colour, our side in court blue, the other side in
@@ -193,6 +192,62 @@ squircles, no fully rounded chips.
   `:focus-visible`, on paper and on film.
 - **Empty and loading states:** one plain sentence saying what will be here and how to get it
   ("No reviewed rallies yet. Review a set to see its stats.").
+
+## References
+
+Screenshots the coach shared (2026-11-17) are in `docs/design-references/`. Each one lends
+specific things; the rest of it is not a licence to copy.
+
+- **Loire tennis coaching site** (`loire-tennis.webp`), editorial and minimal. Take: one
+  large light headline over a very small body, lots of empty space, real motion-blurred
+  action frames as the only imagery, hairline structure instead of boxes. Leave: its olive
+  ground (our film stays neutral so the video's colours read true), the pill labels, the
+  italic "Real progress", the decorative curves and the tiny grey-on-grey text. It is a
+  marketing page, so most of it belongs to the later landing page, not the coach's app.
+- **The Athletic, squad stats** (`the-athletic-squad-stats.webp`), the stat sheet done
+  plainly. Take: separate tables per role with a small 600 heading ("Goalkeepers",
+  "Outfield players"; for us "Setters", "Hitters", "Liberos"), the first column as name plus
+  jersey number, short column abbreviations with a sort caret, small dense rows, numbers
+  that line up. Leave: its zebra rows (we keep plain rows with the well on hover) and the
+  photo per player (no headshots; a jersey number is enough).
+- **adidas careers** (`adidas-careers.webp`), dark editorial. Take: a narrow text column
+  next to large frames, and key numbers set inside a sentence in a stronger colour ("We hit
+  0.245 on 955 attacks"), which is how a stat page can open: one sentence, the numbers in
+  600 ink or court blue. Leave: the all-caps quote and the red outlined box.
+- **VolleyMetrics setter tendencies** (`volleymetrics-setter-tendencies.png`), the closest
+  product. Take: small multiples, the same court grid three times side by side (overall,
+  first ball, transition), each cell carrying its count and its rates ("A att 419, assist
+  42%, H% 0.263"), and the stat table under the maps. Leave: its shades of navy for value.
+  We bin values into a few solid tokens (court for best, them for middle, miss for worst,
+  paper for too few attempts) and say the bins in the legend line, since shades are on the
+  don't-list.
+
+### VolleyMetrics / Hudl report pages (from Hudl's support guides, 2026-11-17)
+
+What the coach's current tool has, and how Toolbelt answers each. One panel holds all
+reports as a tab row; match cards pick which games to combine; one Filters button narrows by
+player, skill and situation; full screen adds a CSV export; table columns can be hidden and
+reordered.
+
+- **Box score:** team and player summary; any underlined stat plays the clips behind it.
+  Ours: every count in a table links to Review filtered to those touches (clips are time
+  ranges, so this costs nothing). Show it as a court-blue link, not an underline on every
+  number.
+- **Athlete stats:** tables grouped by skill (serves, receptions, attacks, sets, blocks,
+  digs, free balls), each with "View all". Ours: the box score, with a heading per skill.
+- **Attack tendencies:** each attack drawn as a line from contact to landing, coloured by
+  result (kill, error, in play); views Lines, Distribution, Efficiency; filters for rotation,
+  phase (first ball or transition) and result. Ours waits for depth (F2); until then show
+  the along-net contact point only.
+- **Rotations:** six cards, one per rotation, each a table of attacks by pass rating plus a
+  court of attack lines. Ours after F7 (lineups).
+- **Setter tendencies:** 3x3 zone grid with Efficiency / Frequency views (kill %, attack %,
+  attempts per zone) and a per-setter table (set attempts, assists, setting efficiency).
+  Ours: the set maps (E7) in this small-multiples form, split by in or out of system (E8).
+- **Trends:** pick metrics, plot them across sets or matches. Ours: E8's trends, one line
+  per metric, count shown on hover.
+- **Goals:** a target per stat ("reception above 2.2"), pass or fail per match. Later.
+- **3D:** attack contact heights. Ours after F2, as a side view (with the setting arcs, G3).
 
 ## Do's and don'ts
 

@@ -302,9 +302,10 @@ Queue). The landing page, marketing and login come later.
   before changing any page and build from it. Add a token there before a page uses one;
   never invent a one-off inside a page. Its two rooms: the film room (Review, Calibrate:
   dark, video first, as Hudl) and the stat sheet (everything else: paper white, tables
-  first, every rate with its count, as Cleaning the Glass). The Loire tennis Dribbble shot
-  is the third reference (editorial restraint), seen only by its title so far: check
-  DESIGN.md against the real screenshot when the owner shares one.
+  first, every rate with its count, as Cleaning the Glass). Visual references (Loire tennis,
+  The Athletic stats, adidas careers, VolleyMetrics setter tendencies, 2026-11-17) are in
+  `docs/design-references/`; DESIGN.md's References section says what to take from each
+  and maps every VolleyMetrics report page to its Toolbelt equivalent.
 - The owner's don't-list (also in DESIGN.md): tags and pills, italics, Instrument Serif,
   negative letter spacing, over-detailed UI, many dividers, colour shades and opacities,
   bordered containers, over-detailed diagrams, verbose or repeated text, breadcrumbs,
