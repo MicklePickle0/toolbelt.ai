@@ -399,6 +399,10 @@ status phrase and one next-step button each. The avoid-ai-design scanner is at 0
 (it found 7 before). API tests pass. Checked by screenshots on the laptop (no footage, so the
 video players were not exercised). **On the desktop:** play a clip in Review and Search once
 to check the player and the keys.
+Same day, owner: the tree of checkboxes for choosing sets (Stats, Search) was replaced by
+three linked dropdowns, Tournament, Game, Set, each with "All"; the page title follows the
+choice. Links with any list of sets still work ("Custom, N sets"). Still checkboxes: a
+roster's "Videos this roster played" list.
 
 Goal: hands-free. Most rallies and stats right without review; review only what the
 pipeline flags as unsure. Order: accuracy first, then the cloud (owner's choice).

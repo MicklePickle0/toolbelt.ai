@@ -351,7 +351,7 @@ async function statsPage(params) {
     location.hash = `#/stats?v=${keys.join(",")}&src=${s}&pass=${p}`; };
 
   // Sets in folders: tournament -> game -> sets. "Edit folders" moves sets between them.
-  const folderTree = folderPicker(fd, vids, chosen, keys => go(keys, src));
+  const folderTree = scopePicker(fd, vids, chosen, keys => go(keys, src));
   const tournaments = [...new Set(Object.values(fd.folders).map(f => f.tournament)
     .filter(t => t !== fd.unfiled))];
   const games = [...new Set(Object.values(fd.folders).map(f => f.game))];
@@ -405,19 +405,20 @@ async function statsPage(params) {
     }),
     h("button", { onclick: () => route() }, "Done"));
 
-  const picker = h("div", { class: "well" },
-    h("div", { class: "row spread" }, h("strong", {}, "Sets"),
-      h("div", { class: "row" },
-        h("button", { onclick: () => go(vids.map(v => v.key), src) }, "All"),
-        h("button", { onclick: () => { editor.style.display =
-          editor.style.display === "none" ? "" : "none"; } }, "Edit folders"),
-        seg([["pipeline", "Pipeline + review"], ["labels", "Hand labels"]], src,
-          s => go(chosen, s)))),
-    folderTree,
-    h("div", { class: "row", style: "margin-top:8px" },
-      h("span", { class: "small" }, "Passing average on a"),
-      seg([["4", "4-point scale"], ["3", "3-point scale (4s count as 3)"]], scale,
-        p => go(chosen, src, p))));
+  // One row of plain dropdowns: which sets, where the touches come from, the pass scale.
+  const choice = (options, current, onChange) => h("select", {
+    onchange: e => onChange(e.target.value) },
+  ...options.map(([v, text]) => h("option", { value: v, selected: v === current }, text)));
+  const picker = h("div", { class: "filterbar" },
+    ...folderTree,
+    h("label", { class: "fl" }, "Touches from",
+      choice([["pipeline", "Pipeline and review"], ["labels", "Hand labels"]], src,
+        s => go(chosen, s))),
+    h("label", { class: "fl" }, "Pass average",
+      choice([["4", "4-point scale"], ["3", "3-point scale (4s count as 3)"]], scale,
+        p => go(chosen, src, p))),
+    h("button", { class: "quiet", onclick: () => { editor.style.display =
+      editor.style.display === "none" ? "" : "none"; } }, "Edit folders"));
 
   let lead = null, body;
   try {
@@ -432,9 +433,24 @@ async function statsPage(params) {
   } catch (e) {
     body = [h("p", { class: "muted" }, e.message)];
   }
-  const title = chosen.length === 1 ? chosen[0] : chosen.length ? `${chosen.length} sets` : "Stats";
+  // The title says what is shown: "Pakmen Black, set 2", "Pakmen Black", "Humber 17U".
+  const title = scopeTitle(fd, vids, chosen);
   // replaceChildren prints a null as the text "null": leave the empty parts out.
-  view.replaceChildren(...[h("h1", {}, title), lead, picker, editor, ...body].filter(Boolean));
+  view.replaceChildren(...[h("h1", {}, title), picker, lead, editor, ...body].filter(Boolean));
+}
+
+function scopeTitle(fd, vids, chosen) {
+  if (!chosen.length) return "Stats";
+  const f = k => fd.folders[k] || {};
+  const opp = k => (vids.find(v => v.key === k) || {}).opponent || f(k).game || k;
+  const games = new Set(chosen.map(k => f(k).game));
+  const tours = new Set(chosen.map(k => f(k).tournament));
+  if (chosen.length === 1) {
+    return `${opp(chosen[0])}, ${setName(chosen[0], f(chosen[0]).game || "").toLowerCase()}`;
+  }
+  if (games.size === 1) return opp(chosen[0]);
+  if (tours.size === 1 && !tours.has(fd.unfiled)) return [...tours][0];
+  return `${chosen.length} sets`;
 }
 
 // The page opens with one sentence: the result and the numbers a coach looks for first, each
@@ -480,7 +496,12 @@ function rallyStrips(vids) {
     .then(res => {
       const ok = res.filter(Boolean);
       if (!ok.length) return;
-      box.replaceChildren(h("h2", {}, "How the set went"), ...ok.flatMap(([v, l]) => {
+      const name = v => {
+        const m = v.key.match(/_set(\d+)$/);
+        return (v.opponent || v.key) + (m ? `, set ${m[1]}` : "");
+      };
+      box.replaceChildren(h("h2", {}, ok.length > 1 ? "How the sets went" : "How the set went"),
+        ...ok.flatMap(([v, l]) => {
         const won = l.rallies.filter(r => r.point_winner === "us").length;
         const lost = l.rallies.filter(r => r.point_winner === "them").length;
         let run = 0, best = 0;
@@ -489,7 +510,8 @@ function rallyStrips(vids) {
           best = Math.max(best, run);
         }
         return [
-          sets.length > 1 ? h("div", { class: "small", style: "margin-top:12px" }, v.key) : null,
+          sets.length > 1 ? h("div", { class: "small", style: "margin-top:12px" }, name(v),
+            h("span", { class: "muted" }, `, ${won} to ${lost}, longest run of ours ${best}`)) : null,
           h("div", { class: "strip", role: "list", "aria-label": `${v.key}: ${won} points to ${lost}` },
             ...l.rallies.map(r => h("a", { role: "listitem",
               class: r.point_winner === "us" ? "us" : r.point_winner === "them" ? "" : "none",
@@ -497,35 +519,78 @@ function rallyStrips(vids) {
               title: `Rally ${r.rally_number}, ${r.score[0]} to ${r.score[1]}: ` +
                 (r.point_winner === "us" ? "our point" : r.point_winner === "them" ? "their point"
                   : label(r.outcome || "no winner")) }))),
-          h("p", { class: "small muted" }, `Our points in blue. Longest run of ours: ${best}. ` +
-            "A block opens that rally."),
+          sets.length > 1 ? null : h("p", { class: "small muted" },
+            `Our points in blue. Longest run of ours: ${best}. A block opens that rally.`),
         ].filter(Boolean);
-      }));
+      }),
+        ok.length > 1 ? h("p", { class: "small muted", style: "margin-top:8px" },
+          "Our points in blue. A block opens that rally.") : "");
     });
   return box;
 }
 
-// Processed sets as a tournament -> game -> set tree of checkboxes (data/folders.yaml).
-// Ticking a tournament or a game picks all of its sets; onPick gets the new list of keys.
-function folderPicker(fd, vids, chosen, onPick) {
+// Which sets a page shows, as three linked dropdowns over the folders (data/folders.yaml):
+// tournament, then game, then set, each with an "All" choice. One set, one game, one
+// tournament or everything is at most two picks. onPick gets the new list of video keys;
+// a list no single choice describes (an old link) shows as "Custom" until changed.
+function scopePicker(fd, vids, chosen, onPick) {
   const have = new Set(vids.map(v => v.key));
   const tree = fd.tree.map(t => ({ ...t, games: t.games.map(g =>
     ({ ...g, videos: g.videos.filter(k => have.has(k)) })).filter(g => g.videos.length) }))
     .filter(t => t.games.length);
-  const pickAll = (keys, on) => onPick(on ? [...new Set([...chosen, ...keys])]
-    : chosen.filter(k => !keys.includes(k)));
-  const box = (keys, text, cls) => h("label", { class: "check " + cls },
-    h("input", { type: "checkbox", checked: keys.every(k => chosen.includes(k)),
-      onchange: e => pickAll(keys, e.target.checked) }), text);
-  return h("div", { class: "folders" }, ...tree.map(t => {
-    const tKeys = t.games.flatMap(g => g.videos);
-    return h("div", { class: "folder" },
-      box(tKeys, t.tournament, "tournament"),
-      ...t.games.map(g => h("div", { class: "game" },
-        box(g.videos, g.game, "gamebox"),
-        h("span", { class: "row" }, ...g.videos.map(k => box([k], k.replace(g.game + "_", ""),
-          "chip"))))));
-  }));
+  const opp = new Map(vids.map(v => [v.key, v.opponent]));
+  const gameName = g => opp.get(g.videos[0]) || g.game.replaceAll("-", " ");
+  const tKeys = ti => tree[ti].games.flatMap(g => g.videos);
+  const all = tree.flatMap((_, ti) => tKeys(ti));
+  const same = (a, b) => a.length === b.length && a.every(k => b.includes(k));
+
+  // Work out which choice the current list is.
+  let T = "", G = "", S = "", custom = false;
+  const findGame = test => { for (const [ti, t] of tree.entries()) for (const [gi, g] of t.games.entries())
+    if (test(g)) return [ti, gi]; return null; };
+  if (chosen.length === 1 && findGame(g => g.videos.includes(chosen[0]))) {
+    const [ti, gi] = findGame(g => g.videos.includes(chosen[0]));
+    T = String(ti); G = `${ti}/${gi}`; S = chosen[0];
+  } else if (findGame(g => same(g.videos, chosen))) {
+    const [ti, gi] = findGame(g => same(g.videos, chosen));
+    T = String(ti); G = `${ti}/${gi}`;
+  } else if (tree.some((_, ti) => same(tKeys(ti), chosen))) {
+    T = String(tree.findIndex((_, ti) => same(tKeys(ti), chosen)));
+  } else if (!same(all, chosen)) {
+    custom = true;
+  }
+  const game = v => { const [ti, gi] = v.split("/").map(Number); return tree[ti].games[gi]; };
+
+  const tSel = h("select", { onchange: e => {
+    const v = e.target.value;
+    if (v !== "custom") onPick(v === "" ? all : tKeys(+v)); } },
+    custom ? h("option", { value: "custom", selected: true }, `Custom, ${chosen.length} sets`) : null,
+    h("option", { value: "", selected: !custom && T === "" }, "All tournaments"),
+    ...tree.map((t, ti) => h("option", { value: ti, selected: T === String(ti) }, t.tournament)));
+  const gameOpts = ti => tree[ti].games.map((g, gi) =>
+    h("option", { value: `${ti}/${gi}`, selected: G === `${ti}/${gi}` }, gameName(g)));
+  const gSel = h("select", { onchange: e => {
+    const v = e.target.value;
+    onPick(v ? game(v).videos : T !== "" ? tKeys(+T) : all); } },
+    h("option", { value: "", selected: G === "" }, "All games"),
+    ...(T !== "" ? gameOpts(+T)
+      : tree.map((t, ti) => h("optgroup", { label: t.tournament }, ...gameOpts(ti)))));
+  const sSel = h("select", { disabled: G === "", onchange: e => {
+    onPick(e.target.value ? [e.target.value] : game(G).videos); } },
+    h("option", { value: "", selected: S === "" }, "All sets"),
+    ...(G ? game(G).videos.map(k => h("option", { value: k, selected: S === k },
+      setName(k, game(G).game))) : []));
+  return [
+    h("label", { class: "fl" }, "Tournament", tSel),
+    h("label", { class: "fl" }, "Game", gSel),
+    h("label", { class: "fl" }, "Set", sSel)];
+}
+
+// "pakmen-black_set2" in the game "pakmen-black" -> "Set 2".
+function setName(key, game) {
+  const rest = key.startsWith(game + "_") ? key.slice(game.length + 1) : key;
+  const m = rest.match(/^set(\d+)$/);
+  return m ? `Set ${m[1]}` : rest.replaceAll("_", " ");
 }
 
 function statsBody(st, src) {

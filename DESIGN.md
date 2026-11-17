@@ -170,8 +170,8 @@ sentence and rally strip, C's setter grids and tables.
    flags as plain sentences and the touches on the right. The current touch is outlined in
    ball yellow all the way round (not a stripe on its left: a coloured side stripe is a
    stock generated-design move). Keys are listed once in a small muted paragraph.
-4. **Stats.** Stat sheet. The set's name, then the opening sentence, then the set picker in
-   a well, then the rally strip, the box score (players by rows, team total last in 600),
+4. **Stats.** Stat sheet. The set's name, then the filter bar (which sets, touches from,
+   pass scale), then the opening sentence, then the rally strip, the box score (players by rows, team total last in 600),
    the passing and set maps, the setter grids, and the situational tables. Every rate shows
    its count next to it in muted ("0.059 on 34").
 5. **Search, Rosters, Queue.** Same sheet, same tables; filters in a well.
@@ -219,6 +219,15 @@ squircles, no fully rounded chips.
   rate. The fill is a band of efficiency in solid tokens: court 0.250 and up, them 0.100 to
   0.249, miss under 0.100, well under 3 attacks. The legend sentence under the grids states
   the bands.
+- **Choosing sets:** three linked dropdowns, Tournament, Game (named by the opponent), Set,
+  each with an "All" choice, labelled above in small muted text. One set, a game, a
+  tournament or everything is two picks at most; a list no single choice describes (an
+  old link) shows as "Custom, N sets". The page title follows the choice ("Pakmen Black,
+  set 2", "Humber 17U"). Never a tree of checkboxes.
+- **Filter bar:** labelled dropdowns in one row, then a quiet text button for anything
+  rarely used ("Edit folders"). On Stats it sits right under the title, on paper; on
+  Search, where there are more filters, it sits in a well, with which sets on the first row
+  and what to find on the second.
 - **Wells hold controls:** filters and pickers sit in a well; buttons inside a well are
   paper so they read.
 - **No dark mode on the stat sheet.** Paper is the stat sheet in any system theme; the film

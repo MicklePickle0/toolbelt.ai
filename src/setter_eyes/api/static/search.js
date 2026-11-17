@@ -35,18 +35,18 @@ async function searchPage(params) {
     return el;
   };
   const filters = h("div", { class: "well" },
-    h("strong", {}, "Sets"),
-    folderPicker(fd, vids, q.v, keys => { q.v = keys; go(); }),
-    h("div", { class: "row filters", style: "margin-top:10px" },
-      h("label", { class: "row small" }, "Player", playerSelect("player", "anyone")),
-      h("label", { class: "row small" }, "Play",
+    h("div", { class: "filterbar" },
+      ...scopePicker(fd, vids, q.v, keys => { q.v = keys; go(); })),
+    h("div", { class: "filterbar", style: "margin-top:12px" },
+      h("label", { class: "fl" }, "Player", playerSelect("player", "anyone")),
+      h("label", { class: "fl" }, "Play",
         select(SEARCH_ACTIONS, q.action || null, v => { q.action = v || ""; go(); }, "any")),
-      h("label", { class: "row small" }, "How the point ended",
+      h("label", { class: "fl" }, "How the point ended",
         select(["kills", "aces", "attack_errors", "service_errors", "block_points",
           "reception_errors", "ball_handling_errors"], q.result || null,
         v => { q.result = v || ""; go(); }, "any")),
-      h("label", { class: "row small" }, "Set by", playerSelect("set_by", "anyone"))),
-    h("div", { class: "row", style: "margin-top:8px" },
+      h("label", { class: "fl" }, "Set by", playerSelect("set_by", "anyone"))),
+    h("div", { class: "row", style: "margin-top:12px" },
       h("span", { class: "small" }, "Pass score"),
       ...[0, 1, 2, 3, 4].map(n => h("button", {
         class: q.pass.includes(String(n)) ? "on" : "", onclick: () => {
