@@ -294,6 +294,32 @@ from the code, and processing that runs as a batch job.
 - Before paying for cloud GPUs: 1080p input (downscaled on the phone, so uploads are
   smaller too) and faster inference (see `docs/todo.md`).
 
+## UI design (owner, 2026-11-17)
+The owner finds the current web app generic ("looks AI-made") and wants it redesigned. Scope
+for now: the app a coach actually uses (Videos, Calibrate, Review, Stats, Search, Rosters,
+Queue). The landing page, marketing and login come later.
+- `DESIGN.md` (repo root) is the design contract: tokens, type, layout, components. Read it
+  before changing any page and build from it. Add a token there before a page uses one;
+  never invent a one-off inside a page. Its two rooms: the film room (Review, Calibrate:
+  dark, video first, as Hudl) and the stat sheet (everything else: paper white, tables
+  first, every rate with its count, as Cleaning the Glass). The Loire tennis Dribbble shot
+  is the third reference (editorial restraint), seen only by its title so far: check
+  DESIGN.md against the real screenshot when the owner shares one.
+- The owner's don't-list (also in DESIGN.md): tags and pills, italics, Instrument Serif,
+  negative letter spacing, over-detailed UI, many dividers, colour shades and opacities,
+  bordered containers, over-detailed diagrams, verbose or repeated text, breadcrumbs,
+  section numbers, eyebrow labels, dithering, ASCII art, squircles, lots of monospace,
+  all-caps subtitles, gradient backgrounds, periods in titles.
+- Design tools, installed in the laptop's user settings (not in the repo; set them up the
+  same way on the desktop if wanted): the `avoid-ai-design` skill
+  (`~/.claude/skills/avoid-ai-design`, its scanner: `node
+  ~/.claude/skills/avoid-ai-design/scripts/detect.mjs src/setter_eyes/api/static`), the
+  `impeccable` plugin (marketplace `pbakaus/impeccable`; runs hooks after every edit and at
+  every stop, so turn it off in `/plugin` if they get in the way), and the
+  `designer-skills` plugins (marketplace `Owl-Listener/designer-skills`).
+- Plan: audit Review and Stats against DESIGN.md, then restyle them, then the rest. Keep
+  everything that works (routes, keys, data); restyle, don't rebuild behaviour.
+
 ## Working across machines and conversations
 Work happens on a desktop (footage, GPU, `data/`) and a laptop, in separate Claude Code
 conversations that don't see each other. The shared state is the repo, so:
